@@ -1284,3 +1284,154 @@ toolRegistry.register({
     }
   }
 })
+
+// ========== 主窗口WebView控制工具 ==========
+// 这些工具直接在应用的主浏览器中执行操作，而不是创建新窗口
+
+// 导航到URL（在主webview中）
+toolRegistry.register({
+  name: 'webview_goto',
+  description: 'Navigate to a URL in the main application browser (not a new window)',
+  parameters: [
+    { name: 'url', type: 'string', description: 'URL to navigate to', required: true }
+  ],
+  handler: async (params: any) => {
+    try {
+      const url = params?.url
+      if (!url) return { error: 'Missing parameter: url' }
+
+      const mainWin = getMainWin()
+      if (!mainWin || mainWin.isDestroyed()) {
+        return { error: 'Main window not available' }
+      }
+
+      mainWin.webContents.send('webview-action', { action: 'goto', url })
+      return { success: true, message: `Navigating to ${url} in main browser` }
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  }
+})
+
+// 点击元素（在主webview中）
+toolRegistry.register({
+  name: 'webview_click',
+  description: 'Click an element in the main application browser',
+  parameters: [
+    { name: 'selector', type: 'string', description: 'CSS selector of the element to click', required: true }
+  ],
+  handler: async (params: any) => {
+    try {
+      const selector = params?.selector
+      if (!selector) return { error: 'Missing parameter: selector' }
+
+      const mainWin = getMainWin()
+      if (!mainWin || mainWin.isDestroyed()) {
+        return { error: 'Main window not available' }
+      }
+
+      mainWin.webContents.send('webview-action', { action: 'click', selector })
+      return { success: true, message: `Clicking element ${selector} in main browser` }
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  }
+})
+
+// 输入文字（在主webview中）
+toolRegistry.register({
+  name: 'webview_type',
+  description: 'Type text into an input field in the main application browser',
+  parameters: [
+    { name: 'selector', type: 'string', description: 'CSS selector of the input element', required: true },
+    { name: 'text', type: 'string', description: 'Text to type', required: true }
+  ],
+  handler: async (params: any) => {
+    try {
+      const selector = params?.selector
+      const text = params?.text
+      if (!selector) return { error: 'Missing parameter: selector' }
+      if (!text) return { error: 'Missing parameter: text' }
+
+      const mainWin = getMainWin()
+      if (!mainWin || mainWin.isDestroyed()) {
+        return { error: 'Main window not available' }
+      }
+
+      mainWin.webContents.send('webview-action', { action: 'type', selector, text })
+      return { success: true, message: `Typing into ${selector} in main browser` }
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  }
+})
+
+// 滚动页面（在主webview中）
+toolRegistry.register({
+  name: 'webview_scroll',
+  description: 'Scroll the page in the main application browser',
+  parameters: [
+    { name: 'scrollTop', type: 'number', description: 'Pixel position to scroll to (vertical)', required: true }
+  ],
+  handler: async (params: any) => {
+    try {
+      const scrollTop = params?.scrollTop
+      if (typeof scrollTop !== 'number') return { error: 'Missing parameter: scrollTop' }
+
+      const mainWin = getMainWin()
+      if (!mainWin || mainWin.isDestroyed()) {
+        return { error: 'Main window not available' }
+      }
+
+      mainWin.webContents.send('webview-action', { action: 'scroll', scrollTop })
+      return { success: true, message: `Scrolling to ${scrollTop}px in main browser` }
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  }
+})
+
+// 播放视频（在主webview中）
+toolRegistry.register({
+  name: 'webview_play',
+  description: 'Play video in the main application browser (click play button or press space)',
+  parameters: [],
+  handler: async () => {
+    try {
+      const mainWin = getMainWin()
+      if (!mainWin || mainWin.isDestroyed()) {
+        return { error: 'Main window not available' }
+      }
+
+      mainWin.webContents.send('webview-action', { action: 'play' })
+      return { success: true, message: 'Playing video in main browser' }
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  }
+})
+
+// 等待元素（在主webview中）
+toolRegistry.register({
+  name: 'webview_wait',
+  description: 'Wait for an element to appear in the main application browser',
+  parameters: [
+    { name: 'selector', type: 'string', description: 'CSS selector to wait for', required: true }
+  ],
+  handler: async (params: any) => {
+    try {
+      const selector = params?.selector
+      if (!selector) return { error: 'Missing parameter: selector' }
+
+      const mainWin = getMainWin()
+      if (!mainWin || mainWin.isDestroyed()) {
+        return { error: 'Main window not available' }
+      }
+
+      mainWin.webContents.send('webview-action', { action: 'wait', selector })
+      return { success: true, message: `Waiting for ${selector} in main browser` }
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  }
+})

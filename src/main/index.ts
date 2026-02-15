@@ -18,10 +18,22 @@ if (traeSandboxStoragePath) {
     fs.mkdirSync(userDataDir, { recursive: true })
   }
   app.setPath('userData', userDataDir)
-  app.commandLine.appendSwitch('no-sandbox')
-  app.commandLine.appendSwitch('disable-gpu-sandbox')
-  app.commandLine.appendSwitch('disable-gpu')
 }
+
+// 添加WebView实验性功能开关
+app.commandLine.appendSwitch('enable-webview')
+app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoder,VaapiVideoEncoder')
+app.commandLine.appendSwitch('enable-gpu-rasterization')
+app.commandLine.appendSwitch('enable-zero-copy')
+app.commandLine.appendSwitch('enable-hardware-overlays', 'single-fullscreen,single-on-top,underlay')
+app.commandLine.appendSwitch('ignore-gpu-blocklist')
+app.commandLine.appendSwitch('enable-accelerated-2d-canvas')
+app.commandLine.appendSwitch('enable-usermedia-screen-capturing')
+app.commandLine.appendSwitch('allow-file-access-from-files')
+app.commandLine.appendSwitch('allow-universal-access-from-file-urls')
+app.commandLine.appendSwitch('disable-web-security')
+app.commandLine.appendSwitch('disable-features', 'CrossSiteDocumentBlockingIfIsolating')
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 
 // 全局窗口引用
 let mainWindow: BrowserWindow | null = null

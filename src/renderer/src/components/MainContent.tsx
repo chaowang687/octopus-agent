@@ -18,18 +18,56 @@ interface Tab {
 }
 
 const MainContent: React.FC = () => {
-  const [tabs, setTabs] = useState<Tab[]>([
-    { 
-      id: '1', 
-      url: 'trae://home', 
-      title: 'New Tab', 
-      isLoading: false, 
-      canGoBack: false, 
-      canGoForward: false,
-      homeState: { searched: false, results: [], inputValue: '' }
+  // 从localStorage加载保存的Tab状态
+  const loadSavedTabs = (): Tab[] => {
+    try {
+      const saved = localStorage.getItem('browser_tabs')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          console.log('[MainContent] Loaded saved tabs:', parsed.length)
+          return parsed
+        }
+      }
+    } catch (e) {
+      console.error('[MainContent] Failed to load tabs:', e)
     }
-  ])
-  const [activeTabId, setActiveTabId] = useState('1')
+    return [
+      { 
+        id: '1', 
+        url: 'trae://home', 
+        title: 'New Tab', 
+        isLoading: false, 
+        canGoBack: false, 
+        canGoForward: false,
+        homeState: { searched: false, results: [], inputValue: '' }
+      }
+    ]
+  }
+
+  // 保存Tab状态到localStorage
+  const saveTabs = (tabsToSave: Tab[], activeId: string) => {
+    try {
+      // 只保存基本信息，不保存loading状态
+      const tabsToStore = tabsToSave.map(t => ({
+        id: t.id,
+        url: t.url,
+        title: t.title,
+        canGoBack: t.canGoBack,
+        canGoForward: t.canGoForward,
+        homeState: t.homeState
+      }))
+      localStorage.setItem('browser_tabs', JSON.stringify(tabsToStore))
+      localStorage.setItem('browser_active_tab', activeId)
+    } catch (e) {
+      console.error('[MainContent] Failed to save tabs:', e)
+    }
+  }
+
+  const [tabs, setTabs] = useState<Tab[]>(loadSavedTabs)
+  const [activeTabId, setActiveTabId] = useState<string>(() => {
+    return localStorage.getItem('browser_active_tab') || '1'
+  })
   const [urlInput, setUrlInput] = useState('')
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1)
@@ -82,6 +120,11 @@ const MainContent: React.FC = () => {
       }
     }
   }, [activeTabId, activeTab?.url, activeTab?.homeState?.inputValue])
+
+  // 保存Tab状态到localStorage
+  useEffect(() => {
+    saveTabs(tabs, activeTabId)
+  }, [tabs, activeTabId])
 
   const handleAddTab = () => {
     const newId = Date.now().toString()
@@ -403,6 +446,82 @@ const MainContent: React.FC = () => {
           true
         `).then((result: boolean) => {
           console.log('[Renderer] Scroll result:', result)
+        })
+      } else if (data.action === 'goto' && data.url) {
+        // 导航到URL
+        console.log('[Renderer] Goto URL:', data.url)
+        webview.loadURL(data.url).then(() => {
+          console.log('[Renderer] Navigation successful')
+        }).catch((err: any) => {
+          console.log('[Renderer] Navigation error:', err)
+        })
+      } else if (data.action === 'wait' && data.selector) {
+        // 等待元素出现
+        console.log('[Renderer] Waiting for selector:', data.selector)
+        const checkElement = () => {
+          return webview.executeJavaScript(`
+            (function() {
+              const el = document.querySelector('${data.selector}');
+              if (el) {
+                const rect = el.getBoundingClientRect();
+                if (rect.width > 0 && rect.height > 0) {
+                  return { found: true };
+                }
+              }
+              return { found: false };
+            })()
+          `)
+        }
+        
+        const tryCheck = async () => {
+          for (let i = 0; i < 20; i++) {
+            const result = await checkElement()
+            if (result.found) {
+              console.log('[Renderer] Element found!')
+              return
+            }
+            await new Promise(r => setTimeout(r, 500))
+          }
+          console.log('[Renderer] Element not found after timeout')
+        }
+        tryCheck()
+      } else if (data.action === 'play') {
+        // 播放视频 - 尝试多种方式
+        console.log('[Renderer] Play video action')
+        webview.executeJavaScript(`
+          (function() {
+            // 方式1: 查找video元素并播放
+            const video = document.querySelector('video');
+            if (video) {
+              video.play().catch(() => {
+                video.muted = true;
+                video.play();
+              });
+              return { success: true, method: 'video' };
+            }
+            
+            // 方式2: 查找播放按钮
+            const playBtn = document.querySelector('.bpx-player-ctrl-play') || 
+                           document.querySelector('.bilibili-player-video-clickarea') ||
+                           document.querySelector('.player-ctrl-play');
+            if (playBtn) {
+              playBtn.click();
+              return { success: true, method: 'button' };
+            }
+            
+            // 方式3: 发送空格键（播放/暂停）
+            document.body.focus();
+            const event = new KeyboardEvent('keydown', { key: ' ', code: 'Space', keyCode: 32, which: 32, bubbles: true });
+            document.dispatchEvent(event);
+            return { success: true, method: 'keyboard' };
+          })()
+        `).then((result: any) => {
+          console.log('[Renderer] Play result:', result)
+        })
+      } else if (data.action === 'getUrl') {
+        // 获取当前URL
+        webview.getURL().then((url: string) => {
+          console.log('[Renderer] Current URL:', url)
         })
       }
     })
@@ -830,16 +949,49 @@ const MainContent: React.FC = () => {
                     </div>
                 ) : (
                 <webview
+                    src={tab.url === 'trae://home' ? 'about:blank' : tab.url}
                     ref={(el: any) => {
                         if (el) {
                             webviewRefs.current[tab.id] = el
                             
                             // Attach listeners only once
                             if (!el.dataset.listenersAttached) {
+                                // 设置窗口打开处理程序
+                                el.addEventListener('dom-ready', () => {
+                                    console.log('[Webview] DOM ready for tab:', tab.id)
+                                    
+                                    // 注入脚本来拦截链接点击
+                                    el.executeJavaScript(`
+                                        (function() {
+                                            document.addEventListener('click', function(e) {
+                                                var target = e.target.closest('a');
+                                                if (target && target.href && !target.href.startsWith('javascript:') && !target.href.startsWith('mailto:') && !target.href.startsWith('tel:')) {
+                                                    e.preventDefault();
+                                                    window.location.href = 'webview-click:' + target.href;
+                                                }
+                                            }, true);
+                                        })();
+                                    `)
+                                })
+                                
+                                // 监听自定义的webview-click事件
+                                el.addEventListener('will-navigate', (e: any) => {
+                                    console.log('[Webview] Will navigate:', e.url)
+                                    if (e.url && e.url.startsWith('webview-click:')) {
+                                        e.preventDefault()
+                                        const actualUrl = e.url.replace('webview-click:', '')
+                                        handleNewWindowUrl(actualUrl)
+                                    } else if (e.url && e.url.startsWith('http')) {
+                                        updateTab(tab.id, { url: e.url })
+                                    }
+                                })
+                                
                                 el.addEventListener('did-start-loading', () => {
+                                    console.log('[Webview] Start loading for tab:', tab.id)
                                     updateTab(tab.id, { isLoading: true })
                                 })
                                 el.addEventListener('did-stop-loading', () => {
+                                    console.log('[Webview] Stop loading for tab:', tab.id)
                                     updateTab(tab.id, { isLoading: false })
                                     // Update back/forward capability
                                     updateTab(tab.id, { 
@@ -848,15 +1000,19 @@ const MainContent: React.FC = () => {
                                     })
                                 })
                                 el.addEventListener('page-title-updated', (e: any) => {
+                                    console.log('[Webview] Title updated:', e.title)
                                     updateTab(tab.id, { title: e.title })
                                 })
                                 el.addEventListener('did-navigate', (e: any) => {
+                                    console.log('[Webview] Did navigate:', e.url)
                                     updateTab(tab.id, { url: e.url })
                                 })
                                 el.addEventListener('did-navigate-in-page', (e: any) => {
+                                    console.log('[Webview] Did navigate in page:', e.url)
                                     updateTab(tab.id, { url: e.url })
                                 })
                                 el.addEventListener('new-window', (e: any) => {
+                                    console.log('[Webview] New window:', e.url)
                                     e.preventDefault()
                                     if (e.url) {
                                       handleNewWindowUrl(e.url)
@@ -870,11 +1026,28 @@ const MainContent: React.FC = () => {
                             }
                         }
                     }}
-                    src={tab.url}
                     style={{ width: '100%', height: '100%', display: 'flex' }}
                     partition="persist:main"
                     allowpopups
-                    webpreferences="contextIsolation=yes, nodeIntegration=no, autoplayPolicy=no-user-gesture-required, plugins=true"
+                    webpreferences="
+                        contextIsolation=no,
+                        nodeIntegration=yes,
+                        webSecurity=no,
+                        allowRunningInsecureContent=yes,
+                        enableWebSQL=yes,
+                        enableWidevine=yes,
+                        proxyBypassRules=,
+                        proxyType=system,
+                        spellcheck=yes,
+                        webrtcStemmer=yes,
+                        chromeAPIs=yes,
+                        pinchEnabled=yes,
+                        useMultipleSecureProxy=yes,
+                        allowFileAccessFromFiles=yes,
+                        allowUniversalAccessFromFileURLs=yes,
+                        experimentalFeatures=yes,
+                        enableBlinkFeatures=*
+                    "
                 />
                 )}
             </div>
