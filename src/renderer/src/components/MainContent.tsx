@@ -49,6 +49,16 @@ const MainContent: React.FC = () => {
     else setGreeting('晚上好')
   }, [])
 
+  // 检查是否有待打开的URL（从Chat页面跳转过来时）
+  useEffect(() => {
+    const pendingUrl = sessionStorage.getItem('pendingOpenUrl')
+    if (pendingUrl) {
+      console.log('[MainContent] Opening pending URL:', pendingUrl)
+      sessionStorage.removeItem('pendingOpenUrl')
+      handleNewWindowUrl(pendingUrl)
+    }
+  }, [])
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (suggestionsRef.current && !suggestionsRef.current.contains(event.target as Node)) {
@@ -347,8 +357,53 @@ const MainContent: React.FC = () => {
     })
 
     const unsubscribeAgent = api.events.onAgentOpenPage((url: string) => {
+      console.log('[Renderer] Received agent-open-page event:', url)
       if (url) {
         handleNewWindowUrl(url)
+      }
+    })
+
+    // 监听webview-action事件（来自agent工具）
+    const unsubscribeWebviewAction = api.events.onWebviewAction && api.events.onWebviewAction((data: { action: string; selector?: string; text?: string; scrollTop?: number }) => {
+      console.log('[Renderer] Received webview-action:', data)
+      const webview = webviewRefs.current[activeTabId]
+      if (!webview) {
+        console.log('[Renderer] No webview found for active tab')
+        return
+      }
+
+      if (data.action === 'click' && data.selector) {
+        webview.executeJavaScript(`
+          (function() {
+            const el = document.querySelector('${data.selector}');
+            if (el) { el.click(); return true; }
+            return false;
+          })()
+        `).then((result: boolean) => {
+          console.log('[Renderer] Click result:', result)
+        })
+      } else if (data.action === 'type' && data.selector && data.text) {
+        webview.executeJavaScript(`
+          (function() {
+            const el = document.querySelector('${data.selector}');
+            if (el) {
+              el.value = '${data.text.replace(/'/g, "\\'")}';
+              el.dispatchEvent(new Event('input', { bubbles: true }));
+              el.dispatchEvent(new Event('change', { bubbles: true }));
+              return true;
+            }
+            return false;
+          })()
+        `).then((result: boolean) => {
+          console.log('[Renderer] Type result:', result)
+        })
+      } else if (data.action === 'scroll' && data.scrollTop !== undefined) {
+        webview.executeJavaScript(`
+          window.scrollTo(0, ${data.scrollTop})
+          true
+        `).then((result: boolean) => {
+          console.log('[Renderer] Scroll result:', result)
+        })
       }
     })
 
@@ -359,8 +414,11 @@ const MainContent: React.FC = () => {
       if (unsubscribeAgent) {
         unsubscribeAgent()
       }
+      if (unsubscribeWebviewAction) {
+        unsubscribeWebviewAction()
+      }
     }
-  }, [])
+  }, [activeTabId])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#f0f0f0' }}>
@@ -814,6 +872,7 @@ const MainContent: React.FC = () => {
                     }}
                     src={tab.url}
                     style={{ width: '100%', height: '100%', display: 'flex' }}
+                    partition="persist:main"
                     allowpopups
                     webpreferences="contextIsolation=yes, nodeIntegration=no, autoplayPolicy=no-user-gesture-required, plugins=true"
                 />

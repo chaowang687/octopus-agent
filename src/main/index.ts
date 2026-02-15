@@ -26,6 +26,11 @@ if (traeSandboxStoragePath) {
 // 全局窗口引用
 let mainWindow: BrowserWindow | null = null
 
+// 导出mainWindow引用供其他模块使用
+export function getMainWindow(): BrowserWindow | null {
+  return mainWindow
+}
+
 taskEngine.on('progress', (evt: any) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('task:progress', evt)
@@ -75,6 +80,61 @@ function createWindow() {
         })
       }
       return { action: 'deny' }
+    })
+    
+    // 处理webview下载事件
+    contents.on('will-download', (event, downloadItem) => {
+      const filename = downloadItem.getFilename()
+      const totalBytes = downloadItem.getTotalBytes()
+      
+      console.log('[Webview] Starting download:', filename, 'Size:', totalBytes)
+      
+      // 发送下载开始事件到渲染进程
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('webview-download-start', {
+          filename,
+          totalBytes,
+          url: downloadItem.getURL()
+        })
+      }
+      
+      // 设置下载保存路径（使用用户下载目录）
+      const savePath = path.join(app.getPath('downloads'), filename)
+      downloadItem.setSavePath(savePath)
+      
+      // 监听下载进度
+      downloadItem.on('updated', (event, state) => {
+        if (state === 'progressing') {
+          const receivedBytes = downloadItem.getReceivedBytes()
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('webview-download-progress', {
+              filename,
+              receivedBytes,
+              totalBytes,
+              progress: totalBytes > 0 ? receivedBytes / totalBytes : 0
+            })
+          }
+        }
+      })
+      
+      // 监听下载完成
+      downloadItem.on('done', (event, state) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          if (state === 'completed') {
+            mainWindow.webContents.send('webview-download-complete', {
+              filename,
+              savePath,
+              success: true
+            })
+          } else {
+            mainWindow.webContents.send('webview-download-complete', {
+              filename,
+              error: state,
+              success: false
+            })
+          }
+        }
+      })
     })
   })
 
@@ -168,6 +228,21 @@ app.whenReady().then(() => {
   ipcMain.handle('chat:cancel', () => {
     const cancelled = taskEngine.cancelCurrentTask()
     return { success: true, cancelled }
+  })
+  
+  // 开发者工具控制
+  ipcMain.handle('webview:openDevTools', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      // 获取webview并打开开发者工具
+      const webViews = mainWindow.webContents.getAllWebContents()
+      for (const wc of webViews) {
+        if (wc.getType() === 'webview') {
+          wc.openDevTools()
+        }
+      }
+      return { success: true }
+    }
+    return { success: false, error: 'No window' }
   })
   
   app.on('browser-window-created', (_, window) => {

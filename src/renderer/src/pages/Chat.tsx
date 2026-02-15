@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import ChatSidebar from '../components/ChatSidebar'
 import { chatDataService, ChatSession } from '../services/ChatDataService'
 
@@ -79,6 +80,7 @@ const ImageAttachment: React.FC<{ filePath: string; alt: string }> = ({ filePath
 }
 
 const Chat: React.FC = () => {
+  const navigate = useNavigate()
   const [currentSession, setCurrentSession] = useState<ChatSession | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
@@ -97,6 +99,23 @@ const Chat: React.FC = () => {
   const currentTaskIdRef = useRef<string | null>(null)
   
   const [activeTab, setActiveTab] = useState<'progress' | 'files'>('progress')
+
+  // 监听agent打开页面的事件
+  useEffect(() => {
+    const api = (window as any).electron
+    if (api?.events?.onAgentOpenPage) {
+      const unsubscribe = api.events.onAgentOpenPage((url: string) => {
+        console.log('[Chat] Received agent-open-page event:', url)
+        // 将URL存储到sessionStorage，主页会读取并打开
+        sessionStorage.setItem('pendingOpenUrl', url)
+        // 跳转到浏览器页面
+        navigate('/')
+      })
+      return () => {
+        if (unsubscribe) unsubscribe()
+      }
+    }
+  }, [navigate])
   
   const [selectedModel, setSelectedModel] = useState('openai')
   const [models] = useState<{ id: string; name: string }[]>([

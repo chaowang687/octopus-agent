@@ -1,12 +1,20 @@
 import * as fs from 'fs'
 import * as path from 'path'
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, ipcMain } from 'electron'
 import { execSync } from 'child_process'
 import axios from 'axios'
 import * as si from 'systeminformation'
 import { toolRegistry } from './ToolRegistry'
 import { browserService } from '../services/BrowserService'
 import { galleryService } from '../services/GalleryService'
+
+// 导入主窗口获取函数
+import { getMainWindow } from '../index'
+
+// 辅助函数：获取主窗口
+function getMainWin(): BrowserWindow | null {
+  return getMainWindow()
+}
 
 // File System Tools
 toolRegistry.register({
@@ -289,13 +297,31 @@ toolRegistry.register({
       if (!url) return { error: 'Missing parameter: url' }
 
       // Find the main window (visible and not destroyed)
-      const windows = BrowserWindow.getAllWindows()
-      const mainWindow = windows.find(w => w.isVisible() && !w.isDestroyed())
+      // 优先查找可见窗口，如果没有则查找任意非销毁窗口
+      let windows = BrowserWindow.getAllWindows()
+      console.log('[open_page] Found windows:', windows.length)
+      
+      let mainWindow = windows.find(w => w.isVisible() && !w.isDestroyed())
+      console.log('[open_page] Visible window:', mainWindow ? 'found' : 'not found')
+      
+      // 如果没有可见窗口，尝试查找任意已加载的窗口
+      if (!mainWindow) {
+        mainWindow = windows.find(w => !w.isDestroyed() && w.webContents && !w.webContents.isLoading())
+        console.log('[open_page] Loaded window:', mainWindow ? 'found' : 'not found')
+      }
+      
+      // 如果还是没有，查找任意非销毁窗口
+      if (!mainWindow) {
+        mainWindow = windows.find(w => !w.isDestroyed())
+        console.log('[open_page] Any window:', mainWindow ? 'found' : 'not found')
+      }
 
       if (mainWindow) {
+        console.log('[open_page] Sending agent-open-page event for URL:', url)
         mainWindow.webContents.send('agent-open-page', url)
         return { success: true, message: `Opened ${url} in browser` }
       } else {
+        console.log('[open_page] No window found, windows count:', windows.length)
         return { error: 'No active browser window found' }
       }
     } catch (error: any) {
@@ -855,6 +881,406 @@ toolRegistry.register({
       return { success: true, note }
     } catch (error: any) {
       return { error: error.message }
+    }
+  }
+})
+
+// ========== 浏览器自动化工具 ==========
+
+// 点击网页元素
+toolRegistry.register({
+  name: 'browser_click',
+  description: 'Click an element on a webpage using CSS selector (in the main window webview)',
+  parameters: [
+    { name: 'url', type: 'string', description: 'URL of the page to interact with', required: false },
+    { name: 'selector', type: 'string', description: 'CSS selector of the element to click', required: true }
+  ],
+  handler: async (params: any, ctx) => {
+    try {
+      const selector = params?.selector
+      if (!selector) return { error: 'Missing parameter: selector' }
+
+      const mainWindow = getMainWin()
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('webview-action', { action: 'click', selector })
+        return { success: true, message: `Clicking element: ${selector}` }
+      } else {
+        // 如果没有主窗口，使用传统方式
+        const url = params?.url || 'https://www.google.com'
+        const result = await browserService.clickElement(url, selector, ctx?.signal)
+        return result
+      }
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  }
+})
+
+// 在输入框中输入文字
+toolRegistry.register({
+  name: 'browser_type',
+  description: 'Type text into an input field on a webpage (in the main window webview)',
+  parameters: [
+    { name: 'selector', type: 'string', description: 'CSS selector of the input element', required: true },
+    { name: 'text', type: 'string', description: 'Text to type into the element', required: true }
+  ],
+  handler: async (params: any, ctx) => {
+    try {
+      const selector = params?.selector
+      const text = params?.text
+      if (!selector) return { error: 'Missing parameter: selector' }
+      if (!text) return { error: 'Missing parameter: text' }
+
+      const mainWindow = getMainWin()
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('webview-action', { action: 'type', selector, text })
+        return { success: true, message: `Typing into: ${selector}` }
+      } else {
+        const url = params?.url || 'https://www.google.com'
+        const result = await browserService.typeText(url, selector, text, ctx?.signal)
+        return result
+      }
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  }
+})
+
+// 滚动页面
+toolRegistry.register({
+  name: 'browser_scroll',
+  description: 'Scroll a webpage to a specific position (in the main window webview)',
+  parameters: [
+    { name: 'scrollTop', type: 'number', description: 'Pixel position to scroll to (vertical)', required: true }
+  ],
+  handler: async (params: any, ctx) => {
+    try {
+      const scrollTop = params?.scrollTop
+      if (typeof scrollTop !== 'number') return { error: 'Missing parameter: scrollTop (number)' }
+
+      const mainWindow = getMainWin()
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('webview-action', { action: 'scroll', scrollTop })
+        return { success: true, message: `Scrolling to: ${scrollTop}` }
+      } else {
+        const url = params?.url || 'https://www.google.com'
+        const result = await browserService.scrollPage(url, scrollTop, ctx?.signal)
+        return result
+      }
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  }
+})
+
+// 截图
+toolRegistry.register({
+  name: 'browser_screenshot',
+  description: 'Take a screenshot of a webpage and return as base64 image',
+  parameters: [
+    { name: 'url', type: 'string', description: 'URL of the page to screenshot', required: true }
+  ],
+  handler: async (params: any, ctx) => {
+    try {
+      const url = params?.url
+      if (!url) return { error: 'Missing parameter: url' }
+
+      const result = await browserService.takeScreenshot(url, ctx?.signal)
+      if (result.success && result.dataUrl) {
+        return {
+          success: true,
+          dataUrl: result.dataUrl,
+          artifacts: [{
+            type: 'image',
+            dataUrl: result.dataUrl,
+            name: 'screenshot.png'
+          }]
+        }
+      }
+      return result
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  }
+})
+
+// 获取页面元素
+toolRegistry.register({
+  name: 'browser_elements',
+  description: 'Get all clickable/inputtable elements from a webpage with their CSS selectors',
+  parameters: [
+    { name: 'url', type: 'string', description: 'URL of the page to analyze', required: true }
+  ],
+  handler: async (params: any, ctx) => {
+    try {
+      const url = params?.url
+      if (!url) return { error: 'Missing parameter: url' }
+
+      const result = await browserService.getPageElements(url, ctx?.signal)
+      return result
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  }
+})
+
+// 执行JavaScript
+toolRegistry.register({
+  name: 'browser_exec',
+  description: 'Execute custom JavaScript code on a webpage',
+  parameters: [
+    { name: 'url', type: 'string', description: 'URL of the page to run script on', required: true },
+    { name: 'script', type: 'string', description: 'JavaScript code to execute', required: true }
+  ],
+  handler: async (params: any, ctx) => {
+    try {
+      const url = params?.url
+      const script = params?.script
+      if (!url) return { error: 'Missing parameter: url' }
+      if (!script) return { error: 'Missing parameter: script' }
+
+      const result = await browserService.executeScript(url, script, ctx?.signal)
+      return result
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  }
+})
+
+// 导航到URL
+toolRegistry.register({
+  name: 'browser_goto',
+  description: 'Navigate to a URL in the user visible browser tab. Use this to open websites in the main window.',
+  parameters: [
+    { name: 'url', type: 'string', description: 'URL to navigate to', required: true }
+  ],
+  handler: async (params: any, ctx) => {
+    try {
+      const url = params?.url
+      if (!url) return { error: 'Missing parameter: url' }
+
+      // 使用主窗口而不是创建新窗口
+      let windows = BrowserWindow.getAllWindows()
+      let mainWindow = windows.find(w => w.isVisible() && !w.isDestroyed())
+      if (!mainWindow) {
+        mainWindow = windows.find(w => !w.isDestroyed())
+      }
+
+      if (mainWindow) {
+        console.log('[browser_goto] Sending agent-open-page event for URL:', url)
+        mainWindow.webContents.send('agent-open-page', url)
+        return { success: true, message: `Opened ${url} in browser` }
+      } else {
+        return { error: 'No active browser window found' }
+      }
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  }
+})
+
+// 等待元素出现
+toolRegistry.register({
+  name: 'browser_wait',
+  description: 'Wait for a CSS selector to appear on a page',
+  parameters: [
+    { name: 'url', type: 'string', description: 'URL of the page', required: true },
+    { name: 'selector', type: 'string', description: 'CSS selector to wait for', required: true },
+    { name: 'timeout', type: 'number', description: 'Timeout in milliseconds (default 10000)', required: false }
+  ],
+  handler: async (params: any, ctx) => {
+    try {
+      const url = params?.url
+      const selector = params?.selector
+      const timeout = params?.timeout ?? 10000
+      if (!url) return { error: 'Missing parameter: url' }
+      if (!selector) return { error: 'Missing parameter: selector' }
+
+      const result = await browserService.waitForSelector(url, selector, timeout, ctx?.signal)
+      return result
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  }
+})
+
+// 获取所有Tab
+toolRegistry.register({
+  name: 'browser_tabs',
+  description: 'Get all open browser tabs/windows',
+  parameters: [],
+  handler: async () => {
+    try {
+      const result = await browserService.getTabs()
+      return result
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  }
+})
+
+// 切换Tab
+toolRegistry.register({
+  name: 'browser_switch_tab',
+  description: 'Switch to a specific tab by window ID',
+  parameters: [
+    { name: 'windowId', type: 'number', description: 'Window/Tab ID to switch to', required: true }
+  ],
+  handler: async (params: any) => {
+    try {
+      const windowId = params?.windowId
+      if (typeof windowId !== 'number') return { error: 'Missing parameter: windowId' }
+
+      const result = await browserService.switchTab(windowId)
+      return result
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  }
+})
+
+// 播放视频
+toolRegistry.register({
+  name: 'browser_play_video',
+  description: 'Navigate to a video URL and attempt to play it automatically',
+  parameters: [
+    { name: 'url', type: 'string', description: 'Video URL to play', required: true }
+  ],
+  handler: async (params: any, ctx) => {
+    try {
+      const url = params?.url
+      if (!url) return { error: 'Missing parameter: url' }
+
+      const result = await browserService.playVideo(url, ctx?.signal)
+      return result
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  }
+})
+
+// 获取当前URL
+toolRegistry.register({
+  name: 'browser_current_url',
+  description: 'Get the current URL of the active browser window',
+  parameters: [],
+  handler: async () => {
+    try {
+      const result = await browserService.getCurrentUrl()
+      return result
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  }
+})
+
+// 模拟按键
+toolRegistry.register({
+  name: 'browser_press_key',
+  description: 'Simulate pressing a keyboard key (Enter, Tab, Escape, etc.)',
+  parameters: [
+    { name: 'url', type: 'string', description: 'URL of the page', required: true },
+    { name: 'key', type: 'string', description: 'Key to press (Enter, Tab, Escape, ArrowDown, etc.)', required: true },
+    { name: 'selector', type: 'string', description: 'Optional CSS selector to focus before pressing key', required: false }
+  ],
+  handler: async (params: any, ctx) => {
+    try {
+      const url = params?.url
+      const key = params?.key
+      const selector = params?.selector
+      if (!url) return { error: 'Missing parameter: url' }
+      if (!key) return { error: 'Missing parameter: key' }
+
+      const result = await browserService.pressKey(url, key, selector, ctx?.signal)
+      return result
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  }
+})
+
+// 下载文件
+toolRegistry.register({
+  name: 'browser_download',
+  description: 'Download a file/image from URL to local path',
+  parameters: [
+    { name: 'url', type: 'string', description: 'URL of the file to download', required: true },
+    { name: 'path', type: 'string', description: 'Local path to save the file', required: true },
+    { name: 'referer', type: 'string', description: 'Optional referer URL for the request', required: false }
+  ],
+  handler: async (params: any, ctx) => {
+    try {
+      const url = params?.url
+      const savePath = params?.path
+      const referer = params?.referer
+      if (!url) return { error: 'Missing parameter: url' }
+      if (!savePath) return { error: 'Missing parameter: path' }
+
+      const result = await browserService.downloadResource(url, savePath, referer, ctx?.signal)
+      return result
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  }
+})
+
+// 获取Cookie
+toolRegistry.register({
+  name: 'browser_cookies_get',
+  description: 'Get cookies for a URL',
+  parameters: [
+    { name: 'url', type: 'string', description: 'URL to get cookies for', required: true }
+  ],
+  handler: async (params: any) => {
+    try {
+      const url = params?.url
+      if (!url) return { error: 'Missing parameter: url' }
+
+      const result = await browserService.getCookies(url)
+      return result
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  }
+})
+
+// 设置Cookie
+toolRegistry.register({
+  name: 'browser_cookies_set',
+  description: 'Set cookies for a URL (useful for maintaining login sessions)',
+  parameters: [
+    { name: 'url', type: 'string', description: 'URL to set cookies for', required: true },
+    { name: 'cookies', type: 'array', description: 'Array of cookie objects {name, value, domain?, path?}', required: true }
+  ],
+  handler: async (params: any) => {
+    try {
+      const url = params?.url
+      const cookies = params?.cookies
+      if (!url) return { error: 'Missing parameter: url' }
+      if (!Array.isArray(cookies)) return { error: 'Missing parameter: cookies (array)' }
+
+      const result = await browserService.setCookies(url, cookies)
+      return result
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  }
+})
+
+// 清除Cookie
+toolRegistry.register({
+  name: 'browser_cookies_clear',
+  description: 'Clear cookies for a URL or all cookies',
+  parameters: [
+    { name: 'url', type: 'string', description: 'URL to clear cookies for (optional, clears all if not provided)', required: false }
+  ],
+  handler: async (params: any) => {
+    try {
+      const url = params?.url
+      const result = await browserService.clearCookies(url)
+      return result
+    } catch (error: any) {
+      return { success: false, error: error.message }
     }
   }
 })

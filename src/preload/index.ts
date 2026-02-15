@@ -78,6 +78,10 @@ contextBridge.exposeInMainWorld('electron', {
       return () => ipcRenderer.removeListener('task:progress', listener)
     }
   },
+  // Webview控制
+  webview: {
+    openDevTools: () => ipcRenderer.invoke('webview:openDevTools')
+  },
   gallery: {
     list: () => ipcRenderer.invoke('gallery:list'),
     import: (filePaths: string[]) => ipcRenderer.invoke('gallery:import', filePaths),
@@ -146,6 +150,26 @@ contextBridge.exposeInMainWorld('electron', {
       const listener = (_: any, url: string) => callback(url)
       ipcRenderer.on('agent-open-page', listener)
       return () => ipcRenderer.removeListener('agent-open-page', listener)
+    },
+    onWebviewDownloadStart: (callback: (data: { filename: string; totalBytes: number; url: string }) => void) => {
+      const listener = (_: any, data: { filename: string; totalBytes: number; url: string }) => callback(data)
+      ipcRenderer.on('webview-download-start', listener)
+      return () => ipcRenderer.removeListener('webview-download-start', listener)
+    },
+    onWebviewDownloadProgress: (callback: (data: { filename: string; receivedBytes: number; totalBytes: number; progress: number }) => void) => {
+      const listener = (_: any, data: { filename: string; receivedBytes: number; totalBytes: number; progress: number }) => callback(data)
+      ipcRenderer.on('webview-download-progress', listener)
+      return () => ipcRenderer.removeListener('webview-download-progress', listener)
+    },
+    onWebviewDownloadComplete: (callback: (data: { filename: string; savePath?: string; success: boolean; error?: string }) => void) => {
+      const listener = (_: any, data: { filename: string; savePath?: string; success: boolean; error?: string }) => callback(data)
+      ipcRenderer.on('webview-download-complete', listener)
+      return () => ipcRenderer.removeListener('webview-download-complete', listener)
+    },
+    onWebviewAction: (callback: (data: { action: string; selector?: string; text?: string; scrollTop?: number }) => void) => {
+      const listener = (_: any, data: { action: string; selector?: string; text?: string; scrollTop?: number }) => callback(data)
+      ipcRenderer.on('webview-action', listener)
+      return () => ipcRenderer.removeListener('webview-action', listener)
     }
   }
 })
@@ -273,6 +297,9 @@ declare global {
       events?: {
         onWebviewNewWindow: (callback: (details: { url: string; frameName?: string }) => void) => () => void
         onAgentOpenPage: (callback: (url: string) => void) => () => void
+        onWebviewDownloadStart: (callback: (data: { filename: string; totalBytes: number; url: string }) => void) => () => void
+        onWebviewDownloadProgress: (callback: (data: { filename: string; receivedBytes: number; totalBytes: number; progress: number }) => void) => () => void
+        onWebviewDownloadComplete: (callback: (data: { filename: string; savePath?: string; success: boolean; error?: string }) => void) => () => void
       }
     }
   }
