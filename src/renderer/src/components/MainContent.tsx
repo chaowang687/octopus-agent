@@ -37,6 +37,7 @@ const MainContent: React.FC = () => {
   const webviewRefs = useRef<{ [key: string]: any }>({})
   const [greeting, setGreeting] = useState('')
   const [searchLoading, setSearchLoading] = useState(false)
+  const lastNewWindowRef = useRef<{ url: string; time: number } | null>(null)
   const [crawling, setCrawling] = useState<string | null>(null)
 
   const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0]
@@ -296,6 +297,26 @@ const MainContent: React.FC = () => {
     }
   }
 
+  const handleNewWindowUrl = (url: string) => {
+    const now = Date.now()
+    if (lastNewWindowRef.current && lastNewWindowRef.current.url === url && now - lastNewWindowRef.current.time < 500) {
+      return
+    }
+    lastNewWindowRef.current = { url, time: now }
+    const newId = Date.now().toString()
+    const newTab: Tab = {
+      id: newId,
+      url,
+      title: 'New Tab',
+      isLoading: false,
+      canGoBack: false,
+      canGoForward: false,
+      homeState: { searched: false, results: [], inputValue: '' }
+    }
+    setTabs(prev => [...prev, newTab])
+    setActiveTabId(newId)
+  }
+
   const handleReload = () => {
     if (webviewRefs.current[activeTabId]) {
       webviewRefs.current[activeTabId].reload()
@@ -313,6 +334,33 @@ const MainContent: React.FC = () => {
       webviewRefs.current[activeTabId].goForward()
     }
   }
+
+  useEffect(() => {
+    const api = (window as any).electron
+    if (!api || !api.events || !api.events.onWebviewNewWindow) {
+      return
+    }
+    const unsubscribe = api.events.onWebviewNewWindow((details: { url: string }) => {
+      if (details && details.url) {
+        handleNewWindowUrl(details.url)
+      }
+    })
+
+    const unsubscribeAgent = api.events.onAgentOpenPage((url: string) => {
+      if (url) {
+        handleNewWindowUrl(url)
+      }
+    })
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe()
+      }
+      if (unsubscribeAgent) {
+        unsubscribeAgent()
+      }
+    }
+  }, [])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#f0f0f0' }}>
@@ -751,21 +799,10 @@ const MainContent: React.FC = () => {
                                     updateTab(tab.id, { url: e.url })
                                 })
                                 el.addEventListener('new-window', (e: any) => {
-                                    // Prevent default behavior (new window)
                                     e.preventDefault()
-                                    // Handle new window requests by creating a new tab
-                                    const newId = Date.now().toString()
-                                    const newTab: Tab = {
-                                      id: newId,
-                                      url: e.url,
-                                      title: 'New Tab',
-                                      isLoading: false,
-                                      canGoBack: false,
-                                      canGoForward: false,
-                                      homeState: { searched: false, results: [], inputValue: '' }
+                                    if (e.url) {
+                                      handleNewWindowUrl(e.url)
                                     }
-                                    setTabs(prev => [...prev, newTab])
-                                    setActiveTabId(newId)
                                 })
                                 // Media and popup handling
                                 el.addEventListener('console-message', (e: any) => {

@@ -1,6 +1,6 @@
 import * as fs from 'fs'
 import * as path from 'path'
-import { app } from 'electron'
+import { app, BrowserWindow } from 'electron'
 import { execSync } from 'child_process'
 import axios from 'axios'
 import * as si from 'systeminformation'
@@ -278,8 +278,35 @@ toolRegistry.register({
 })
 
 toolRegistry.register({
+  name: 'open_page',
+  description: 'Open a URL in the user\'s visible browser tab. Use this when the user asks to "open", "visit", "browse" or "show" a website.',
+  parameters: [
+    { name: 'url', type: 'string', description: 'URL to open', required: true }
+  ],
+  handler: async (params: any) => {
+    try {
+      const url = params?.url
+      if (!url) return { error: 'Missing parameter: url' }
+
+      // Find the main window (visible and not destroyed)
+      const windows = BrowserWindow.getAllWindows()
+      const mainWindow = windows.find(w => w.isVisible() && !w.isDestroyed())
+
+      if (mainWindow) {
+        mainWindow.webContents.send('agent-open-page', url)
+        return { success: true, message: `Opened ${url} in browser` }
+      } else {
+        return { error: 'No active browser window found' }
+      }
+    } catch (error: any) {
+      return { error: error.message }
+    }
+  }
+})
+
+toolRegistry.register({
   name: 'search_web',
-  description: 'Search the web using Baidu and return relevant results (titles, links, snippets)',
+  description: 'Search the web using Baidu and return relevant results (titles, links, snippets). Does NOT open the browser UI.',
   parameters: [
     { name: 'query', type: 'string', description: 'Search query', required: true }
   ],

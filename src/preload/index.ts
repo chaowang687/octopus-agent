@@ -135,6 +135,18 @@ contextBridge.exposeInMainWorld('electron', {
     trackProgress: (projectId: string) => ipcRenderer.invoke('projectManager:trackProgress', projectId),
     setMode: (mode: string) => ipcRenderer.invoke('projectManager:setMode', mode),
     getMode: () => ipcRenderer.invoke('projectManager:getMode')
+  },
+  events: {
+    onWebviewNewWindow: (callback: (details: { url: string; frameName?: string }) => void) => {
+      const listener = (_: any, payload: { url: string; frameName?: string }) => callback(payload)
+      ipcRenderer.on('webview-new-window', listener)
+      return () => ipcRenderer.removeListener('webview-new-window', listener)
+    },
+    onAgentOpenPage: (callback: (url: string) => void) => {
+      const listener = (_: any, url: string) => callback(url)
+      ipcRenderer.on('agent-open-page', listener)
+      return () => ipcRenderer.removeListener('agent-open-page', listener)
+    }
   }
 })
 
@@ -257,6 +269,10 @@ declare global {
         trackProgress: (projectId: string) => Promise<any>
         setMode: (mode: string) => Promise<any>
         getMode: () => Promise<any>
+      },
+      events?: {
+        onWebviewNewWindow: (callback: (details: { url: string; frameName?: string }) => void) => () => void
+        onAgentOpenPage: (callback: (url: string) => void) => () => void
       }
     }
   }

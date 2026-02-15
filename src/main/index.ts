@@ -66,6 +66,18 @@ function createWindow() {
     return { action: 'deny' }
   })
 
+  mainWindow.webContents.on('did-attach-webview', (event, contents) => {
+    contents.setWindowOpenHandler((details) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('webview-new-window', {
+          url: details.url,
+          frameName: details.frameName
+        })
+      }
+      return { action: 'deny' }
+    })
+  })
+
   // 加载渲染进程
   if (is.dev) {
     mainWindow.loadURL('http://localhost:5173')
