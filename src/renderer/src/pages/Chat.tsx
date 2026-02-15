@@ -164,7 +164,6 @@ const Chat: React.FC = () => {
     if (!api) return
 
     const unsubscribe = window.electron.task.onProgress((evt: TaskProgressEvent) => {
-      // ... (Keep existing task progress logic unchanged)
       const toolLabel = (tool?: string) => {
         if (!tool) return '工具'
         const map: Record<string, string> = {
@@ -189,16 +188,6 @@ const Chat: React.FC = () => {
         return `${(ms / 1000).toFixed(2)}s`
       }
 
-      const summarizeParams = (tool?: string, params?: any) => {
-        if (!tool || !params) return ''
-        if (tool === 'search_images' || tool === 'search_web') return params.query ? String(params.query) : ''
-        if (tool === 'glob_paths') return params.pattern ? String(params.pattern) : ''
-        if (tool === 'fetch_webpage') return params.url ? String(params.url) : ''
-        if (tool === 'download_image') return params.url ? String(params.url) : ''
-        if (tool === 'read_image') return params.path ? String(params.path) : ''
-        return ''
-      }
-
       const taskId = evt.taskId
       if (!currentTaskIdRef.current || evt.type === 'task_start') {
         currentTaskIdRef.current = taskId
@@ -217,6 +206,7 @@ const Chat: React.FC = () => {
         setTaskLogs([`[${time}] 任务开始${modelInfo}`])
         setTaskSteps([])
         setTaskDir(evt.taskDir || '')
+        setShowTaskPreview(true) // Auto-show task panel on start
         if (evt.taskDir) {
           setTaskLogs(prev => [...prev, `[${time}] 工作目录：${evt.taskDir}`])
         }
@@ -278,8 +268,6 @@ const Chat: React.FC = () => {
           artifacts: evt.artifacts
         } : s))
 
-        // Only show artifacts (images/files) in chat, suppress technical step completion messages
-        // BUT: if the tool is "respond_to_user" or similar, we SHOULD show the message
         const isInteractiveTool = evt.tool === 'respond_to_user' || evt.tool === 'ask_user'
         const artifacts = Array.isArray(evt.artifacts) ? evt.artifacts : []
         
@@ -316,7 +304,6 @@ const Chat: React.FC = () => {
               }
             }
             
-            // For interactive tools, try to get the text content
             let content = ''
             if (isInteractiveTool) {
                const p = evt.parameters
@@ -347,9 +334,7 @@ const Chat: React.FC = () => {
         const key = `${evt.iteration || 1}:${evt.stepId}`
         setTaskSteps(prev => prev.map(s => s.key === key ? { ...s, status: evt.final ? 'error' : 'running', error: evt.error, durationMs: evt.durationMs } : s))
         setTaskLogs(prev => [...prev, `[${time}] 步骤失败：${evt.stepId}${evt.error ? ` - ${evt.error}` : ''}`])
-        // Only show fatal errors in chat if it's not a retryable step
         if (evt.final && !evt.error?.includes('Failed to parse plan')) {
-           // Silence common technical errors from chat, keep them in logs
            const isTechnicalError = evt.error?.includes('Failed to parse') || evt.error?.includes('context length')
            if (!isTechnicalError) {
               const label = toolLabel(evt.tool)
@@ -394,23 +379,19 @@ const Chat: React.FC = () => {
     if ((!input.trim() && attachments.length === 0) || loading) return
 
     let contentToSend = input
-    // If there are attachments, append them to the message content
     if (attachments.length > 0) {
       const attachmentText = attachments.map(att => `[Attachment: ${att.path}]`).join('\n')
       contentToSend = `${input}\n\n${attachmentText}`.trim()
     }
 
-    // --- Dynamic System Prompt Injection ---
     if (currentSession) {
       if (currentSession.type === 'direct' && currentSession.members.length > 0) {
-        // Direct Chat: Inject Agent's Persona
         const agent = chatDataService.getAgent(currentSession.members[0])
         if (agent) {
           const personaInstruction = `\n\n<system_instruction>\nYour Persona: ${agent.name}\nDescription: ${agent.description}\nSystem Prompt: ${agent.systemPrompt}\nAct strictly according to this persona.\n</system_instruction>`
           contentToSend += personaInstruction
         }
       } else if (currentSession.type === 'group') {
-        // Group Chat: Inject Orchestration Context
         const members = currentSession.members.map(mid => chatDataService.getAgent(mid)).filter(Boolean)
         const teamDesc = members.map(m => `- ${m?.name}: ${m?.description}`).join('\n')
         const groupInstruction = `\n\n<system_instruction>\nYou are the orchestrator of a cross-functional team.
@@ -440,7 +421,7 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
     setInput('')
     setAttachments([])
     setLoading(true)
-    setShowTaskPreview(true)
+    setShowTaskPreview(true) // Auto-show task panel
     setTaskTitle(input.trim() || '新任务')
     setTaskStatus('running')
     setTaskSteps([])
@@ -463,8 +444,10 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
       }
       setMessages(prev => [...prev, thinkingMessage])
 
-      // Use the selected model (which might have been auto-set by the agent preference)
-      const result = await window.electron.chat.sendMessage(selectedModel, contentToSend)
+      const agentId = currentSession && currentSession.members.length > 0 ? currentSession.members[0] : undefined
+      const sessionId = currentSession ? currentSession.id : undefined
+      const chatApi: any = window.electron.chat
+      const result = await chatApi.sendMessage(selectedModel, contentToSend, { agentId, sessionId })
       
       setMessages(prev => prev.filter(msg => msg.id !== thinkingMessage.id))
       
@@ -520,17 +503,13 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
     }
   }
 
-  // ... (Keep existing file/screenshot/drag handlers unchanged)
-  // --- File & Screenshot Handling ---
-
   const handleScreenshot = async () => {
     try {
-      // Hide window briefly to take screenshot (optional, might need main process support)
       const result = await window.electron.system.captureScreen()
       if (result.success && result.image) {
         const newAttachment: Attachment = {
           type: 'image',
-          path: 'Screenshot', // Virtual path or temp path
+          path: 'Screenshot', 
           name: `Screenshot ${new Date().toLocaleTimeString()}`,
           preview: result.image
         }
@@ -557,7 +536,6 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
     }
   }
 
-  // Drag and Drop
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
     setIsDragging(true)
@@ -575,7 +553,7 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const newAttachments: Attachment[] = Array.from(e.dataTransfer.files).map((file: any) => ({
         type: file.type.startsWith('image/') ? 'image' : 'file',
-        path: file.path, // Electron exposes path on File object
+        path: file.path,
         name: file.name,
         preview: file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined
       }))
@@ -608,110 +586,226 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
     }
   }
 
-  const renderAttachments = (artifacts: any[]) => {
-    if (!artifacts || artifacts.length === 0) return null
-    
-    // Group images for grid layout
-    const images = artifacts.filter(a => a.type === 'image').slice(0, 9)
-    const others = artifacts.filter(a => a.type !== 'image')
-    
-    return (
-      <div className="mt-2 flex flex-col gap-2">
-        {images.length > 0 && (
-          <>
-            <div className="task-preview-grid">
-              {images.map((att, i) => {
-                const key = String(att?.path || att?.taskCopyPath || att?.name || att?.dataUrl || i)
-                const selected = selectedPreviewKey === key
-                return (
-                  <div
-                    key={key}
-                    className={`task-preview-grid-item ${selected ? 'selected' : ''}`}
-                    title={att.name}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => {
-                      setSelectedPreviewKey(key)
-                      setSelectedPreviewName(String(att?.name || ''))
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault()
-                        setSelectedPreviewKey(key)
-                        setSelectedPreviewName(String(att?.name || ''))
-                      }
-                    }}
-                  >
-                    <img src={att.dataUrl || att.preview} alt={att.name} />
-                  </div>
-                )
-              })}
-            </div>
-            {selectedPreviewKey && selectedPreviewName && images.some(att => String(att?.path || att?.taskCopyPath || att?.name || att?.dataUrl) === selectedPreviewKey) && (
-              <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>已选择：{selectedPreviewName}</div>
-            )}
-          </>
-        )}
-        
-        {others.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {others.map((att, i) => (
-              <div key={i} className="text-xs bg-base-300 px-2 py-1 rounded flex items-center gap-1">
-                <span>{att.type === 'file' ? '📄' : '🔗'}</span>
-                <span className="truncate max-w-[150px]">{att.name}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    )
-  }
-
   return (
     <div 
       className="chat-page" 
       onDragOver={handleDragOver} 
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      style={{ flexDirection: 'row' }}
     >
       <ChatSidebar 
         currentSessionId={currentSession?.id} 
         onSelectSession={setCurrentSession} 
       />
 
-      <div className="chat-main" style={{ display: 'flex', flexDirection: 'column', flex: 1, position: 'relative', height: '100%', overflow: 'hidden' }}>
-        
+      <div className="chat-main-wrapper">
         {/* Drag Overlay */}
         {isDragging && (
           <div className="drag-overlay">
             <div className="drag-overlay-content">
-              Drop files here to add to context
+              拖入文件以添加到上下文
             </div>
           </div>
         )}
 
-        {/* Task Preview */}
+        {/* Main Chat Area */}
+        <div className="chat-container">
+          {/* Header */}
+          <div className="chat-header-bar">
+            <div className="chat-header-title">
+              {currentSession?.type === 'direct' ? '👤' : '👥'}
+              {currentSession?.name || '新会话'}
+            </div>
+            <div className="model-selector">
+               <select 
+                  value={selectedModel} 
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  style={{ 
+                    background: 'rgba(0,0,0,0.05)', 
+                    border: 'none', 
+                    color: '#1d1d1f', 
+                    outline: 'none', 
+                    cursor: 'pointer',
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    fontSize: '13px',
+                    fontWeight: 500
+                  }}
+                >
+                  {models.map(m => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+            </div>
+          </div>
+
+          {/* Messages */}
+          <div className="chat-messages-area">
+            {messages.length === 0 && !loading ? (
+              <div className="chat-empty-state">
+                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Trae" className="chat-empty-icon" />
+                <div className="chat-empty-text">开始一个新的对话或任务</div>
+              </div>
+            ) : (
+              messages.map(message => (
+                <div key={message.id} className={`message-row ${message.role}`}>
+                  <div className="message-avatar">
+                    {message.role === 'user' ? (
+                      <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=User" alt="U" />
+                    ) : (
+                      <img src={
+                        currentSession?.type === 'direct' 
+                          ? (chatDataService.getAgent(currentSession.members[0])?.avatar || "https://api.dicebear.com/7.x/bottts/svg?seed=Agent")
+                          : "https://api.dicebear.com/7.x/bottts/svg?seed=Group"
+                      } alt="AI" />
+                    )}
+                  </div>
+                  <div className="message-bubble">
+                    {message.thinking && (
+                      <div className="thinking-block">
+                        <span>⚡️</span> {message.thinking}
+                      </div>
+                    )}
+                    
+                    {/* Attachments */}
+                    {message.attachments && message.attachments.length > 0 && (
+                      <div className="message-attachments">
+                        {message.attachments.map((att, i) => (
+                          att.type === 'image' ? (
+                            <div key={i} style={{ width: '100px', height: '100px', borderRadius: '6px', overflow: 'hidden' }}>
+                               {att.preview ? (
+                                  <img src={att.preview} alt={att.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                               ) : (
+                                  <ImageAttachment filePath={att.path} alt={att.name} />
+                               )}
+                            </div>
+                          ) : (
+                            <div key={i} style={{ 
+                              fontSize: '12px', padding: '6px 10px', 
+                              backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: '6px',
+                              display: 'flex', alignItems: 'center', gap: '6px'
+                            }}>
+                              {att.type === 'link' ? '🔗' : '📄'}
+                              <span style={{ maxWidth: '150px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{att.name}</span>
+                            </div>
+                          )
+                        ))}
+                      </div>
+                    )}
+
+                    <div style={{ whiteSpace: 'pre-wrap' }}>
+                      {message.content}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Input Area */}
+          <div className="chat-input-wrapper">
+            {/* Attachments Preview */}
+            {attachments.length > 0 && (
+              <div className="chat-attachments-preview">
+                {attachments.map((att, index) => (
+                  <div key={index} className="chat-attachment-tag">
+                    {att.type === 'image' ? '🖼️' : att.type === 'link' ? '🔗' : '📄'} {att.name}
+                    <span style={{ cursor: 'pointer', color: '#999' }} onClick={() => removeAttachment(index)}>×</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="chat-input-box">
+              <textarea
+                ref={textareaRef}
+                className="chat-textarea"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={currentSession?.type === 'group' ? "输入任务让团队协作..." : "输入消息..."}
+                disabled={loading || !currentSession}
+              />
+              <div className="chat-toolbar">
+                <div className="chat-tools-left">
+                  <button className="chat-tool-btn" title="Add File" onClick={handleAddFile}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+                      <polyline points="13 2 13 9 20 9"></polyline>
+                    </svg>
+                  </button>
+                  <button className="chat-tool-btn" title="Screenshot" onClick={handleScreenshot}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                      <circle cx="12" cy="13" r="4"></circle>
+                    </svg>
+                  </button>
+                </div>
+                <div className="chat-tools-right">
+                   {loading ? (
+                      <button className="chat-tool-btn" title="Stop" onClick={handleCancelTask} style={{ color: '#ff3b30' }}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="6" y="6" width="12" height="12"></rect>
+                        </svg>
+                      </button>
+                   ) : (
+                      <button 
+                        className="chat-tool-btn" 
+                        title="Send" 
+                        onClick={() => handleSendMessage()}
+                        disabled={!input.trim() && attachments.length === 0}
+                        style={{ color: (input.trim() || attachments.length > 0) ? '#0071e3' : '#ccc' }}
+                      >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="22" y1="2" x2="11" y2="13"></line>
+                          <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                        </svg>
+                      </button>
+                   )}
+                   <button 
+                      className="chat-tool-btn" 
+                      title="Toggle Task Panel" 
+                      onClick={() => setShowTaskPreview(v => !v)}
+                      style={{ color: showTaskPreview ? '#0071e3' : '#86868b' }}
+                   >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M18 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3H6a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3h12a3 3 0 0 0 3-3 3 3 0 0 0-3-3z"></path>
+                      </svg>
+                   </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Task Sidebar */}
         {showTaskPreview && (
-          <div className="task-preview">
-            <div className="task-preview-tabs">
-              <div 
-                className={`task-preview-tab ${activeTab === 'progress' ? 'active' : ''}`}
-                onClick={() => setActiveTab('progress')}
-              >
-                当前进程
+          <div className="task-sidebar">
+            <div className="task-sidebar-header">
+              <div className="task-sidebar-title">任务工作区</div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                 <div className="task-preview-tabs">
+                    <div 
+                      className={`task-preview-tab ${activeTab === 'progress' ? 'active' : ''}`}
+                      onClick={() => setActiveTab('progress')}
+                      style={{ padding: '4px 8px', fontSize: '12px' }}
+                    >
+                      日志
+                    </div>
+                    <div 
+                      className={`task-preview-tab ${activeTab === 'files' ? 'active' : ''}`}
+                      onClick={() => setActiveTab('files')}
+                      style={{ padding: '4px 8px', fontSize: '12px' }}
+                    >
+                      文件
+                    </div>
+                 </div>
+                 <button className="task-preview-close" onClick={() => setShowTaskPreview(false)}>×</button>
               </div>
-              <div 
-                className={`task-preview-tab ${activeTab === 'files' ? 'active' : ''}`}
-                onClick={() => setActiveTab('files')}
-              >
-                文件
-              </div>
-              <div style={{ flex: 1 }}></div>
-              <button className="task-preview-close" onClick={() => setShowTaskPreview(false)}>×</button>
             </div>
 
-            <div className="task-preview-body">
+            <div className="task-sidebar-content">
               {activeTab === 'progress' ? (
                 <>
                   <div className="task-status-row">
@@ -721,7 +815,6 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
                      <div className="task-status-text">
                        <div className={`task-status-dot ${taskStatus === 'running' ? 'running' : taskStatus === 'done' ? 'success' : taskStatus === 'error' ? 'error' : ''}`}></div>
                        {taskStatus === 'running' ? '进行中' : taskStatus === 'done' ? '已完成' : taskStatus === 'error' ? '失败' : '空闲'}
-                       {taskSteps.length > 0 && ` ${taskSteps[taskSteps.length - 1].description}`}
                      </div>
                   </div>
                   <div className="task-preview-logs">
@@ -729,7 +822,7 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
                       <div className="log-entry info">等待任务开始...</div>
                     ) : (
                       taskLogs.map((l, idx) => (
-                        <div key={idx} className={`log-entry ${l.includes('失败') || l.includes('Error') ? 'error' : ''}`}>
+                        <div key={idx} className={`task-log-entry ${l.includes('失败') || l.includes('Error') ? 'error' : l.includes('完成') ? 'success' : ''}`}>
                           {l}
                         </div>
                       ))
@@ -745,202 +838,6 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
             </div>
           </div>
         )}
-
-        <div className="chat-messages">
-          {messages.length === 0 && !loading ? (
-             <div style={{ 
-               height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', 
-               flexDirection: 'column', color: 'var(--text-tertiary)', gap: '12px' 
-             }}>
-               <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Trae" style={{ width: '64px', opacity: 0.5 }} />
-               <div>选择左侧会话或新建聊天</div>
-             </div>
-          ) : (
-            messages.map(message => (
-              <div key={message.id} className={`message ${message.role}`}>
-                <div className={`avatar ${message.role}`}>
-                  {message.role === 'user' ? (
-                    <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=User" alt="U" />
-                  ) : (
-                    <img src={
-                      currentSession?.type === 'direct' 
-                        ? (chatDataService.getAgent(currentSession.members[0])?.avatar || "https://api.dicebear.com/7.x/bottts/svg?seed=Agent")
-                        : "https://api.dicebear.com/7.x/bottts/svg?seed=Group"
-                    } alt="AI" />
-                  )}
-                </div>
-                <div className="message-content">
-                  {message.thinking ? (
-                    <div className="thinking-indicator">
-                      <span>{message.thinking}</span>
-                    </div>
-                  ) : (
-                    <>
-                      {/* Display Attachments in Message */}
-                      {message.attachments && message.attachments.length > 0 && (
-                        <div style={{ marginBottom: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          {message.attachments.filter(a => a.type === 'image').length > 0 && (
-                            <div className="task-preview-grid">
-                              {message.attachments
-                                .filter(a => a.type === 'image')
-                                .slice(0, 9)
-                                .map((att, i) => {
-                                  const key = String(att.path || att.name || i)
-                                  const selected = selectedPreviewKey === key
-                                  return (
-                                    <div
-                                      key={key}
-                                      className={`task-preview-grid-item ${selected ? 'selected' : ''}`}
-                                      title={att.name}
-                                      role="button"
-                                      tabIndex={0}
-                                      onClick={() => {
-                                        setSelectedPreviewKey(key)
-                                        setSelectedPreviewName(att.name)
-                                      }}
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter' || e.key === ' ') {
-                                          e.preventDefault()
-                                          setSelectedPreviewKey(key)
-                                          setSelectedPreviewName(att.name)
-                                        }
-                                      }}
-                                    >
-                                      {att.preview ? (
-                                        <img src={att.preview} alt={att.name} />
-                                      ) : (
-                                        <ImageAttachment filePath={att.path} alt={att.name} />
-                                      )}
-                                    </div>
-                                  )
-                                })}
-                            </div>
-                          )}
-
-                          {message.attachments.filter(a => a.type !== 'image').length > 0 && (
-                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                              {message.attachments.filter(a => a.type !== 'image').map((att, i) => (
-                                att.type === 'link' && att.url ? (
-                                  <a
-                                    key={`${att.type}-${i}`}
-                                    href={att.url}
-                                    onClick={(e) => { e.preventDefault(); window.electron.system.openExternal(att.url!) }}
-                                    style={{
-                                      fontSize: '12px',
-                                      padding: '4px 8px',
-                                      backgroundColor: 'rgba(0,0,0,0.1)',
-                                      borderRadius: '4px',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '4px',
-                                      color: 'inherit',
-                                      textDecoration: 'none'
-                                    }}
-                                  >
-                                    🔗 {att.name}
-                                  </a>
-                                ) : (
-                                  <div key={`${att.type}-${i}`} style={{ 
-                                    fontSize: '12px', 
-                                    padding: '4px 8px', 
-                                    backgroundColor: 'rgba(0,0,0,0.1)', 
-                                    borderRadius: '4px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '4px'
-                                  }}>
-                                    📄 {att.name}
-                                  </div>
-                                )
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      <div style={{ whiteSpace: 'pre-wrap' }}>
-                        {message.content}
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            ))
-          )}
-          <div ref={messagesEndRef} />
-        </div>
-
-        <div className="chat-footer">
-          {/* Attachments Preview Area */}
-          {attachments.length > 0 && (
-            <div className="attachments-preview">
-              {attachments.map((att, index) => (
-                <div key={index} className="attachment-item">
-                  {att.type === 'image' ? '🖼️' : att.type === 'link' ? '🔗' : '📄'} {att.name}
-                  <span className="attachment-remove" onClick={() => removeAttachment(index)}>×</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Toolbar */}
-          <div className="chat-toolbar">
-            <button className="toolbar-btn" title="Add File" onClick={handleAddFile}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
-                <polyline points="13 2 13 9 20 9"></polyline>
-              </svg>
-            </button>
-            <button className="toolbar-btn" title="Screenshot" onClick={handleScreenshot}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
-                <circle cx="12" cy="13" r="4"></circle>
-              </svg>
-            </button>
-
-            {loading && (
-              <button className="toolbar-btn" title="Stop" onClick={handleCancelTask}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="6" y="6" width="12" height="12"></rect>
-                </svg>
-              </button>
-            )}
-
-            <button className="toolbar-btn" title="Task Preview" onClick={() => setShowTaskPreview(v => !v)}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 4h16"></path>
-                <path d="M4 12h16"></path>
-                <path d="M4 20h16"></path>
-              </svg>
-            </button>
-            
-            <div style={{ flex: 1 }}></div>
-
-            <div className="model-selector">
-               <select 
-                  value={selectedModel} 
-                  onChange={(e) => setSelectedModel(e.target.value)}
-                  style={{ background: 'transparent', border: 'none', color: 'inherit', outline: 'none', cursor: 'pointer' }}
-                >
-                  {models.map(m => (
-                    <option key={m.id} value={m.id}>{m.name}</option>
-                  ))}
-                </select>
-            </div>
-          </div>
-
-          {/* Input Area */}
-          <div className="chat-input-area">
-            <textarea
-              ref={textareaRef}
-              className="chat-textarea"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={currentSession?.type === 'group' ? "输入任务让团队协作..." : "输入消息..."}
-              disabled={loading || !currentSession}
-            />
-          </div>
-        </div>
       </div>
     </div>
   )

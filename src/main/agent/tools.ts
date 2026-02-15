@@ -1,5 +1,6 @@
 import * as fs from 'fs'
 import * as path from 'path'
+import { app } from 'electron'
 import { execSync } from 'child_process'
 import axios from 'axios'
 import * as si from 'systeminformation'
@@ -719,5 +720,114 @@ toolRegistry.register({
     const message = params?.message
     if (!message) return { success: false, error: 'Missing parameter: message' }
     return { success: true, message }
+  }
+})
+
+toolRegistry.register({
+  name: 'session_notes_read',
+  description: 'Read persistent session notes for long-term memory',
+  parameters: [
+    { name: 'sessionId', type: 'string', description: 'Session identifier (project or conversation id)', required: true },
+    { name: 'query', type: 'string', description: 'Optional keyword filter', required: false }
+  ],
+  handler: async (params: any) => {
+    try {
+      const sessionIdRaw = params?.sessionId
+      const sessionId = typeof sessionIdRaw === 'string' ? sessionIdRaw.trim() : ''
+      if (!sessionId) return { error: 'Missing parameter: sessionId' }
+
+      const root = path.join(app.getPath('userData'), 'sessions')
+      const filePath = path.join(root, `${sessionId}.json`)
+      if (!fs.existsSync(filePath)) {
+        return { notes: [] }
+      }
+
+      let parsed: any
+      try {
+        const content = fs.readFileSync(filePath, 'utf8')
+        parsed = JSON.parse(content)
+      } catch {
+        return { notes: [] }
+      }
+
+      let notes: any[] = Array.isArray(parsed?.notes) ? parsed.notes : []
+      const queryRaw = params?.query
+      const query = typeof queryRaw === 'string' ? queryRaw.trim().toLowerCase() : ''
+      if (query) {
+        notes = notes.filter(note => {
+          const title = String(note?.title || '').toLowerCase()
+          const content = String(note?.content || '').toLowerCase()
+          const tags = Array.isArray(note?.tags) ? note.tags.join(' ').toLowerCase() : ''
+          return title.includes(query) || content.includes(query) || tags.includes(query)
+        })
+      }
+      return { notes }
+    } catch (error: any) {
+      return { error: error.message }
+    }
+  }
+})
+
+toolRegistry.register({
+  name: 'session_notes_write',
+  description: 'Append a note to persistent session memory',
+  parameters: [
+    { name: 'sessionId', type: 'string', description: 'Session identifier (project or conversation id)', required: true },
+    { name: 'note', type: 'string', description: 'Note content to store', required: true },
+    { name: 'tags', type: 'array', description: 'Optional string tags for this note', required: false },
+    { name: 'title', type: 'string', description: 'Optional short title for this note', required: false }
+  ],
+  handler: async (params: any) => {
+    try {
+      const sessionIdRaw = params?.sessionId
+      const sessionId = typeof sessionIdRaw === 'string' ? sessionIdRaw.trim() : ''
+      if (!sessionId) return { error: 'Missing parameter: sessionId' }
+
+      const noteContentRaw = params?.note
+      const noteContent = typeof noteContentRaw === 'string' ? noteContentRaw : ''
+      if (!noteContent) return { error: 'Missing parameter: note' }
+
+      const titleRaw = params?.title
+      const title = typeof titleRaw === 'string' ? titleRaw : ''
+      const tagsParam = params?.tags
+      const tags = Array.isArray(tagsParam) ? tagsParam.map((t: any) => String(t)) : undefined
+
+      const root = path.join(app.getPath('userData'), 'sessions')
+      const filePath = path.join(root, `${sessionId}.json`)
+      if (!fs.existsSync(root)) {
+        fs.mkdirSync(root, { recursive: true })
+      }
+
+      let data: any = {}
+      if (fs.existsSync(filePath)) {
+        try {
+          const existing = fs.readFileSync(filePath, 'utf8')
+          data = JSON.parse(existing)
+        } catch {
+          data = {}
+        }
+      }
+
+      if (!Array.isArray(data.notes)) {
+        data.notes = []
+      }
+
+      const now = new Date().toISOString()
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+      const note = {
+        id,
+        title: title || undefined,
+        content: noteContent,
+        tags,
+        createdAt: now,
+        updatedAt: now
+      }
+
+      data.notes.push(note)
+      fs.writeFileSync(filePath, JSON.stringify(data, null, 2))
+      return { success: true, note }
+    } catch (error: any) {
+      return { error: error.message }
+    }
   }
 })

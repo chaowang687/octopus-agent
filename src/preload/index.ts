@@ -58,7 +58,8 @@ contextBridge.exposeInMainWorld('electron', {
   },
   // AI对话
   chat: {
-    sendMessage: (model: string, message: string) => ipcRenderer.invoke('chat:sendMessage', model, message),
+    sendMessage: (model: string, message: string, agentOptions?: { agentId?: string; sessionId?: string }) =>
+      ipcRenderer.invoke('chat:sendMessage', model, message, agentOptions),
     cancel: () => ipcRenderer.invoke('chat:cancel')
   },
   // 网页自动化

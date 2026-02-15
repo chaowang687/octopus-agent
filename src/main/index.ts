@@ -8,6 +8,7 @@ import * as path from 'path'
 import * as si from 'systeminformation'
 import axios from 'axios'
 import { taskEngine } from './agent/TaskEngine'
+import { toolRegistry } from './agent/ToolRegistry'
 import { galleryService } from './services/GalleryService'
 
 const traeSandboxStoragePath = process.env.TRAE_SANDBOX_STORAGE_PATH
@@ -51,7 +52,8 @@ function createWindow() {
     ...(is.dev ? { webPreferences: { devTools: true } } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      sandbox: false,
+      webviewTag: true
     }
   })
 
@@ -82,13 +84,13 @@ app.whenReady().then(() => {
   
   // 重新注册chat:sendMessage处理函数，确保它被正确注册
   try {
-    ipcMain.handle('chat:sendMessage', async (_, model: string, message: string) => {
+    ipcMain.handle('chat:sendMessage', async (_, model: string, message: string, agentOptions?: { agentId?: string; sessionId?: string }) => {
       try {
         console.log(`智能助手收到消息 (${model}): ${message}`)
         
         // 使用 TaskEngine 处理消息
         // TaskEngine 会自动判断是进行普通对话还是执行任务
-        const result = await taskEngine.executeTask(message, model)
+        const result = await taskEngine.executeTask(message, model, agentOptions)
         
         // 构造返回给前端的格式
         let responseContent = ''
@@ -482,7 +484,137 @@ ipcMain.handle('gallery:renameItem', async (_evt, id: string, newName: string) =
   }
 })
 
-// 工具管理
+// 工具配置管理
+const toolStatePath = path.join(app.getPath('userData'), 'toolState.json')
+
+const TOOL_GROUPS = {
+  read: ['read_file', 'list_files', 'glob_paths', 'search_files', 'get_project_structure', 'check_file', 'read_image', 'list_imgs'],
+  edit: ['write_file', 'create_directory', 'create_project'],
+  terminal: ['execute_command', 'git_status', 'git_init', 'git_add', 'git_commit', 'get_system_info'],
+  preview: ['preview_image'],
+  webSearch: ['search_web', 'fetch_webpage', 'search_images', 'batch_download_images', 'download_image']
+}
+
+function loadToolState() {
+  try {
+    if (fs.existsSync(toolStatePath)) {
+      return JSON.parse(fs.readFileSync(toolStatePath, 'utf8'))
+    }
+  } catch (e) {
+    console.error('Failed to load tool state', e)
+  }
+  // Default state
+  return {
+    search: true, // Agent
+    read: true,
+    edit: true,
+    terminal: true,
+    preview: true,
+    webSearch: true
+  }
+}
+
+function saveToolState(state: any) {
+  try {
+    fs.writeFileSync(toolStatePath, JSON.stringify(state, null, 2))
+  } catch (e) {
+    console.error('Failed to save tool state', e)
+  }
+}
+
+function applyToolState(state: any) {
+  // Apply groups
+  for (const [group, tools] of Object.entries(TOOL_GROUPS)) {
+    const isEnabled = state[group]
+    tools.forEach(toolName => {
+      if (isEnabled) {
+        toolRegistry.enableTool(toolName)
+      } else {
+        toolRegistry.disableTool(toolName)
+      }
+    })
+  }
+  // Special handling for Search Agent if needed (currently mapped to nothing specific in ToolRegistry other than what webSearch covers)
+}
+
+// Workflow Settings Management
+const workflowSettingsPath = path.join(app.getPath('userData'), 'workflowSettings.json')
+
+function loadWorkflowSettings() {
+  try {
+    if (fs.existsSync(workflowSettingsPath)) {
+      return JSON.parse(fs.readFileSync(workflowSettingsPath, 'utf8'))
+    }
+  } catch (e) {
+    console.error('Failed to load workflow settings', e)
+  }
+  // Default workflow settings
+  return {
+    todoList: {
+      ide: true,
+      solo: true
+    },
+    autoCollapse: {
+      solo: true // Solo only feature
+    },
+    autoFix: {
+      ide: true,
+      solo: false
+    },
+    codeReview: {
+      ide: 'all',
+      solo: 'all',
+      jumpToNext: true
+    },
+    autoRunMCP: {
+      ide: false,
+      solo: true
+    },
+    commandMode: {
+      ide: 'sandbox',
+      solo: 'sandbox',
+      whitelist: []
+    },
+    notifications: {
+      banner: true,
+      sound: true
+    }
+  }
+}
+
+function saveWorkflowSettings(settings: any) {
+  try {
+    fs.writeFileSync(workflowSettingsPath, JSON.stringify(settings, null, 2))
+  } catch (e) {
+    console.error('Failed to save workflow settings', e)
+  }
+}
+
+ipcMain.handle('agent:getWorkflowSettings', () => {
+  return loadWorkflowSettings()
+})
+
+ipcMain.handle('agent:updateWorkflowSettings', (_, newSettings: any) => {
+  saveWorkflowSettings(newSettings)
+  return { success: true }
+})
+
+// Initialize tools
+app.whenReady().then(() => {
+  const state = loadToolState()
+  applyToolState(state)
+})
+
+ipcMain.handle('agent:getToolState', () => {
+  return loadToolState()
+})
+
+ipcMain.handle('agent:updateToolState', (_, newState: any) => {
+  saveToolState(newState)
+  applyToolState(newState)
+  return { success: true }
+})
+
 const toolsConfigPath = path.join(app.getPath('userData'), 'toolsConfig.json')
 
 // 确保工具配置文件存在
@@ -618,9 +750,22 @@ ipcMain.handle('tools:getConfig', (_, toolId: string) => {
   }
 })
 
-ipcMain.handle('tools:execute', (_, tool: string, command: string, args: any[]) => {
-  console.log(`Executing ${command} on ${tool} with args:`, args)
-  return { success: true, output: `Command executed successfully: ${command}` }
+ipcMain.handle('tools:execute', async (_, toolName: string, command: string, args: any[]) => {
+  console.log(`Executing ${command} on ${toolName} with args:`, args)
+  try {
+    const tool = toolRegistry.getTool(toolName)
+    if (!tool) {
+      return { success: false, error: `Tool ${toolName} not found` }
+    }
+    
+    // args[0] is usually the params object
+    const params = args[0] || {}
+    const result = await tool.handler(params)
+    return { success: true, output: result }
+  } catch (error: any) {
+    console.error(`Error executing tool ${toolName}:`, error)
+    return { success: false, error: error.message }
+  }
 })
 
 ipcMain.handle('tools:build', (_, buildPath: string, tool: string, target: string) => {
@@ -1104,8 +1249,12 @@ ipcMain.handle('task:execute', async (_, instruction: string, options?: any) => 
   try {
     console.log(`执行智能任务，指令: ${instruction}`)
     
-    // 使用新的TaskEngine执行任务
-    const result = await taskEngine.executeTask(instruction, options?.model || 'openai')
+    const model = options?.model || 'openai'
+    const agentOptions = {
+      agentId: options?.agentId,
+      sessionId: options?.sessionId
+    }
+    const result = await taskEngine.executeTask(instruction, model, agentOptions)
     return result
   } catch (error: any) {
     console.error('执行任务失败:', error)
@@ -1820,7 +1969,7 @@ function ensureProjectManagerConfig() {
   if (!fs.existsSync(projectManagerConfigPath)) {
     const defaultConfig = {
       projects: [],
-      currentMode: 'standard', // standard, solo
+      currentMode: 'ide', // Default to ide
       currentProject: null
     }
     fs.writeFileSync(projectManagerConfigPath, JSON.stringify(defaultConfig, null, 2))

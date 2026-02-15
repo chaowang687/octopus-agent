@@ -71,76 +71,42 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ currentSessionId, onSelectSes
   }
 
   return (
-    <div style={{
-      width: '280px',
-      height: '100%',
-      backgroundColor: 'var(--bg-secondary)',
-      borderRight: '1px solid var(--border-color)',
-      display: 'flex',
-      flexDirection: 'column',
-      position: 'relative'
-    }}>
+    <div className="session-sidebar">
       {/* 顶部搜索栏 */}
-      <div style={{
-        padding: '12px',
-        borderBottom: '1px solid var(--border-color)',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px'
-      }}>
-        <div style={{
-          flex: 1,
-          backgroundColor: 'var(--bg-tertiary)',
-          borderRadius: '4px',
-          padding: '6px 8px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '6px'
-        }}>
+      <div className="sidebar-search-container">
+        <div className="sidebar-search-input-wrapper">
           <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>🔍</span>
           <input 
             placeholder="搜索" 
-            style={{
-              border: 'none',
-              background: 'transparent',
-              outline: 'none',
-              fontSize: '12px',
-              width: '100%',
-              color: 'var(--text-primary)'
-            }}
+            className="sidebar-search-input"
           />
         </div>
         <button 
           onClick={() => setShowMenu(!showMenu)}
-          style={{
-            width: '24px',
-            height: '24px',
-            background: 'var(--bg-tertiary)',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: 'var(--text-secondary)'
-          }}
+          className="sidebar-add-btn"
         >+</button>
       </div>
 
       {/* Dropdown Menu */}
       {showMenu && (
-        <div style={{
-          position: 'absolute',
-          top: '48px',
-          right: '12px',
-          width: '160px',
-          backgroundColor: 'var(--bg-primary)',
-          border: '1px solid var(--border-color)',
-          borderRadius: '8px',
-          boxShadow: 'var(--shadow-lg)',
-          zIndex: 100,
-          padding: '4px 0'
-        }}>
+        <>
+          <div 
+            style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} 
+            onClick={() => setShowMenu(false)}
+          ></div>
+          <div style={{
+            position: 'absolute',
+            top: '50px',
+            right: '12px',
+            width: '180px',
+            backgroundColor: '#ffffff',
+            border: '1px solid rgba(0,0,0,0.1)',
+            borderRadius: '8px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            zIndex: 100,
+            padding: '4px 0',
+            overflow: 'hidden'
+          }}>
           <div style={{ padding: '8px 12px', fontSize: '12px', color: 'var(--text-tertiary)' }}>发起对话</div>
           {agents.map(agent => (
             <div 
@@ -169,6 +135,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ currentSessionId, onSelectSes
             👥 创建协作小组
           </div>
         </div>
+        </>
       )}
 
       <style>{`
@@ -178,12 +145,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ currentSessionId, onSelectSes
       `}</style>
 
       {/* 会话列表 */}
-      <div style={{
-        flex: 1,
-        overflowY: 'auto',
-        display: 'flex',
-        flexDirection: 'column'
-      }}>
+      <div className="sidebar-session-list">
         {sessions.map(session => {
           const display = getSessionDisplay(session)
           const isActive = session.id === currentSessionId
@@ -192,28 +154,12 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ currentSessionId, onSelectSes
             <div 
               key={session.id}
               onClick={() => onSelectSession(session)}
-              style={{
-                padding: '12px',
-                display: 'flex',
-                gap: '10px',
-                cursor: 'pointer',
-                backgroundColor: isActive ? 'var(--bg-tertiary)' : 'transparent',
-                transition: 'background-color 0.2s'
-              }}
-              onMouseEnter={(e) => {
-                if (!isActive) e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.03)'
-              }}
-              onMouseLeave={(e) => {
-                if (!isActive) e.currentTarget.style.backgroundColor = 'transparent'
-              }}
+              className={`sidebar-session-item ${isActive ? 'active' : ''}`}
             >
               {/* 头像 */}
-              <div style={{ position: 'relative' }}>
+              <div className="session-avatar">
                 {Array.isArray(display.avatar) ? (
-                  <div style={{ 
-                    width: '40px', height: '40px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '4px',
-                    display: 'grid', gridTemplateColumns: '1fr 1fr', padding: '2px', gap: '1px'
-                  }}>
+                  <div className="session-avatar-group">
                     {display.avatar.map((src, i) => (
                       <img key={i} src={src} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     ))}
@@ -222,50 +168,24 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ currentSessionId, onSelectSes
                   <img 
                     src={display.avatar} 
                     alt={display.name}
-                    style={{
-                      width: '40px',
-                      height: '40px',
-                      borderRadius: '4px',
-                      backgroundColor: 'var(--bg-tertiary)',
-                      objectFit: 'cover'
-                    }} 
                   />
                 )}
                 {session.unread > 0 && (
-                  <div style={{
-                    position: 'absolute', top: '-5px', right: '-5px',
-                    backgroundColor: '#ff3b30', color: 'white', fontSize: '10px', fontWeight: 'bold',
-                    minWidth: '16px', height: '16px', borderRadius: '8px',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px',
-                    border: '1px solid var(--bg-secondary)'
-                  }}>
+                  <div className="session-unread-badge">
                     {session.unread}
                   </div>
                 )}
               </div>
 
               {/* 信息 */}
-              <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                  <span style={{ 
-                    fontSize: '14px', 
-                    fontWeight: 500, 
-                    color: 'var(--text-primary)',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap'
-                  }}>
+              <div className="session-info">
+                <div className="session-header">
+                  <span className="session-name">
                     {display.name}
                   </span>
-                  <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{session.lastTime}</span>
+                  <span className="session-time">{session.lastTime}</span>
                 </div>
-                <div style={{ 
-                  fontSize: '12px', 
-                  color: 'var(--text-secondary)',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap'
-                }}>
+                <div className="session-preview">
                   {session.lastMessage || (display.isGroup ? '群组已创建' : '开始对话...')}
                 </div>
               </div>

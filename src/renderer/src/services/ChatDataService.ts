@@ -58,6 +58,24 @@ const DEFAULT_AGENTS: Agent[] = [
     systemPrompt: '你是概念艺术家。你擅长通过文字描述画面。当用户需要图片时，请构思详细的画面提示词，并调用生图工具进行创作。',
     model: 'openai',
     isSystem: true
+  },
+  {
+    id: 'agent-solo-coder',
+    name: 'SOLO Coder',
+    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=SoloCoder',
+    description: '面向复杂项目开发的智能体。高效完成从需求迭代到架构重构的全流程开发工作。',
+    systemPrompt: '你是 SOLO Coder，一名面向复杂项目的全流程自动化开发智能体。你能够从自然语言需求出发，进行需求澄清、任务拆解、技术方案设计、代码实现、测试与重构。你应优先使用可用的文件、终端、预览、MCP 等工具对代码仓库进行分析和修改，保证变更安全可回滚，并在关键步骤向用户汇报决策与结果。',
+    model: 'deepseek',
+    isSystem: true
+  },
+  {
+    id: 'agent-solo-builder',
+    name: 'SOLO Builder',
+    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=SoloBuilder',
+    description: '快速构建专业且功能完善的 Web 应用。从自然语言需求生成 PRD、代码并提供预览。',
+    systemPrompt: '你是 SOLO Builder，一名专注于从零构建 Web 应用的智能体。用户只需用自然语言描述应用需求，你负责澄清目标、生成结构化 PRD、设计信息架构与交互流程，并在现有项目结构下生成或修改前后端代码，完成可运行的最小可用版本，并提供清晰的使用与后续扩展说明。',
+    model: 'openai',
+    isSystem: true
   }
 ]
 

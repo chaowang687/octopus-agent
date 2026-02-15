@@ -40,6 +40,11 @@ export interface TaskProgressEvent {
   taskDir?: string
 }
 
+export interface AgentOptions {
+  agentId?: string
+  sessionId?: string
+}
+
 export class TaskEngine extends EventEmitter {
   private history: LLMMessage[] = []
   private currentAbortController: AbortController | null = null
@@ -49,7 +54,7 @@ export class TaskEngine extends EventEmitter {
     super()
   }
 
-  async executeTask(instruction: string, model: string = 'openai'): Promise<any> {
+  async executeTask(instruction: string, model: string = 'openai', agentOptions?: AgentOptions): Promise<any> {
     try {
       if (this.currentAbortController) {
         this.currentAbortController.abort()
@@ -89,18 +94,27 @@ export class TaskEngine extends EventEmitter {
       const sessionHistory: LLMMessage[] = [...this.history]
       sessionHistory.push({ role: 'user', content: instruction })
 
-      // Token Limit Protection: Ensure session history is not too large (approx 100k tokens safety limit)
-      // Rough estimation: 1 token ~= 4 chars. 100k tokens ~= 400k chars.
-      // We truncate the oldest messages in sessionHistory if total length exceeds limit, keeping system prompt logic in Planner intact.
       let totalChars = sessionHistory.reduce((acc, m) => acc + (m.content?.length || 0), 0)
-      while (totalChars > 400000 && sessionHistory.length > 1) {
-        const removed = sessionHistory.shift()
-        totalChars -= (removed?.content?.length || 0)
+      if (totalChars > 400000 && sessionHistory.length > 4) {
+        const cutoff = Math.max(1, sessionHistory.length - 4)
+        const toSummarize = sessionHistory.slice(0, cutoff)
+        const summary = await this.summarizeHistoryChunk(toSummarize, selectedModel, signal)
+        sessionHistory.splice(0, cutoff)
+        if (summary) {
+          sessionHistory.unshift(summary)
+        }
+        totalChars = sessionHistory.reduce((acc, m) => acc + (m.content?.length || 0), 0)
       }
 
-      // Hard truncation for safety before sending to planner
-      if (totalChars > 500000) {
-        sessionHistory[0].content = sessionHistory[0].content.slice(0, 500000) + '... (truncated)'
+      if (totalChars > 500000 && sessionHistory.length > 0) {
+        const first = sessionHistory[0]
+        const content = first.content || ''
+        if (content.length > 500000) {
+          sessionHistory[0] = {
+            role: first.role,
+            content: content.slice(0, 500000)
+          }
+        }
       }
 
       let iterations = 0
@@ -265,12 +279,8 @@ export class TaskEngine extends EventEmitter {
           content: `Tool results:\n${stepResultsForLLM}`
         })
 
-        // Safety check: if session history grows too large during iterations, truncate the middle part (summarize)
-        // or just drop oldest user/assistant pairs in memory (not persisted to 'this.history' yet).
-        // Here we aggressively remove oldest non-system messages if total length > 500k chars
         let currentTotalChars = sessionHistory.reduce((acc, m) => acc + (m.content?.length || 0), 0)
         while (currentTotalChars > 500000 && sessionHistory.length > 2) {
-           // Keep the first message (usually instruction or context) if possible, remove from index 1
            const removed = sessionHistory.splice(1, 1)[0]
            currentTotalChars -= (removed?.content?.length || 0)
         }
@@ -303,6 +313,27 @@ export class TaskEngine extends EventEmitter {
         success: false,
         error: error.message
       }
+    }
+  }
+
+  private async summarizeHistoryChunk(messages: LLMMessage[], model: string, signal?: AbortSignal): Promise<LLMMessage | null> {
+    if (!messages.length) return null
+    const joined = messages.map(m => `[${m.role}] ${m.content}`).join('\n')
+    const text = joined.length > 400000 ? joined.slice(0, 400000) : joined
+    const response = await llmService.chat(model, [
+      {
+        role: 'system',
+        content: 'You summarize past conversation into a concise note for future reference. Focus on key goals, decisions, and important facts. Respond in Chinese when the conversation is in Chinese.'
+      },
+      {
+        role: 'user',
+        content: text
+      }
+    ], { signal, max_tokens: 400, temperature: 0 })
+    if (!response.success || !response.content) return null
+    return {
+      role: 'assistant',
+      content: `Summary:\n${response.content}`
     }
   }
 

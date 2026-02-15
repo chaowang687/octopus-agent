@@ -1,7 +1,31 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 
 const Sidebar: React.FC = () => {
+  const [currentMode, setCurrentMode] = useState<'ide' | 'solo'>('ide')
+
+  useEffect(() => {
+    // @ts-ignore
+    if (window.electron && window.electron.ipcRenderer) {
+      // @ts-ignore
+      window.electron.ipcRenderer.invoke('projectManager:getMode').then((res: any) => {
+        if (res.success && res.mode) {
+          setCurrentMode(res.mode)
+        }
+      })
+    }
+  }, [])
+
+  const toggleMode = () => {
+    const newMode = currentMode === 'ide' ? 'solo' : 'ide'
+    setCurrentMode(newMode)
+    // @ts-ignore
+    if (window.electron && window.electron.ipcRenderer) {
+      // @ts-ignore
+      window.electron.ipcRenderer.invoke('projectManager:setMode', newMode)
+    }
+  }
+
   return (
     <aside className="sidebar">
       <div className="sidebar-avatar-container">
@@ -24,6 +48,13 @@ const Sidebar: React.FC = () => {
             <NavLink to="/chat" className="sidebar-nav-link" title="AI 对话">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+              </svg>
+            </NavLink>
+          </li>
+          <li>
+            <NavLink to="/chat-workflow" className="sidebar-nav-link" title="对话流">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
               </svg>
             </NavLink>
           </li>
@@ -68,10 +99,66 @@ const Sidebar: React.FC = () => {
               </svg>
             </NavLink>
           </li>
+          <li>
+            <NavLink to="/solocoder" className="sidebar-nav-link" title="SOLO Hub">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                <circle cx="9" cy="7" r="4"></circle>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+              </svg>
+            </NavLink>
+          </li>
         </ul>
       </nav>
       
-      <div className="sidebar-footer">
+      <div className="sidebar-footer" style={{ display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center', paddingBottom: '16px' }}>
+        {/* Mode Switcher */}
+        <div 
+          onClick={toggleMode}
+          title={`Switch to ${currentMode === 'ide' ? 'SOLO' : 'IDE'} Mode`}
+          style={{
+            width: '36px',
+            height: '20px',
+            backgroundColor: 'var(--bg-tertiary)',
+            borderRadius: '10px',
+            position: 'relative',
+            cursor: 'pointer',
+            border: '1px solid var(--border-color)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+        >
+          <div style={{
+            position: 'absolute',
+            fontSize: '10px',
+            fontWeight: 'bold',
+            color: 'var(--text-secondary)',
+            left: currentMode === 'ide' ? '20px' : '4px',
+            opacity: 0.8
+          }}>
+            {currentMode === 'ide' ? 'S' : 'I'}
+          </div>
+          <div style={{
+            width: '16px',
+            height: '16px',
+            backgroundColor: currentMode === 'ide' ? '#3b82f6' : '#8b5cf6',
+            borderRadius: '50%',
+            position: 'absolute',
+            left: currentMode === 'ide' ? '2px' : '18px',
+            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'white',
+            fontSize: '10px'
+          }}>
+            {currentMode === 'ide' ? 'I' : 'S'}
+          </div>
+        </div>
+
         <NavLink to="/system" className="sidebar-nav-link" title="系统设置">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="3"></circle>

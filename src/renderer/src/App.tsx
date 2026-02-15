@@ -10,6 +10,8 @@ import SystemControl from './pages/SystemControl'
 import Plugins from './pages/Plugins'
 import Chat from './pages/Chat'
 import Gallery from './pages/Gallery'
+import SoloCoder from './pages/SoloCoder'
+import ChatWorkflow from './pages/ChatWorkflow'
 
 function App() {
   const [isLoading, setIsLoading] = useState(true)
@@ -57,6 +59,8 @@ function App() {
               <Route path="/plugins" element={<Plugins />} />
               <Route path="/chat" element={<Chat />} />
               <Route path="/gallery" element={<Gallery />} />
+              <Route path="/solocoder" element={<SoloCoder />} />
+              <Route path="/chat-workflow" element={<ChatWorkflow />} />
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>
           </div>

@@ -13,6 +13,12 @@ export interface LLMMessage {
   content: string
 }
 
+export interface LLMClientBase {
+  id: string
+  provider: 'openai' | 'deepseek' | 'claude' | 'minimax'
+  chat: (messages: LLMMessage[], options?: any) => Promise<LLMResponse>
+}
+
 type ChatCompletionMessage = {
   role: 'user' | 'assistant' | 'system'
   content: string
@@ -156,9 +162,43 @@ export class LLMService {
     return [{ role: 'user', content: systemText }, ...out]
   }
 
+  private async fetchWithTimeout(url: string, options: any, timeout = 120000): Promise<Response> {
+    const { signal, ...rest } = options
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), timeout)
+
+    if (signal) {
+      if (signal.aborted) {
+        clearTimeout(timeoutId)
+        controller.abort()
+      } else {
+        signal.addEventListener('abort', () => {
+          clearTimeout(timeoutId)
+          controller.abort()
+        })
+      }
+    }
+
+    try {
+      const response = await fetch(url, { ...rest, signal: controller.signal })
+      clearTimeout(timeoutId)
+      return response
+    } catch (error: any) {
+      clearTimeout(timeoutId)
+      if (error.name === 'AbortError') {
+        // Distinguish between user abort and timeout
+        if (signal?.aborted) {
+            throw new Error('Request cancelled by user')
+        }
+        throw new Error(`Request timed out after ${timeout}ms`)
+      }
+      throw error
+    }
+  }
+
   private async callOpenAI(apiKey: string, messages: LLMMessage[], options: any): Promise<LLMResponse> {
     const responseFormat = options?.response_format
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await this.fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       signal: options?.signal,
       headers: {
@@ -193,7 +233,7 @@ export class LLMService {
     const temperature = options?.temperature ?? 0.7
 
     const send = async (payloadMessages: any[]) => {
-      const response = await fetch(url, {
+      const response = await this.fetchWithTimeout(url, {
         method: 'POST',
         signal: options?.signal,
         headers,
@@ -228,7 +268,7 @@ export class LLMService {
   }
 
   private async callClaude(apiKey: string, messages: LLMMessage[], options: any): Promise<LLMResponse> {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await this.fetchWithTimeout('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       signal: options?.signal,
       headers: {
@@ -253,7 +293,7 @@ export class LLMService {
   }
 
   private async callMiniMax(apiKey: string, messages: LLMMessage[], options: any): Promise<LLMResponse> {
-    const response = await fetch('https://api.minimax.chat/v1/text/chatcompletion_v2', {
+    const response = await this.fetchWithTimeout('https://api.minimax.chat/v1/text/chatcompletion_v2', {
       method: 'POST',
       signal: options?.signal,
       headers: {
@@ -261,7 +301,7 @@ export class LLMService {
         'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: 'abab6.5s-chat',
+        model: options.model || 'abab6.5s-chat',
         messages: messages,
         max_tokens: options?.max_tokens ?? 1000,
         temperature: options?.temperature ?? 0.7
@@ -278,3 +318,38 @@ export class LLMService {
 }
 
 export const llmService = new LLMService()
+
+class ServiceBackedLLMClient implements LLMClientBase {
+  id: string
+  provider: 'openai' | 'deepseek' | 'claude' | 'minimax'
+  private service: LLMService
+  private defaultOptions: any
+
+  constructor(service: LLMService, provider: 'openai' | 'deepseek' | 'claude' | 'minimax', id: string, defaultOptions: any = {}) {
+    this.service = service
+    this.provider = provider
+    this.id = id
+    this.defaultOptions = defaultOptions
+  }
+
+  async chat(messages: LLMMessage[], options: any = {}): Promise<LLMResponse> {
+    const mergedOptions = { ...this.defaultOptions, ...options }
+    return this.service.chat(this.provider, messages, mergedOptions)
+  }
+}
+
+export const openaiClient: LLMClientBase = new ServiceBackedLLMClient(llmService, 'openai', 'openai:gpt-4o-mini', {
+  model: 'gpt-4o-mini'
+})
+
+export const deepseekClient: LLMClientBase = new ServiceBackedLLMClient(llmService, 'deepseek', 'deepseek:deepseek-chat', {
+  model: 'deepseek-chat'
+})
+
+export const claudeClient: LLMClientBase = new ServiceBackedLLMClient(llmService, 'claude', 'claude:haiku-20240307', {
+  model: 'claude-3-haiku-20240307'
+})
+
+export const minimaxClient: LLMClientBase = new ServiceBackedLLMClient(llmService, 'minimax', 'minimax:abab6.5s-chat', {
+  model: 'abab6.5s-chat'
+})
