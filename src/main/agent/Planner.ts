@@ -25,13 +25,35 @@ export class Planner {
     const homeDir = os.homedir()
     const desktopPath = path.join(homeDir, 'Desktop')
     
-    const systemPrompt = `You are an expert task planner for a coding agent running on macOS. Your goal is to decompose a user instruction into a series of actionable steps using the available tools.
+    // 获取工作目录（如果有的话）
+    const taskDir = options?.taskDir || ''
+    const workspacePath = '/Users/wangchao/Desktop/本地化TRAE'
+    
+    const workingDirInfo = taskDir 
+      ? `\n- Working Directory (任务工作目录): ${taskDir}`
+      : `\n- Workspace Path (项目根目录): ${workspacePath}`
+    
+    const pathExamples = taskDir 
+      ? `\n\nPATH EXAMPLES - For this task, use paths like:
+  - ${path.join(taskDir, 'src/index.ts')}
+  - ${path.join(taskDir, 'src/renderer/index.html')}
+  - ${path.join(taskDir, 'package.json')}
+  DO NOT use: main/index.ts, src/main.js, or any relative paths.`
+      : `\n\nPATH EXAMPLES - ALWAYS use full absolute paths:
+  - ${workspacePath}/src/main/index.ts
+  - ${workspacePath}/src/renderer/index.html
+  - /Users/wangchao/Desktop/项目名/src/index.js
+  DO NOT use: main/index.ts, src/main.js, ./src, /path/to/..., or any relative paths.`
+    
+    const systemPrompt = `You are an expert task planner for a coding agent running on macOS. Your goal is to decompose a user instruction into a COMPLETE series of actionable steps using the available tools.
+
+IMPORTANT: You are in SOLO MODE - you must autonomously complete ALL steps of the task without asking the user for confirmation or clarification. Generate a comprehensive plan that covers the ENTIRE task from start to finish.
 
 Environment Context:
 - OS: macOS
 - Home Directory: ${homeDir}
 - Desktop Path: ${desktopPath}
-- Current Working Directory: ${process.cwd()}
+- Current Working Directory: ${process.cwd()}${workingDirInfo}${pathExamples}
 
 Available Tools:
 ${toolsDescription}
@@ -50,19 +72,37 @@ You must output a JSON object with the following structure:
   ]
 }
 
+CRITICAL RULES FOR SOLO MODE:
+1. **Complete Task**: Your plan must cover the ENTIRE task. Do NOT stop at the first step. Include ALL necessary steps to complete the task.
+2. **Autonomous Execution**: Generate a plan that can be executed autonomously without human intervention.
+3. **Include respond_to_user**: Your final step MUST be 'respond_to_user' with a summary of what was accomplished.
+4. **No Partial Plans**: Do NOT generate partial plans that expect the user to do something. Complete everything yourself.
+5. **Iterative Process**: You are working in a ReAct loop. You can execute tools, see their output in the next turn, and then plan further steps.
+6. **Action First**: You are an Agent that ACTS. If the user asks to create a folder, use the 'create_directory' tool.
+7. **Information Gathering**: If you need information, execute the retrieval tool FIRST. Do NOT hallucinate content.
+8. **Completion**: Only use 'respond_to_user' when you have completed the task.
+9. **Use Tools**: Only use the tools listed above.
+10. **Paths**: Use ABSOLUTE paths ONLY. NEVER use relative paths like "src/main.js" or "./src". Always use full paths like "/Users/wangchao/Desktop/项目名/src/main.js" or the task working directory path.
+11. **Complex Task Decomposition**: For complex tasks like "design a notepad", decompose them into:
+    - Step 1: Create project directory structure
+    - Step 2: Create SPEC.md with detailed specifications  
+    - Step 3-8: Implement core features one by one
+    - Step 9: Test and verify implementation
+    - Final Step: respond_to_user with completion summary
+12. **Quality Assurance**: For code tasks, include testing and verification steps.
+
 Rules:
-1. **Iterative Process**: You are working in a ReAct loop. You can execute tools, see their output in the next turn, and then plan further steps.
-2. **Action First**: You are an Agent that ACTS. If the user asks to create a folder, use the 'create_directory' tool.
-3. **Information Gathering**: If you need information (e.g., news, file content), execute the retrieval tool (like 'search_web' or 'read_file') FIRST. Do NOT hallucinate the content. Do NOT include 'respond_to_user' in the same plan if you are waiting for information.
-4. **Completion**: Only use 'respond_to_user' when you have completed the task or have the final answer based on tool outputs.
-5. **Use Tools**: Only use the tools listed above.
-6. **Paths**: Use absolute paths.
-7. **Exploration**: If you need to edit a file but don't know the exact path, use 'search_files' or 'get_project_structure' first.
 8. **Images**: For image/icon requests, prefer 'search_images' -> 'download_image' -> 'read_image' to preview.
 9. **Smart Image Search**: When user asks to "download an image", "find a picture", or even "download 2 images", ALWAYS use 'batch_download_images' with count=9 to provide a gallery of choices. IGNORE the user's specific count if it is less than 9. Users always prefer seeing options.
 10. **Better Queries**: When searching for images, do NOT just use the user's raw query. Enhance it with descriptive keywords like "high quality", "wallpaper", "professional", or visual styles to get better results.
 11. **Long-running**: For long-running tasks, use appropriate tools and wait for completion.
 12. **JSON Syntax**: Ensure all JSON strings are properly escaped. Do NOT use unescaped double quotes inside string values. Keep 'reasoning' concise and avoid listing long URLs or file content.
+13. **Complex Task Decomposition**: For complex tasks, decompose them into multiple steps that can be executed sequentially or in parallel. Consider dependencies between steps.
+14. **Smart Agent Scheduling**: For tasks that require multiple types of expertise (e.g., coding, testing, documentation), plan steps that leverage the appropriate tools for each expertise area.
+15. **Risk Assessment**: For complex tasks, consider potential risks and include mitigation steps if necessary.
+16. **Resource Management**: Consider the resources required for each step (e.g., API calls, file system operations) and plan accordingly.
+17. **Quality Assurance**: For code-related tasks, include steps for testing and code review to ensure quality.
+18. **Knowledge Distillation**: For tasks that could benefit from future reuse, structure steps to capture knowledge that can be distilled to the fast system.
 
 Example 1 (Research):
 User: "Find news about AI"
@@ -105,7 +145,7 @@ Plan: {
 
     const planOptions: any = {
       ...options,
-      max_tokens: options?.max_tokens ?? 2000,
+      max_tokens: options?.max_tokens ?? 8000,  // 增加默认token数以支持更完整的计划
       temperature: options?.temperature ?? 0
     }
     // For OpenAI, always request structured JSON to reduce parsing failures
@@ -277,6 +317,23 @@ Plan: {
         try {
           return maybeEnforceImageGrid(parsePlanOrThrow(repair.content))
         } catch {}
+      }
+
+      // 如果JSON解析失败，尝试从响应中提取文本作为回复
+      console.warn('Planner: JSON解析失败，尝试使用文本回复')
+      const textResponse = response.content || repair.content
+      if (textResponse) {
+        return {
+          reasoning: '由于模型返回格式问题，使用文本回复',
+          steps: [
+            {
+              id: 'fallback_response',
+              tool: 'respond_to_user',
+              parameters: { message: textResponse },
+              description: '直接回复用户'
+            }
+          ]
+        }
       }
 
       console.error('Failed to parse plan JSON:', response.content)

@@ -2,6 +2,8 @@ import { Plan, PlanStep } from './Planner'
 import { toolRegistry } from './ToolRegistry'
 import { llmService } from '../services/LLMService'
 import type { ToolContext } from './ToolRegistry'
+import * as path from 'path'
+import * as fs from 'fs'
 
 export interface ExecutionResult {
   success: boolean
@@ -25,6 +27,42 @@ export interface ExecutionProgressEvent {
 }
 
 export class Executor {
+  // 辅助函数：修正相对路径为绝对路径
+  private fixPath(filePath: string, taskDir?: string): string {
+    if (!filePath) return filePath
+    
+    // 如果已经是绝对路径，直接返回
+    if (path.isAbsolute(filePath)) {
+      return filePath
+    }
+    
+    // 定义可能的根目录
+    const possibleRoots = [
+      '/Users/wangchao/Desktop/本地化TRAE',
+      '/Users/wangchao/Desktop',
+      process.cwd()
+    ]
+    
+    // 如果有taskDir，优先使用
+    if (taskDir) {
+      const fullPath = path.join(taskDir, filePath)
+      if (fs.existsSync(fullPath)) {
+        return fullPath
+      }
+    }
+    
+    // 尝试在可能的根目录下查找
+    for (const root of possibleRoots) {
+      const fullPath = path.join(root, filePath)
+      if (fs.existsSync(fullPath)) {
+        return fullPath
+      }
+    }
+    
+    // 如果都找不到，返回原始路径（让工具报错更清晰）
+    return filePath
+  }
+  
   async executePlan(
     plan: Plan,
     model: string = 'openai',
@@ -78,6 +116,25 @@ export class Executor {
           if (inferred) currentParams = { path: inferred }
         }
       }
+      
+      // 自动修正路径 - 对于需要路径的工具
+      const pathTools = ['read_file', 'write_file', 'create_directory', 'list_files', 'glob_paths', 'execute_command']
+      if (pathTools.includes(step.tool) && currentParams) {
+        const taskDir = ctx?.taskDir
+        const pathParamNames = ['path', 'filePath', 'filepath', 'directory', 'dir', 'file', 'targetPath', 'outputPath']
+        
+        for (const paramName of pathParamNames) {
+          if ((currentParams as any)[paramName]) {
+            const originalPath = (currentParams as any)[paramName]
+            const fixedPath = this.fixPath(originalPath, taskDir)
+            if (fixedPath !== originalPath) {
+              console.log(`[Executor] Auto-fixed path: ${originalPath} -> ${fixedPath}`)
+              ;(currentParams as any)[paramName] = fixedPath
+            }
+          }
+        }
+      }
+      
       let success = false
       let errorMessage = ''
       const startedAt = Date.now()

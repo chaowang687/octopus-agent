@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import DualSystemSidebar from '../components/DualSystemSidebar'
 
 interface ApiKey {
   model: string;
@@ -14,18 +15,20 @@ const ApiManagement: React.FC = () => {
   useEffect(() => {
     const fetchApiKeys = async () => {
       try {
-        const [openaiKey, claudeKey, minimaxKey, deepseekKey] = await Promise.all([
+        const [openaiKey, claudeKey, minimaxKey, deepseekKey, doubaoKey] = await Promise.all([
           window.electron.api.getApiKey('openai'),
           window.electron.api.getApiKey('claude'),
           window.electron.api.getApiKey('minimax'),
-          window.electron.api.getApiKey('deepseek')
+          window.electron.api.getApiKey('deepseek'),
+          window.electron.api.getApiKey('doubao')
         ])
         
         const keys: ApiKey[] = [
           { model: 'openai', key: openaiKey || '', isValid: !!openaiKey },
           { model: 'claude', key: claudeKey || '', isValid: !!claudeKey },
           { model: 'minimax', key: minimaxKey || '', isValid: !!minimaxKey },
-          { model: 'deepseek', key: deepseekKey || '', isValid: !!deepseekKey }
+          { model: 'deepseek', key: deepseekKey || '', isValid: !!deepseekKey },
+          { model: 'doubao', key: doubaoKey || '', isValid: !!doubaoKey }
         ]
         
         setApiKeys(keys)
@@ -60,7 +63,12 @@ const ApiManagement: React.FC = () => {
   if (loading) return <div className="loading-screen">Loading...</div>
 
   return (
-    <div style={{ padding: '40px', maxWidth: '800px', margin: '0 auto', width: '100%' }}>
+    <div style={{ display: 'flex', height: '100%' }}>
+      {/* 双系统协同状态侧边栏 */}
+      <DualSystemSidebar />
+      
+      {/* 主内容区域 */}
+      <div style={{ flex: 1, padding: '40px', maxWidth: '800px', margin: '0 auto' }}>
       <div style={{ marginBottom: '32px' }}>
         <h2 style={{ fontSize: '24px', fontWeight: 600, marginBottom: '8px' }}>API Management</h2>
         <p style={{ color: 'var(--text-secondary)' }}>Configure access tokens for AI models.</p>
@@ -119,6 +127,7 @@ const ApiManagement: React.FC = () => {
             </div>
           </div>
         ))}
+      </div>
       </div>
     </div>
   )

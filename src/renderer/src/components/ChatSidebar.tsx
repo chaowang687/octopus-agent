@@ -6,9 +6,10 @@ import CreateGroupModal from './CreateGroupModal'
 interface ChatSidebarProps {
   currentSessionId?: string
   onSelectSession: (session: ChatSession) => void
+  refreshKey?: number  // 添加刷新键
 }
 
-const ChatSidebar: React.FC<ChatSidebarProps> = ({ currentSessionId, onSelectSession }) => {
+const ChatSidebar: React.FC<ChatSidebarProps> = ({ currentSessionId, onSelectSession, refreshKey }) => {
   const [sessions, setSessions] = useState<ChatSession[]>([])
   const [showMenu, setShowMenu] = useState(false)
   const [showCreateAgent, setShowCreateAgent] = useState(false)
@@ -28,6 +29,13 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ currentSessionId, onSelectSes
       onSelectSession(list[0])
     }
   }, [])
+
+  // 当refreshKey变化时刷新会话列表
+  useEffect(() => {
+    if (refreshKey !== undefined) {
+      refreshData()
+    }
+  }, [refreshKey])
 
   // Helper to get session avatar/name
   const getSessionDisplay = (session: ChatSession) => {

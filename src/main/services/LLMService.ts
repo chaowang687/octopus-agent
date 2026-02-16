@@ -15,7 +15,7 @@ export interface LLMMessage {
 
 export interface LLMClientBase {
   id: string
-  provider: 'openai' | 'deepseek' | 'claude' | 'minimax'
+  provider: 'openai' | 'deepseek' | 'claude' | 'minimax' | 'doubao'
   chat: (messages: LLMMessage[], options?: any) => Promise<LLMResponse>
 }
 
@@ -27,6 +27,16 @@ type ChatCompletionMessage = {
 export class LLMService {
   private apiKeysPath: string
 
+  // 模型ID到provider的映射
+  private modelToProvider: Record<string, string> = {
+    'gpt-4o': 'openai', 'gpt-4o-mini': 'openai', 'gpt-3.5-turbo': 'openai',
+    'claude-3-opus': 'claude', 'claude-3-sonnet': 'claude', 'claude-3-haiku': 'claude',
+    'deepseek-chat': 'deepseek', 'deepseek-coder': 'deepseek',
+    'abab6.5s-chat': 'minimax',
+    'doubao-pro-32k': 'doubao', 'doubao-pro-128k': 'doubao',
+    'doubao-seed-2-0-code-preview-260215': 'doubao'
+  }
+
   constructor() {
     this.apiKeysPath = path.join(app.getPath('userData'), 'apiKeys.json')
   }
@@ -35,7 +45,16 @@ export class LLMService {
     try {
       if (fs.existsSync(this.apiKeysPath)) {
         const apiKeys = JSON.parse(fs.readFileSync(this.apiKeysPath, 'utf8'))
-        return apiKeys[model] || null
+        // 优先使用模型名查找，其次使用provider映射
+        if (apiKeys[model]) {
+          return apiKeys[model]
+        }
+        // 尝试通过provider映射获取
+        const provider = this.modelToProvider[model]
+        if (provider && apiKeys[provider]) {
+          return apiKeys[provider]
+        }
+        return null
       }
     } catch (error) {
       console.error('Failed to read API keys:', error)
@@ -120,14 +139,19 @@ export class LLMService {
     }
 
     try {
-      if (model === 'openai') {
+      // 将模型名称映射到provider
+      const provider = this.modelToProvider[model] || model
+      
+      if (provider === 'openai' || model === 'openai') {
         return await this.callOpenAI(apiKey, messages, options)
-      } else if (model === 'deepseek') {
+      } else if (provider === 'deepseek' || model === 'deepseek') {
         return await this.callDeepSeek(apiKey, messages, options)
-      } else if (model === 'claude') {
+      } else if (provider === 'claude' || model === 'claude') {
         return await this.callClaude(apiKey, messages, options)
-      } else if (model === 'minimax') {
+      } else if (provider === 'minimax' || model === 'minimax') {
         return await this.callMiniMax(apiKey, messages, options)
+      } else if (provider === 'doubao' || model === 'doubao') {
+        return await this.callDoubao(apiKey, messages, options)
       } else {
         return { success: false, error: `Unsupported model: ${model}` }
       }
@@ -315,17 +339,44 @@ export class LLMService {
     const data = await response.json()
     return { success: true, content: data.choices?.[0]?.message?.content || '' }
   }
+
+  // 豆包模型 API (字节跳动)
+  private async callDoubao(apiKey: string, messages: LLMMessage[], options: any): Promise<LLMResponse> {
+    // 豆包API端点 - 使用volcengine/maas API
+    const response = await this.fetchWithTimeout('https://ark.cn-beijing.volces.com/api/v3/chat/completions', {
+      method: 'POST',
+      signal: options?.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: options.model || 'doubao-seed-2-0-code-preview-260215',
+        messages: messages,
+        max_tokens: options?.max_tokens ?? 1000,
+        temperature: options?.temperature ?? 0.7
+      })
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '')
+      throw new Error(`Doubao API error: ${response.status} ${response.statusText} - ${errorText.slice(0, 200)}`)
+    }
+
+    const data = await response.json()
+    return { success: true, content: data.choices?.[0]?.message?.content || '' }
+  }
 }
 
 export const llmService = new LLMService()
 
 class ServiceBackedLLMClient implements LLMClientBase {
   id: string
-  provider: 'openai' | 'deepseek' | 'claude' | 'minimax'
+  provider: 'openai' | 'deepseek' | 'claude' | 'minimax' | 'doubao'
   private service: LLMService
   private defaultOptions: any
 
-  constructor(service: LLMService, provider: 'openai' | 'deepseek' | 'claude' | 'minimax', id: string, defaultOptions: any = {}) {
+  constructor(service: LLMService, provider: 'openai' | 'deepseek' | 'claude' | 'minimax' | 'doubao', id: string, defaultOptions: any = {}) {
     this.service = service
     this.provider = provider
     this.id = id

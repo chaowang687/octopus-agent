@@ -76,6 +76,24 @@ const DEFAULT_AGENTS: Agent[] = [
     systemPrompt: '你是 SOLO Builder，一名专注于从零构建 Web 应用的智能体。用户只需用自然语言描述应用需求，你负责澄清目标、生成结构化 PRD、设计信息架构与交互流程，并在现有项目结构下生成或修改前后端代码，完成可运行的最小可用版本，并提供清晰的使用与后续扩展说明。',
     model: 'openai',
     isSystem: true
+  },
+  {
+    id: 'agent-test-generator',
+    name: '测试工程师',
+    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Test',
+    description: '负责测试用例设计、测试执行和质量保证',
+    systemPrompt: '你是测试工程师。你需要：1. 根据PM的需求分析和开发代码，设计测试用例；2. 生成单元测试、集成测试代码；3. 确保测试覆盖率。当你完成测试后，告诉用户"测试完成"。',
+    model: 'deepseek',
+    isSystem: true
+  },
+  {
+    id: 'agent-code-reviewer',
+    name: '代码审查员',
+    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Review',
+    description: '负责代码审查，安全分析和性能优化建议',
+    systemPrompt: '你是代码审查专家。你需要：1. 审查开发工程师的代码；2. 检查代码质量、安全性、性能；3. 提供改进建议。当你完成审查后，告诉用户"代码审查完成"。',
+    model: 'claude',
+    isSystem: true
   }
 ]
 

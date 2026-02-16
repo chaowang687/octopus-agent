@@ -22,18 +22,21 @@ if (traeSandboxStoragePath) {
 
 // 添加WebView实验性功能开关
 app.commandLine.appendSwitch('enable-webview')
-app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoder,VaapiVideoEncoder')
-app.commandLine.appendSwitch('enable-gpu-rasterization')
-app.commandLine.appendSwitch('enable-zero-copy')
-app.commandLine.appendSwitch('enable-hardware-overlays', 'single-fullscreen,single-on-top,underlay')
-app.commandLine.appendSwitch('ignore-gpu-blocklist')
-app.commandLine.appendSwitch('enable-accelerated-2d-canvas')
-app.commandLine.appendSwitch('enable-usermedia-screen-capturing')
 app.commandLine.appendSwitch('allow-file-access-from-files')
 app.commandLine.appendSwitch('allow-universal-access-from-file-urls')
 app.commandLine.appendSwitch('disable-web-security')
 app.commandLine.appendSwitch('disable-features', 'CrossSiteDocumentBlockingIfIsolating')
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
+
+// 禁用GPU加速以避免崩溃
+app.commandLine.appendSwitch('disable-gpu')
+app.commandLine.appendSwitch('disable-gpu-compositing')
+app.commandLine.appendSwitch('disable-software-rasterizer')
+app.commandLine.appendSwitch('disable-gpu-process')
+app.commandLine.appendSwitch('disable-gpu-sandbox')
+app.commandLine.appendSwitch('disable-gpu-watchdog')
+app.commandLine.appendSwitch('no-sandbox')
+app.commandLine.appendSwitch('disable-sandbox')
 
 // 全局窗口引用
 let mainWindow: BrowserWindow | null = null
@@ -168,13 +171,23 @@ app.whenReady().then(() => {
   
   // 重新注册chat:sendMessage处理函数，确保它被正确注册
   try {
-    ipcMain.handle('chat:sendMessage', async (_, model: string, message: string, agentOptions?: { agentId?: string; sessionId?: string }) => {
+    ipcMain.handle('chat:sendMessage', async (_, model: string, message: string, agentOptions?: { agentId?: string; sessionId?: string; system?: string; complexity?: string }) => {
       try {
         console.log(`智能助手收到消息 (${model}): ${message}`)
         
+        // 解析系统和复杂度信息
+        const targetSystem = agentOptions?.system || 'system1'
+        const complexity = agentOptions?.complexity || 'low'
+        
+        console.log(`任务路由器: 系统=${targetSystem}, 复杂度=${complexity}`)
+        
         // 使用 TaskEngine 处理消息
         // TaskEngine 会自动判断是进行普通对话还是执行任务
-        const result = await taskEngine.executeTask(message, model, agentOptions)
+        const result = await taskEngine.executeTask(message, model, {
+          ...agentOptions,
+          system: targetSystem,
+          complexity
+        })
         
         // 构造返回给前端的格式
         let responseContent = ''

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ChatSidebar from '../components/ChatSidebar'
-import { chatDataService, ChatSession } from '../services/ChatDataService'
+import CreateGroupModal from '../components/CreateGroupModal'
+import { chatDataService, ChatSession, Agent } from '../services/ChatDataService'
 
 interface Message {
   id: string
@@ -55,6 +56,18 @@ interface TaskProgressEvent {
   retryCount?: number
   maxRetries?: number
   taskDir?: string
+  // 多智能体协作相关
+  agentId?: string
+  agentName?: string
+  role?: string
+  content?: string
+  phase?: string
+  from?: string
+  to?: string
+  message?: string
+  progress?: string
+  nextStep?: string
+  quality?: string
 }
 
 const ImageAttachment: React.FC<{ filePath: string; alt: string }> = ({ filePath, alt }) => {
@@ -95,10 +108,51 @@ const Chat: React.FC = () => {
   const [taskStatus, setTaskStatus] = useState<'idle' | 'running' | 'done' | 'cancelled' | 'error'>('idle')
   const [taskSteps, setTaskSteps] = useState<TaskStep[]>([])
   const [taskLogs, setTaskLogs] = useState<string[]>([])
+  // 任务进度历史记录
+  const [taskHistory, setTaskHistory] = useState<{
+    id: string
+    title: string
+    status: string
+    timestamp: number
+    logs: string[]
+  }[]>(() => {
+    // 从localStorage加载历史记录
+    try {
+      const saved = localStorage.getItem('trae_task_history')
+      return saved ? JSON.parse(saved) : []
+    } catch {
+      return []
+    }
+  })
   const [taskDir, setTaskDir] = useState<string>('')
   const currentTaskIdRef = useRef<string | null>(null)
   
-  const [activeTab, setActiveTab] = useState<'progress' | 'files'>('progress')
+  const [activeTab, setActiveTab] = useState<'progress' | 'files' | 'history'>('progress')
+
+  // 双系统状态
+  const [systemState, setSystemState] = useState<'system1' | 'system2' | 'switching'>('system1')
+  const [taskComplexity, setTaskComplexity] = useState<'low' | 'medium' | 'high'>('low')
+  const [showSystemIndicator, setShowSystemIndicator] = useState(false)
+  const [system1Response, setSystem1Response] = useState<string>('')
+  const [showSystem1Response, setShowSystem1Response] = useState(false)
+
+  // 多智能体协作状态
+  const [isMultiAgentMode, setIsMultiAgentMode] = useState(false)
+  const [showCreateGroupModal, setShowCreateGroupModal] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)  // 用于刷新侧边栏
+  const [agentCollaboration, setAgentCollaboration] = useState<{
+    agents: { id: string; name: string; role: string; status: string }[]
+    currentPhase: string
+  } | null>(null)
+  
+  // 多对话框协作模式 - 每个智能体独立对话框
+  const [multiDialogueMode, setMultiDialogueMode] = useState(false)
+  const [dialogueSessions, setDialogueSessions] = useState<{
+    agentId: string
+    sessionId: string
+    status: string
+  }[]>([])
+  const [currentDialogueIndex, setCurrentDialogueIndex] = useState(0)
 
   // 监听agent打开页面的事件
   useEffect(() => {
@@ -118,11 +172,14 @@ const Chat: React.FC = () => {
   }, [navigate])
   
   const [selectedModel, setSelectedModel] = useState('openai')
+  // 当前使用的模型名称（自动判断后显示）
+  const [currentModelName, setCurrentModelName] = useState<string>('DeepSeek (快速响应)')
   const [models] = useState<{ id: string; name: string }[]>([
     { id: 'openai', name: 'OpenAI GPT-4' },
     { id: 'claude', name: 'Claude 3.5 Sonnet' },
     { id: 'minimax', name: 'MiniMax' },
-    { id: 'deepseek', name: 'DeepSeek V3' }
+    { id: 'deepseek', name: 'DeepSeek V3' },
+    { id: 'doubao', name: 'Doubao' }
   ])
   
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -222,13 +279,28 @@ const Chat: React.FC = () => {
             : evt.modelUsed
               ? `（模型：${evt.modelUsed}）`
               : ''
-        setTaskLogs([`[${time}] 任务开始${modelInfo}`])
+        const startLog = `[${time}] 任务开始${modelInfo}`
+        setTaskLogs([startLog])
         setTaskSteps([])
         setTaskDir(evt.taskDir || '')
         setShowTaskPreview(true) // Auto-show task panel on start
         if (evt.taskDir) {
           setTaskLogs(prev => [...prev, `[${time}] 工作目录：${evt.taskDir}`])
         }
+        
+        // 创建任务历史记录
+        const newHistoryItem = {
+          id: taskId,
+          title: evt.taskDir ? evt.taskDir.split('/').pop() || '新任务' : '新任务',
+          status: '进行中',
+          timestamp: evt.timestamp,
+          logs: [startLog]
+        }
+        setTaskHistory(prev => {
+          const updated = [newHistoryItem, ...prev].slice(0, 20) // 保留最近20条
+          localStorage.setItem('trae_task_history', JSON.stringify(updated))
+          return updated
+        })
         return
       }
 
@@ -372,13 +444,153 @@ const Chat: React.FC = () => {
 
       if (evt.type === 'task_done') {
         setTaskStatus('done')
-        setTaskLogs(prev => [...prev, `[${time}] 任务完成`])
+        const doneLog = `[${time}] 任务完成`
+        setTaskLogs(prev => [...prev, doneLog])
+        
+        // 更新任务历史记录
+        setTaskHistory(prev => {
+          const updated = prev.map(item => 
+            item.id === taskId 
+              ? { ...item, status: '已完成', logs: [...item.logs, doneLog] }
+              : item
+          )
+          localStorage.setItem('trae_task_history', JSON.stringify(updated))
+          return updated
+        })
+        return
+      }
+
+      // 处理多智能体消息 - 在聊天界面显示各智能体的发言
+      if (evt.type === 'agent_message') {
+        // 获取智能体头像 - 与ChatDataService中的agent一致
+        const agentAvatarMap: Record<string, string> = {
+          'agent-pm': 'https://api.dicebear.com/7.x/avataaars/svg?seed=PM',
+          'agent-dev': 'https://api.dicebear.com/7.x/avataaars/svg?seed=Dev',
+          'agent-ui': 'https://api.dicebear.com/7.x/avataaars/svg?seed=UI',
+          'agent-solo-coder': 'https://api.dicebear.com/7.x/avataaars/svg?seed=SoloCoder',
+          'agent-test-generator': 'https://api.dicebear.com/7.x/avataaars/svg?seed=Test',
+          'agent-code-reviewer': 'https://api.dicebear.com/7.x/avataaars/svg?seed=Review',
+          'system': 'https://api.dicebear.com/7.x/bottts/svg?seed=System'
+        }
+        
+        const agentId = evt.agentId || 'system'
+        const avatar = agentAvatarMap[agentId] || 'https://api.dicebear.com/7.x/bottts/svg?seed=Agent'
+        
+        setMessages(prev => [...prev, {
+          id: `agent-${evt.timestamp}-${agentId}`,
+          role: 'assistant',
+          content: `**${evt.agentName}** (${evt.role}):\n\n${evt.content}`,
+          timestamp: new Date(),
+          status: 'completed'
+        }])
+        
+        const agentLog = `[${time}] ${evt.agentName}: ${evt.phase}`
+        setTaskLogs(prev => [...prev, agentLog])
+        
+        // 更新任务历史记录
+        setTaskHistory(prev => {
+          const updated = prev.map(item => 
+            item.id === taskId 
+              ? { ...item, logs: [...item.logs, agentLog] }
+              : item
+          )
+          localStorage.setItem('trae_task_history', JSON.stringify(updated))
+          return updated
+        })
+        return
+      }
+
+      // 处理系统切换事件
+      if (evt.type === 'system_switch') {
+        const switchLog = `[${time}] 🔄 ${evt.message}`
+        setTaskLogs(prev => [...prev, switchLog])
+        setMessages(prev => [...prev, {
+          id: `system-${evt.timestamp}`,
+          role: 'assistant',
+          content: evt.message,
+          timestamp: new Date(),
+          status: 'completed'
+        }])
+        
+        // 更新任务历史记录
+        setTaskHistory(prev => {
+          const updated = prev.map(item => 
+            item.id === taskId 
+              ? { ...item, logs: [...item.logs, switchLog] }
+              : item
+          )
+          localStorage.setItem('trae_task_history', JSON.stringify(updated))
+          return updated
+        })
+        return
+      }
+
+      // 处理进度检查事件
+      if (evt.type === 'progress_check') {
+        const progressLog = `[${time}] 📊 进度评估: ${evt.progress} - 质量: ${evt.quality}`
+        setTaskLogs(prev => [...prev, progressLog])
+        if (evt.nextStep) {
+          const nextLog = `[${time}] 📋 下一步: ${evt.nextStep}`
+          setTaskLogs(prev => [...prev, nextLog])
+          
+          // 更新任务历史记录
+          setTaskHistory(prev => {
+            const updated = prev.map(item => 
+              item.id === taskId 
+                ? { ...item, logs: [...item.logs, progressLog, nextLog] }
+                : item
+            )
+            localStorage.setItem('trae_task_history', JSON.stringify(updated))
+            return updated
+          })
+        } else {
+          setTaskHistory(prev => {
+            const updated = prev.map(item => 
+              item.id === taskId 
+                ? { ...item, logs: [...item.logs, progressLog] }
+                : item
+            )
+            localStorage.setItem('trae_task_history', JSON.stringify(updated))
+            return updated
+          })
+        }
         return
       }
 
       if (evt.type === 'task_cancelled') {
         setTaskStatus('cancelled')
-        setTaskLogs(prev => [...prev, `[${time}] 已取消`])
+        const cancelLog = `[${time}] 已取消`
+        setTaskLogs(prev => [...prev, cancelLog])
+        
+        // 更新任务历史记录
+        setTaskHistory(prev => {
+          const updated = prev.map(item => 
+            item.id === taskId 
+              ? { ...item, status: 'cancelled', logs: [...item.logs, cancelLog] }
+              : item
+          )
+          localStorage.setItem('trae_task_history', JSON.stringify(updated))
+          return updated
+        })
+        return
+      }
+
+      // 处理任务错误
+      if (evt.type === 'task_error') {
+        setTaskStatus('error')
+        const errorLog = `[${time}] 任务失败: ${evt.error || '未知错误'}`
+        setTaskLogs(prev => [...prev, errorLog])
+        
+        // 更新任务历史记录
+        setTaskHistory(prev => {
+          const updated = prev.map(item => 
+            item.id === taskId 
+              ? { ...item, status: 'error', logs: [...item.logs, errorLog] }
+              : item
+          )
+          localStorage.setItem('trae_task_history', JSON.stringify(updated))
+          return updated
+        })
         return
       }
     })
@@ -396,6 +608,88 @@ const Chat: React.FC = () => {
 
   const handleSendMessage = async () => {
     if ((!input.trim() && attachments.length === 0) || loading) return
+
+    // 评估任务复杂度
+    const complexity = assessTaskComplexity(input)
+    console.log(`[Chat] 任务复杂度: ${complexity}, 内容: ${input.slice(0, 50)}...`)
+    setTaskComplexity(complexity)
+
+    // 根据复杂度选择系统
+    const targetSystem = complexity === 'low' ? 'system1' : 'system2'
+    handleSystemSwitch(targetSystem)
+    
+    // 如果是System 2复杂任务，自动为每个智能体创建独立对话框
+    const isNewSession = !currentSession || currentSession.type === 'direct'
+    if (targetSystem === 'system2' && isNewSession) {
+      console.log(`[Chat] System2模式 - 创建多对话框协作`)
+      const projectName = input.slice(0, 15) + (input.length > 15 ? '...' : '')
+      
+      // 创建多对话框模式 - 每个智能体独立对话框
+      const agents = ['agent-pm', 'agent-ui', 'agent-dev', 'agent-test-generator', 'agent-code-reviewer']
+      const agentNames: Record<string, string> = {
+        'agent-pm': 'PM-需求分析',
+        'agent-ui': 'UI设计',
+        'agent-dev': '开发编码',
+        'agent-test-generator': '测试用例',
+        'agent-code-reviewer': '代码审查'
+      }
+      
+      const newDialogueSessions: { agentId: string; sessionId: string; status: string }[] = []
+      
+      // 为每个智能体创建独立会话
+      for (const agentId of agents) {
+        const agent = chatDataService.getAgent(agentId)
+        if (agent) {
+          // 检查是否已存在该智能体的直接会话
+          let session = chatDataService.getSessions().find(s => 
+            s.type === 'direct' && s.members.includes(agentId)
+          )
+          
+          if (!session) {
+            // 创建新会话
+            session = chatDataService.createSession(
+              `${agentNames[agentId]} - ${projectName}`,
+              [agentId],
+              'direct'
+            )
+          }
+          
+          newDialogueSessions.push({
+            agentId,
+            sessionId: session.id,
+            status: 'waiting'
+          })
+        }
+      }
+      
+      // 设置多对话框模式
+      if (newDialogueSessions.length > 0) {
+        setMultiDialogueMode(true)
+        setDialogueSessions(newDialogueSessions)
+        // 切换到第一个对话框 (PM)
+        setCurrentDialogueIndex(0)
+        
+        const pmSession = newDialogueSessions[0]
+        const pmSessionData = chatDataService.getSessions().find(s => s.id === pmSession.sessionId)
+        if (pmSessionData) {
+          setCurrentSession(pmSessionData)
+        }
+        
+        // 更新状态
+        setDialogueSessions(prev => prev.map((d, i) => 
+          i === 0 ? { ...d, status: 'working' } : d
+        ))
+      }
+      
+      setRefreshKey(prev => prev + 1)  // 刷新侧边栏
+    }
+    
+    // 根据系统更新当前使用的模型名称
+    if (targetSystem === 'system1') {
+      setCurrentModelName('DeepSeek (快速响应)')
+    } else {
+      setCurrentModelName('豆包 (深度思考)')
+    }
 
     let contentToSend = input
     if (attachments.length > 0) {
@@ -427,6 +721,10 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
       }
     }
 
+    // 添加系统指示
+    const systemInstruction = `\n\n<system_instruction>\nCurrent System: ${targetSystem === 'system1' ? 'System 1 (Fast)' : 'System 2 (Slow)'}\nTask Complexity: ${complexity}\nIf System 1, provide quick response and use cached knowledge.\nIf System 2, generate detailed plan and coordinate multiple agents.\n</system_instruction>`
+    contentToSend += systemInstruction
+
     const userMessage: Message = {
       id: `user-${Date.now()}`,
       role: 'user',
@@ -440,7 +738,7 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
     setInput('')
     setAttachments([])
     setLoading(true)
-    setShowTaskPreview(true) // Auto-show task panel
+    setShowTaskPreview(targetSystem === 'system2') // 系统2自动显示任务面板
     setTaskTitle(input.trim() || '新任务')
     setTaskStatus('running')
     setTaskSteps([])
@@ -454,21 +752,38 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
         msg.id === userMessage.id ? { ...msg, status: 'sent' } : msg
       ))
 
+      // 系统1快速响应模拟
+      if (targetSystem === 'system1') {
+        setSystem1Response('正在快速分析...')
+        setShowSystem1Response(true)
+        
+        // 模拟系统1快速响应
+        setTimeout(() => {
+          setSystem1Response('已识别为简单任务，正在准备快速响应...')
+        }, 300)
+      }
+
       const thinkingMessage: Message = {
         id: `thinking-${Date.now()}`,
         role: 'assistant',
         content: '',
         timestamp: new Date(),
-        thinking: '正在思考...'
+        thinking: targetSystem === 'system1' ? '快速分析中...' : '深度思考中...'
       }
       setMessages(prev => [...prev, thinkingMessage])
 
       const agentId = currentSession && currentSession.members.length > 0 ? currentSession.members[0] : undefined
       const sessionId = currentSession ? currentSession.id : undefined
       const chatApi: any = window.electron.chat
-      const result = await chatApi.sendMessage(selectedModel, contentToSend, { agentId, sessionId })
+      const result = await chatApi.sendMessage(selectedModel, contentToSend, { 
+        agentId, 
+        sessionId,
+        system: targetSystem,
+        complexity
+      })
       
       setMessages(prev => prev.filter(msg => msg.id !== thinkingMessage.id))
+      setShowSystem1Response(false)
       
       if (result.success) {
         const aiResponse: Message = {
@@ -479,12 +794,65 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
           status: 'completed'
         }
         setMessages(prev => [...prev, aiResponse])
+        
+        // 多对话框模式：当前智能体完成后，提示切换到下一个
+        if (multiDialogueMode && dialogueSessions.length > 0) {
+          const currentIndexVal = currentDialogueIndex
+          const currentAgent = dialogueSessions[currentIndexVal]
+          
+          if (currentAgent && currentIndexVal < dialogueSessions.length - 1) {
+            // 还有下一个对话框
+            const nextIndex = currentIndexVal + 1
+            const nextAgent = dialogueSessions[nextIndex]
+            
+            // 更新当前状态为完成
+            setDialogueSessions(prev => prev.map((d, i) => 
+              i === currentIndexVal ? { ...d, status: 'completed' } : d
+            ))
+            
+            // 添加交接提示消息
+            const handoffMessage: Message = {
+              id: `handoff-${Date.now()}`,
+              role: 'assistant',
+              content: `✅ ${currentAgent.agentId} 已完成工作。\n\n🔄 正在切换到下一个对话框：${nextAgent.agentId}...\n\n请在侧边栏点击对应的对话框查看。`,
+              timestamp: new Date(),
+              status: 'completed'
+            }
+            setMessages(prev => [...prev, handoffMessage])
+            
+            // 突出显示下一个对话框（通过更新会话）
+            setTimeout(() => {
+              const nextSessionData = chatDataService.getSessions().find(s => s.id === nextAgent.sessionId)
+              if (nextSessionData) {
+                setCurrentSession(nextSessionData)
+                setCurrentDialogueIndex(nextIndex)
+                setRefreshKey(prev => prev + 1)
+              }
+            }, 2000)
+          } else {
+            // 所有对话框完成
+            setDialogueSessions(prev => prev.map((d, i) => 
+              i === currentIndexVal ? { ...d, status: 'completed' } : d
+            ))
+            
+            const finalMessage: Message = {
+              id: `final-${Date.now()}`,
+              role: 'assistant',
+              content: `🎉 所有智能体已完成协作任务！\n\n项目开发流程已完成。您可以：\n1. 点击侧边栏查看各个智能体的输出\n2. 继续与任何智能体对话了解更多细节\n3. 开始新的任务`,
+              timestamp: new Date(),
+              status: 'completed'
+            }
+            setMessages(prev => [...prev, finalMessage])
+            setMultiDialogueMode(false)
+          }
+        }
       } else {
         throw new Error(result.error)
       }
     } catch (error: any) {
       console.error('Failed to send message:', error)
       setMessages(prev => prev.filter(msg => !msg.thinking))
+      setShowSystem1Response(false)
       setMessages(prev => prev.map(msg => 
         msg.id === userMessage.id ? { ...msg, status: 'error' } : msg
       ))
@@ -521,6 +889,85 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
       handleSendMessage()
     }
   }
+
+  // 智能任务复杂度评估 - 基于情绪直觉系统自动判断
+  // System 1: 快速直觉响应 - 简单问答、文件操作、简单任务
+  // System 2: 深度思考 - 复杂开发、架构设计、多步骤任务
+  const assessTaskComplexity = (input: string): 'low' | 'medium' | 'high' => {
+    const text = input.trim().toLowerCase()
+    const length = text.length
+
+    // ===== System 2 触发条件（深度思考任务）=====
+    // 复杂开发类 - 这些必须用 System 2
+    const complexDev = /(开发|构建|重构|实现|设计|架构|集成|部署|测试|bug|修复|优化|编程|代码|前端|后端|全栈)/i.test(text)
+    // 界面/UI设计类
+    const uiDesign = /(界面|页面|ui|ux|设计|原型|草图|界面)/i.test(text)
+    // 创建项目/应用类
+    const createApp = /(创建|开发|做一个|写一个|搭建|构建)/i.test(text)
+    // 多步骤任务
+    const multiStep = text.split(/和|然后|并且|以及|首先|其次|最后|再/).length >= 3
+    // 技术复杂性
+    const technical = /(api|框架|数据库|缓存|安全|性能|并发|分布式|微服务|容器|ci\/cd|机器学习|算法|组件|页面)/i.test(text)
+    // 复杂需求
+    const complexRequirements = length > 100 && (complexDev || uiDesign || createApp)
+
+    // 重要：设计、开发类任务必须使用 System 2
+    if (complexDev || uiDesign || createApp || complexRequirements || (technical && length > 80)) {
+      if (length > 200 || multiStep) {
+        return 'high'
+      }
+      return 'medium'
+    }
+
+    // ===== System 1 触发条件（快速直觉任务）=====
+    // 简单问答类
+    const simpleQA = /(什么是|怎么|如何|怎样|能不能|可以帮我|帮我|帮我看看|查看|查看一下|解释一下|说一说|告诉我)/i.test(text)
+    // 简单操作类
+    const simpleAction = /(创建文件夹|新建文件夹|写文件|保存文件|打开文件|删除文件|复制文件|移动文件)/i.test(text)
+    // 简短请求
+    const shortRequest = length < 50 && !/(开发|构建|实现|设计|架构)/i.test(text)
+    // 单一任务
+    const singleTask = text.split(/和|然后|并且|以及/).length <= 2
+
+    // 如果是简单任务，使用 System 1
+    if ((simpleQA && length < 150) || simpleAction || shortRequest || (singleTask && length < 80)) {
+      return 'low'
+    }
+
+    // 默认使用 System 2 更安全
+    return 'medium'
+  }
+
+  // 系统切换处理
+  const handleSystemSwitch = (targetSystem: 'system1' | 'system2') => {
+    setSystemState('switching')
+    setTimeout(() => {
+      setSystemState(targetSystem)
+      setShowSystemIndicator(true)
+      setTimeout(() => setShowSystemIndicator(false), 2000)
+    }, 500)
+  }
+
+  // 上下文共享展示
+  const [sharedContext, setSharedContext] = useState<any>({
+    projectFiles: [],
+    conversationHistory: [],
+    currentState: {}
+  })
+
+  // 知识蒸馏反馈
+  const [knowledgeDistillation, setKnowledgeDistillation] = useState({
+    lastDistillation: null as Date | null,
+    distilledItems: 0,
+    system1Accuracy: 85
+  })
+
+  // 协同进化状态
+  const [coevolutionState, setCoevolutionState] = useState({
+    system1Performance: 0.75,
+    system2Efficiency: 0.85,
+    collaborationScore: 0.8
+  })
 
   const handleScreenshot = async () => {
     try {
@@ -614,7 +1061,8 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
     >
       <ChatSidebar 
         currentSessionId={currentSession?.id} 
-        onSelectSession={setCurrentSession} 
+        onSelectSession={setCurrentSession}
+        refreshKey={refreshKey}
       />
 
       <div className="chat-main-wrapper">
@@ -627,6 +1075,47 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
           </div>
         )}
 
+        {/* 双系统状态指示器 - 自动判断 */}
+        {showSystemIndicator && (
+          <div style={{
+            position: 'fixed',
+            top: '20px',
+            right: '20px',
+            padding: '10px 16px',
+            borderRadius: '8px',
+            backgroundColor: systemState === 'system1' ? '#4CAF50' : '#2196F3',
+            color: 'white',
+            fontSize: '14px',
+            fontWeight: '500',
+            zIndex: 1000,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+          }}>
+            {systemState === 'system1' ? '⚡️ 系统1 (快速响应) - 已自动激活' : '🧠 系统2 (深度思考) - 已自动激活'}
+          </div>
+        )}
+
+        {/* 系统1快速响应区域 */}
+        {showSystem1Response && (
+          <div style={{
+            position: 'fixed',
+            bottom: '120px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            padding: '12px 20px',
+            borderRadius: '12px',
+            backgroundColor: 'rgba(76, 175, 80, 0.9)',
+            color: 'white',
+            fontSize: '14px',
+            fontWeight: '500',
+            zIndex: 999,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+            maxWidth: '400px',
+            textAlign: 'center'
+          }}>
+            ⚡️ {system1Response}
+          </div>
+        )}
+
         {/* Main Chat Area */}
         <div className="chat-container">
           {/* Header */}
@@ -634,27 +1123,52 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
             <div className="chat-header-title">
               {currentSession?.type === 'direct' ? '👤' : '👥'}
               {currentSession?.name || '新会话'}
+              {multiDialogueMode && (
+                <span style={{
+                  marginLeft: '8px',
+                  padding: '2px 8px',
+                  borderRadius: '10px',
+                  fontSize: '11px',
+                  fontWeight: '500',
+                  backgroundColor: '#E8EAF6',
+                  color: '#3F51B5'
+                }}>
+                  🔄 多对话框
+                </span>
+              )}
+              <span style={{
+                marginLeft: '12px',
+                padding: '2px 8px',
+                borderRadius: '10px',
+                fontSize: '11px',
+                fontWeight: '500',
+                backgroundColor: systemState === 'system1' ? '#E8F5E9' : '#E3F2FD',
+                color: systemState === 'system1' ? '#2E7D32' : '#1565C0'
+              }}>
+                {systemState === 'system1' ? '系统1' : '系统2'}
+              </span>
             </div>
-            <div className="model-selector">
-               <select 
-                  value={selectedModel} 
-                  onChange={(e) => setSelectedModel(e.target.value)}
-                  style={{ 
-                    background: 'rgba(0,0,0,0.05)', 
-                    border: 'none', 
-                    color: '#1d1d1f', 
-                    outline: 'none', 
-                    cursor: 'pointer',
-                    padding: '6px 12px',
-                    borderRadius: '6px',
-                    fontSize: '13px',
-                    fontWeight: 500
-                  }}
-                >
-                  {models.map(m => (
-                    <option key={m.id} value={m.id}>{m.name}</option>
-                  ))}
-                </select>
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+              {/* 自动系统指示器 - 显示当前激活的系统及使用的模型 */}
+              <div style={{
+                padding: '6px 12px',
+                borderRadius: '6px',
+                backgroundColor: systemState === 'system1' ? '#E8F5E9' : '#E3F2FD',
+                color: systemState === 'system1' ? '#2E7D32' : '#1565C0',
+                fontSize: '12px',
+                fontWeight: 500,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}>
+                {systemState === 'switching' ? (
+                  <>🔄 切换中...</>
+                ) : systemState === 'system1' ? (
+                  <>⚡ 系统1 · {currentModelName} <span style={{ fontSize: '10px', opacity: 0.7 }}>(自动)</span></>
+                ) : (
+                  <>🧠 系统2 · {currentModelName} <span style={{ fontSize: '10px', opacity: 0.7 }}>(自动)</span></>
+                )}
+              </div>
             </div>
           </div>
 
@@ -724,6 +1238,116 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
 
           {/* Input Area */}
           <div className="chat-input-wrapper">
+            {/* 系统1快速操作工具栏 */}
+            {systemState === 'system1' && (
+              <div style={{
+                display: 'flex',
+                gap: '8px',
+                padding: '8px 12px',
+                backgroundColor: '#f8f8f8',
+                borderRadius: '8px 8px 0 0',
+                borderBottom: '1px solid #e0e0e0'
+              }}>
+                <button 
+                  onClick={() => {
+                    setInput(prev => prev + '\n// 快速代码补全示例\nfunction helloWorld() {\n  console.log("Hello, World!");\n}\n');
+                  }}
+                  style={{
+                    padding: '4px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid #e0e0e0',
+                    background: 'white',
+                    color: '#1d1d1f',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="16 18 22 12 16 6"></polyline>
+                    <polyline points="8 6 2 12 8 18"></polyline>
+                  </svg>
+                  代码补全
+                </button>
+                <button 
+                  onClick={() => {
+                    setInput(prev => prev + '\n// 代码格式化\nconst formattedCode = code.replace(/\s+/g, " ").trim();\n');
+                  }}
+                  style={{
+                    padding: '4px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid #e0e0e0',
+                    background: 'white',
+                    color: '#1d1d1f',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                    <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                    <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                  </svg>
+                  格式化
+                </button>
+                <button 
+                  onClick={() => {
+                    setInput(prev => prev + '\n// 常用代码片段\nconst fetchData = async (url) => {\n  try {\n    const response = await fetch(url);\n    const data = await response.json();\n    return data;\n  } catch (error) {\n    console.error("Error:", error);\n  }\n};\n');
+                  }}
+                  style={{
+                    padding: '4px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid #e0e0e0',
+                    background: 'white',
+                    color: '#1d1d1f',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                    <polyline points="10 9 9 9 8 9"></polyline>
+                  </svg>
+                  代码片段
+                </button>
+                <button 
+                  onClick={() => {
+                    setInput(prev => prev + '\n// 快速问答示例\n// Q: 如何使用Promise？\n// A: const promise = new Promise((resolve, reject) => {\n//      setTimeout(() => resolve("Success"), 1000);\n//    });\n//    promise.then(result => console.log(result));\n');
+                  }}
+                  style={{
+                    padding: '4px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid #e0e0e0',
+                    background: 'white',
+                    color: '#1d1d1f',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                  </svg>
+                  快速问答
+                </button>
+              </div>
+            )}
+
             {/* Attachments Preview */}
             {attachments.length > 0 && (
               <div className="chat-attachments-preview">
@@ -802,7 +1426,22 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
         {showTaskPreview && (
           <div className="task-sidebar">
             <div className="task-sidebar-header">
-              <div className="task-sidebar-title">任务工作区</div>
+              <div className="task-sidebar-title">
+                {systemState === 'system2' ? '系统2 - 任务规划中心' : '任务工作区'}
+                {systemState === 'system2' && (
+                  <span style={{
+                    marginLeft: '12px',
+                    padding: '2px 8px',
+                    borderRadius: '10px',
+                    fontSize: '10px',
+                    fontWeight: '500',
+                    backgroundColor: '#E3F2FD',
+                    color: '#1565C0'
+                  }}>
+                    🧠 深度思考
+                  </span>
+                )}
+              </div>
               <div style={{ display: 'flex', gap: '8px' }}>
                  <div className="task-preview-tabs">
                     <div 
@@ -819,6 +1458,22 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
                     >
                       文件
                     </div>
+                    <div 
+                      className={`task-preview-tab ${activeTab === 'history' ? 'active' : ''}`}
+                      onClick={() => setActiveTab('history')}
+                      style={{ padding: '4px 8px', fontSize: '12px' }}
+                    >
+                      历史
+                    </div>
+                    {systemState === 'system2' && (
+                      <div 
+                        className={`task-preview-tab ${activeTab === 'agents' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('agents' as any)}
+                        style={{ padding: '4px 8px', fontSize: '12px' }}
+                      >
+                        智能体
+                      </div>
+                    )}
                  </div>
                  <button className="task-preview-close" onClick={() => setShowTaskPreview(false)}>×</button>
               </div>
@@ -849,9 +1504,161 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
                     <div ref={messagesEndRef} />
                   </div>
                 </>
-              ) : (
+              ) : activeTab === 'files' ? (
                 <div style={{ padding: '20px', color: '#86868b', fontSize: '13px', textAlign: 'center' }}>
                   暂无生成文件
+                </div>
+              ) : activeTab === 'history' ? (
+                <div style={{ padding: '12px', overflow: 'auto', height: '100%' }}>
+                  {taskHistory.length === 0 ? (
+                    <div style={{ 
+                      padding: '40px 20px', 
+                      color: '#86868b', 
+                      fontSize: '13px', 
+                      textAlign: 'center' 
+                    }}>
+                      <div style={{ fontSize: '24px', marginBottom: '12px' }}>📋</div>
+                      暂无任务历史记录
+                      <div style={{ fontSize: '11px', marginTop: '8px', color: '#aaa' }}>
+                        完成后自动保存
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {taskHistory.map((task, idx) => (
+                        <div 
+                          key={task.id}
+                          style={{
+                            padding: '12px',
+                            borderRadius: '8px',
+                            backgroundColor: '#f8f8f8',
+                            borderLeft: `4px solid ${
+                              task.status === 'done' ? '#4CAF50' : 
+                              task.status === 'error' ? '#f44336' : '#FF9800'
+                            }`,
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease'
+                          }}
+                          onClick={() => {
+                            // 点击加载历史任务日志
+                            setTaskLogs(task.logs || [])
+                            setTaskTitle(task.title)
+                            setTaskStatus(task.status as any)
+                            setActiveTab('progress')
+                          }}
+                        >
+                          <div style={{ 
+                            display: 'flex', 
+                            justifyContent: 'space-between', 
+                            alignItems: 'center',
+                            marginBottom: '6px'
+                          }}>
+                            <div style={{ 
+                              fontSize: '13px', 
+                              fontWeight: '500',
+                              flex: 1,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap'
+                            }}>
+                              {task.title || `任务 ${idx + 1}`}
+                            </div>
+                            <div style={{
+                              fontSize: '10px',
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              backgroundColor: task.status === 'done' ? '#E8F5E9' : 
+                                              task.status === 'error' ? '#FFEBEE' : '#FFF3E0',
+                              color: task.status === 'done' ? '#2E7D32' : 
+                                    task.status === 'error' ? '#C62828' : '#E65100'
+                            }}>
+                              {task.status === 'done' ? '✅ 完成' : 
+                               task.status === 'error' ? '❌ 失败' : '⚡ 进行中'}
+                            </div>
+                          </div>
+                          <div style={{ 
+                            fontSize: '11px', 
+                            color: '#86868b',
+                            display: 'flex',
+                            justifyContent: 'space-between'
+                          }}>
+                            <span>{new Date(task.timestamp).toLocaleDateString('zh-CN')}</span>
+                            <span>{task.logs?.length || 0} 条日志</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : activeTab === 'agents' ? (
+                <div style={{ padding: '16px' }}>
+                  <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', fontWeight: '500' }}>智能体协作状态</h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div style={{
+                      padding: '12px',
+                      borderRadius: '8px',
+                      backgroundColor: '#f5f5f5',
+                      borderLeft: '4px solid #2196F3'
+                    }}>
+                      <div style={{ fontSize: '13px', fontWeight: '500' }}>代码生成智能体</div>
+                      <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+                        状态: 就绪
+                        <br />
+                        模型: DeepSeek-Coder-7B
+                        <br />
+                        工具: 文件读写
+                      </div>
+                    </div>
+                    <div style={{
+                      padding: '12px',
+                      borderRadius: '8px',
+                      backgroundColor: '#f5f5f5',
+                      borderLeft: '4px solid #4CAF50'
+                    }}>
+                      <div style={{ fontSize: '13px', fontWeight: '500' }}>测试生成智能体</div>
+                      <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+                        状态: 就绪
+                        <br />
+                        模型: 代码模型微调
+                        <br />
+                        工具: 运行测试
+                      </div>
+                    </div>
+                    <div style={{
+                      padding: '12px',
+                      borderRadius: '8px',
+                      backgroundColor: '#f5f5f5',
+                      borderLeft: '4px solid #FF9800'
+                    }}>
+                      <div style={{ fontSize: '13px', fontWeight: '500' }}>代码审查智能体</div>
+                      <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+                        状态: 就绪
+                        <br />
+                        模型: 代码模型微调
+                        <br />
+                        工具: 静态分析
+                      </div>
+                    </div>
+                    <div style={{
+                      padding: '12px',
+                      borderRadius: '8px',
+                      backgroundColor: '#f5f5f5',
+                      borderLeft: '4px solid #9C27B0'
+                    }}>
+                      <div style={{ fontSize: '13px', fontWeight: '500' }}>文档生成智能体</div>
+                      <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+                        状态: 就绪
+                        <br />
+                        模型: 通用模型
+                        <br />
+                        工具: 文件读写
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ padding: '20px', color: '#86868b', fontSize: '13px', textAlign: 'center' }}>
+                  暂无数据
                 </div>
               )}
             </div>
