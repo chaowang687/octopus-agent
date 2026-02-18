@@ -4,6 +4,7 @@ import { llmService } from '../services/LLMService'
 import type { ToolContext } from './ToolRegistry'
 import * as path from 'path'
 import * as fs from 'fs'
+import { PATHS } from '../config/paths'
 import { ErrorHandler, ErrorCategory } from '../utils/ErrorHandler'
 
 export interface ExecutionResult {
@@ -36,8 +37,8 @@ export class Executor {
     }
     
     const possibleRoots = [
-      '/Users/wangchao/Desktop/本地化TRAE',
-      '/Users/wangchao/Desktop',
+      PATHS.PROJECT_ROOT,
+      PATHS.DESKTOP,
       process.cwd()
     ]
     

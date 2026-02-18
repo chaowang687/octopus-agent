@@ -641,12 +641,10 @@ export class BrowserService {
 
       win.webContents.on('did-finish-load', async () => {
         try {
-          const escapedScript = script.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-          
           const result = await win.webContents.executeJavaScript(`
             (function() {
               try {
-                const result = eval('${escapedScript}');
+                ${script};
                 return { success: true, result: String(result), message: 'Script executed successfully' };
               } catch (e) {
                 return { success: false, result: null, message: 'Script error: ' + e.message };

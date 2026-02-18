@@ -2,6 +2,7 @@ import { llmService, LLMMessage } from '../services/LLMService'
 import { toolRegistry } from './ToolRegistry'
 import * as os from 'os'
 import * as path from 'path'
+import { PATHS } from '../config/paths'
 
 // ============================================
 // 执行步骤状态枚举
@@ -83,7 +84,7 @@ export class Planner {
     
     // 获取工作目录（如果有的话）
     const taskDir = options?.taskDir || ''
-    const workspacePath = '/Users/wangchao/Desktop/本地化TRAE'
+    const workspacePath = PATHS.PROJECT_ROOT
     
     const workingDirInfo = taskDir 
       ? `\n- Working Directory (任务工作目录): ${taskDir}`
@@ -98,12 +99,12 @@ export class Planner {
       : `\n\nPATH EXAMPLES - ALWAYS use full absolute paths:
   - ${workspacePath}/src/main/index.ts
   - ${workspacePath}/src/renderer/index.html
-  - /Users/wangchao/Desktop/项目名/src/index.js
+  - ${PATHS.getProjectPath('项目名')}/src/index.js
   DO NOT use: main/index.ts, src/main.js, ./src, /path/to/..., or any relative paths.`
     
     const systemPrompt = `You are a task PLANNER. Your job is to create a detailed JSON plan with MULTIPLE steps.
 
-Environment: macOS, /Users/wangchao/Desktop
+Environment: macOS, ${PATHS.DESKTOP}
 
 Available tools: create_directory, create_file, write_file, execute_command, respond_to_user
 
@@ -115,10 +116,10 @@ CRITICAL REQUIREMENTS:
 
 Output format (MUST follow this structure):
 {"reasoning": "I will create the project step by step", "steps": [
-  {"id": "step_1", "tool": "create_directory", "parameters": {"path": "/Users/wangchao/Desktop/notepad"}, "description": "Create notepad project directory"},
-  {"id": "step_2", "tool": "write_file", "parameters": {"path": "/Users/wangchao/Desktop/notepad/index.html", "content": "<!DOCTYPE html>..."}, "description": "Create main HTML file"},
-  {"id": "step_3", "tool": "execute_command", "parameters": {"command": "cd /Users/wangchao/Desktop/notepad && npm init -y"}, "description": "Initialize npm project"},
-  {"id": "step_4", "tool": "execute_command", "parameters": {"command": "cd /Users/wangchao/Desktop/notepad && npm install"}, "description": "Install project dependencies"}
+  {"id": "step_1", "tool": "create_directory", "parameters": {"path": "${PATHS.getWorkspacePath('notepad')}"}, "description": "Create notepad project directory"},
+      {"id": "step_2", "tool": "write_file", "parameters": {"path": "${PATHS.getWorkspacePath('notepad')}/index.html", "content": "<!DOCTYPE html>..."}, "description": "Create main HTML file"},
+      {"id": "step_3", "tool": "execute_command", "parameters": {"command": "cd ${PATHS.getWorkspacePath('notepad')} && npm init -y"}, "description": "Initialize npm project"},
+      {"id": "step_4", "tool": "execute_command", "parameters": {"command": "cd ${PATHS.getWorkspacePath('notepad')} && npm install"}, "description": "Install project dependencies"}
 ]}
 
 IMPORTANT: Output ONLY valid JSON with at least 3 steps, no other text!`

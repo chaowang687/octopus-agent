@@ -10,6 +10,8 @@ import axios from 'axios'
 import { taskEngine } from './agent/TaskEngine'
 import { toolRegistry } from './agent/ToolRegistry'
 import { galleryService } from './services/GalleryService'
+import { safeCodeExecutionService } from './services/SafeCodeExecutionService'
+import * as commandUtils from './utils/commandUtils'
 
 const traeSandboxStoragePath = process.env.TRAE_SANDBOX_STORAGE_PATH
 if (traeSandboxStoragePath) {
@@ -411,7 +413,16 @@ ipcMain.handle('system:executeCommand', (_, command: string, args: string[]) => 
       ...process.env,
       PATH: `${process.env.PATH}:/usr/local/bin:/opt/homebrew/bin:${path.join(process.env.HOME || '', 'bin')}:${path.join(process.env.HOME || '', '.nvm/versions/node')}/current/bin`
     }
-    const result = execSync(`${command} ${args.join(' ')}`, { 
+    
+    // 安全构建命令
+    const safeCommand = commandUtils.buildSafeCommand(command, args)
+    
+    // 验证命令
+    if (!commandUtils.validateCommand(command)) {
+      return { success: false, error: `Command not allowed: ${command}` }
+    }
+    
+    const result = commandUtils.safeExecSync(safeCommand, {
       encoding: 'utf8',
       env: extendedEnv,
       cwd: process.env.HOME,
@@ -433,7 +444,17 @@ ipcMain.handle('system:executeComplexCommand', (_, command: string, options?: an
     }
     
     const execOptions = { ...defaultOptions, ...options, stdio: 'pipe' }
-    const result = execSync(command, execOptions)
+    
+    // 安全处理命令
+    const safeCommand = commandUtils.sanitizeCommand(command)
+    
+    // 验证命令
+    const cmdName = safeCommand.split(' ')[0].trim()
+    if (!commandUtils.validateCommand(cmdName)) {
+      return { success: false, error: `Command not allowed: ${cmdName}` }
+    }
+    
+    const result = commandUtils.safeExecSync(safeCommand, execOptions)
     return { success: true, output: result }
   } catch (error: any) {
     return { success: false, error: error.message }
@@ -3177,10 +3198,14 @@ ipcMain.handle('viz:processData', async (_, rawData: any, operation: string, opt
         if (options?.transformFunction) {
           processedData = rawData.map((item: any) => {
             try {
-              // 使用eval执行转换函数，注意安全风险
-              // 在实际应用中应该使用更安全的方式
-              const transformFn = new Function('item', options.transformFunction)
-              return transformFn(item)
+              // 使用安全的代码执行服务
+              const transformCode = `
+                (function(item) {
+                  ${options.transformFunction}
+                })(item)
+              `
+              const result = safeCodeExecutionService.executeCode(transformCode, 2000)
+              return result
             } catch (error) {
               return item
             }

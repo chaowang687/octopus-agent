@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ChatSidebar from '../components/ChatSidebar'
 import CreateGroupModal from '../components/CreateGroupModal'
+import ReasoningVisualizer from '../components/ReasoningVisualizer'
+import InterventionModal from '../components/InterventionModal'
 import { chatDataService, ChatSession, Agent } from '../services/ChatDataService'
 
 interface Message {
@@ -133,6 +135,13 @@ const Chat: React.FC = () => {
   })
   const [taskDir, setTaskDir] = useState<string>('')
   const currentTaskIdRef = useRef<string | null>(null)
+  
+  // === 新增：推理可视化状态 ===
+  const [reasoningSteps, setReasoningSteps] = useState<any[]>([])
+  const [showReasoningVisualizer, setShowReasoningVisualizer] = useState(false)
+  
+  // === 新增：干预审批弹窗状态 ===
+  const [interventionRequest, setInterventionRequest] = useState<any>(null)
   
   const [activeTab, setActiveTab] = useState<'progress' | 'files' | 'history'>('progress')
 
@@ -487,6 +496,8 @@ const Chat: React.FC = () => {
 
       // 处理多智能体消息 - 在聊天界面显示各智能体的发言
       if (evt.type === 'agent_message') {
+        console.log('[Chat] 收到 agent_message:', evt.agentName, 'content length:', evt.content?.length)
+        
         // 获取智能体头像 - 与ChatDataService中的agent一致
         const agentAvatarMap: Record<string, string> = {
           'agent-pm': 'https://api.dicebear.com/7.x/avataaars/svg?seed=PM',
@@ -495,21 +506,36 @@ const Chat: React.FC = () => {
           'agent-solo-coder': 'https://api.dicebear.com/7.x/avataaars/svg?seed=SoloCoder',
           'agent-test-generator': 'https://api.dicebear.com/7.x/avataaars/svg?seed=Test',
           'agent-code-reviewer': 'https://api.dicebear.com/7.x/avataaars/svg?seed=Review',
-          'system': 'https://api.dicebear.com/7.x/bottts/svg?seed=System'
+          'system': 'https://api.dicebear.com/7.x/bottts/svg?seed=System',
+          'document_generator': 'https://api.dicebear.com/7.x/avataaars/svg?seed=PM',
+          'ui_designer': 'https://api.dicebear.com/7.x/avataaars/svg?seed=UI',
+          'code_generator': 'https://api.dicebear.com/7.x/avataaars/svg?seed=Dev',
+          'test_generator': 'https://api.dicebear.com/7.x/avataaars/svg?seed=Test',
+          'code_reviewer': 'https://api.dicebear.com/7.x/avataaars/svg?seed=Review'
         }
         
         const agentId = evt.agentId || 'system'
         const avatar = agentAvatarMap[agentId] || 'https://api.dicebear.com/7.x/bottts/svg?seed=Agent'
         
+        // 获取智能体名称
+        const agentName = evt.agentName || '智能体'
+        
+        // 获取完整内容
+        const fullContent = evt.content || ''
+        
+        console.log('[Chat] agentName:', agentName, 'content:', fullContent.slice(0, 100))
+        
         setMessages(prev => [...prev, {
           id: `agent-${evt.timestamp}-${agentId}`,
           role: 'assistant',
-          content: `**${evt.agentName}** (${evt.role}):\n\n${evt.content}`,
+          content: `**${agentName}**${evt.role ? ` (${evt.role})` : ''}:\n\n${fullContent}`,
           timestamp: new Date(),
           status: 'completed'
         }])
         
-        const agentLog = `[${time}] ${evt.agentName}: ${evt.phase}`
+        // 显示内容预览到日志
+        const contentPreview = fullContent.length > 150 ? fullContent.slice(0, 150) + '...' : fullContent
+        const agentLog = `[${time}] ${agentName}: ${contentPreview}`
         setTaskLogs(prev => [...prev, agentLog])
         
         // 更新任务历史记录
@@ -709,6 +735,165 @@ const Chat: React.FC = () => {
           const errorLog = `[${time}] ❌ 失败: ${description || stepId} - ${evt.error || ''}`
           setTaskLogs(prev => [...prev, errorLog])
         }
+        return
+      }
+
+      // === 新增：推理步骤可视化 ===
+      if (evt.type === 'reasoning_step' && evt.reasoningStep) {
+        const step = evt.reasoningStep
+        
+        console.log('[Chat] 收到推理步骤:', step)
+        
+        // 收集推理步骤用于可视化组件
+        setReasoningSteps(prev => [...prev, step])
+        
+        // 如果有推理步骤，显示可视化组件（使用函数式更新）
+        setShowReasoningVisualizer(prev => {
+          if (!prev) {
+            console.log('[Chat] 显示推理可视化面板')
+            return true
+          }
+          return prev
+        })
+        
+        let stepIcon = ''
+        let stepLabel = ''
+        
+        switch (step.type) {
+          case 'think':
+            stepIcon = '💭'
+            stepLabel = '思考'
+            break
+          case 'act':
+            stepIcon = '🔧'
+            stepLabel = '执行'
+            break
+          case 'observe':
+            stepIcon = '👁️'
+            stepLabel = '观察'
+            break
+          case 'reflect':
+            stepIcon = '🔄'
+            stepLabel = '反思'
+            break
+          case 'final':
+            stepIcon = '✅'
+            stepLabel = '完成'
+            break
+          default:
+            stepIcon = '📝'
+            stepLabel = step.type
+        }
+        
+        const stepLog = `[${time}] ${stepIcon} ${stepLabel}: ${step.thought || step.action || step.observation || ''}`
+        setTaskLogs(prev => [...prev, stepLog])
+        
+        // 在聊天界面显示推理步骤
+        const reasoningMessage: Message = {
+          id: `reasoning-${evt.timestamp}-${step.id}`,
+          role: 'assistant',
+          content: `${stepIcon} **${stepLabel}**\n\n${step.thought || ''}\n\n${step.action ? `🔧 动作: ${step.action}` : ''}\n\n${step.observation ? `👁️ 观察: ${step.observation}` : ''}`,
+          timestamp: new Date(),
+          status: 'completed'
+        }
+        setMessages(prev => [...prev, reasoningMessage])
+        return
+      }
+
+      // === 新增：干预请求（审批弹窗）===
+      if (evt.type === 'intervention_request' && evt.intervention) {
+        const intervention = evt.intervention
+        const riskEmoji = intervention.riskLevel === 'critical' ? '🔴' : 
+                          intervention.riskLevel === 'high' ? '🟠' : 
+                          intervention.riskLevel === 'medium' ? '🟡' : '🟢'
+        
+        const interventionLog = `[${time}] ${riskEmoji} 需要审批: ${intervention.title}`
+        setTaskLogs(prev => [...prev, interventionLog])
+        
+        // 设置干预请求状态，显示审批弹窗
+        setInterventionRequest(intervention)
+        
+        // 在聊天界面显示干预请求
+        const interventionMessage: Message = {
+          id: `intervention-${evt.timestamp}`,
+          role: 'assistant',
+          content: `${riskEmoji} **需要审批**\n\n**${intervention.title}**\n\n${intervention.description}\n\n风险等级: ${intervention.riskLevel}\n\n请在弹窗中确认是否允许执行。`,
+          timestamp: new Date(),
+          status: 'completed'
+        }
+        setMessages(prev => [...prev, interventionMessage])
+        
+        // 可以在这里触发弹窗显示
+        console.log('[Chat] 收到干预请求:', intervention)
+        return
+      }
+
+      // === 新增：干预响应 ===
+      if (evt.type === 'intervention_approved' || evt.type === 'intervention_denied') {
+        const result = evt.type === 'intervention_approved' ? '✅ 已批准' : '❌ 已拒绝'
+        const responseLog = `[${time}] ${result}`
+        setTaskLogs(prev => [...prev, responseLog])
+        
+        const responseMessage: Message = {
+          id: `intervention-response-${evt.timestamp}`,
+          role: 'assistant',
+          content: evt.type === 'intervention_approved' 
+            ? '✅ **用户已批准** - 继续执行...'
+            : '❌ **用户已拒绝** - 停止执行',
+          timestamp: new Date(),
+          status: 'completed'
+        }
+        setMessages(prev => [...prev, responseMessage])
+        return
+      }
+
+      // === 新增：自我纠正 ===
+      if (evt.type === 'correction_attempt' || evt.type === 'self_correction') {
+        const strategy = evt.correctionStrategy || 'unknown'
+        const explanation = evt.correctionExplanation || ''
+        
+        let strategyIcon = '🔧'
+        let strategyLabel = strategy
+        
+        switch (strategy) {
+          case 'retry_same':
+            strategyIcon = '🔄'
+            strategyLabel = '重试（相同）'
+            break
+          case 'retry_with_modification':
+            strategyIcon = '🔧'
+            strategyLabel = '修改后重试'
+            break
+          case 'use_alternative_tool':
+            strategyIcon = '🔀'
+            strategyLabel = '使用替代工具'
+            break
+          case 'simplify_task':
+            strategyIcon = '📦'
+            strategyLabel = '简化任务'
+            break
+          case 'skip':
+            strategyIcon = '⏭️'
+            strategyLabel = '跳过'
+            break
+          case 'starting':
+            strategyIcon = '🚀'
+            strategyLabel = '开始自纠正'
+            break
+        }
+        
+        const correctionLog = `[${time}] ${strategyIcon} ${strategyLabel}: ${explanation}`
+        setTaskLogs(prev => [...prev, correctionLog])
+        
+        // 在聊天界面显示纠正过程
+        const correctionMessage: Message = {
+          id: `correction-${evt.timestamp}`,
+          role: 'assistant',
+          content: `${strategyIcon} **${strategyLabel}**\n\n${explanation}`,
+          timestamp: new Date(),
+          status: 'completed'
+        }
+        setMessages(prev => [...prev, correctionMessage])
         return
       }
     })
@@ -1725,6 +1910,80 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
           </div>
         )}
       </div>
+      
+      {/* === 新增：推理可视化组件 === */}
+      {showReasoningVisualizer && reasoningSteps.length > 0 && (
+        <div style={{
+          position: 'fixed',
+          bottom: '100px',
+          right: '20px',
+          width: '400px',
+          maxHeight: '500px',
+          backgroundColor: 'white',
+          borderRadius: '12px',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+          zIndex: 1000,
+          overflow: 'hidden'
+        }}>
+          <div style={{
+            padding: '12px 16px',
+            borderBottom: '1px solid #eee',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <span style={{ fontWeight: 600, fontSize: '14px' }}>推理过程</span>
+            <button
+              onClick={() => {
+                setShowReasoningVisualizer(false)
+                setReasoningSteps([])
+              }}
+              style={{
+                border: 'none',
+                background: 'none',
+                cursor: 'pointer',
+                fontSize: '18px',
+                color: '#666'
+              }}
+            >
+              ×
+            </button>
+          </div>
+          <div style={{ padding: '12px', maxHeight: '440px', overflow: 'auto' }}>
+            <ReasoningVisualizer steps={reasoningSteps} isActive={taskStatus === 'running'} />
+          </div>
+        </div>
+      )}
+      
+      {/* === 新增：干预审批弹窗 === */}
+      <InterventionModal
+        request={interventionRequest}
+        onApprove={async (requestId: string, response?: string) => {
+          console.log('[Chat] 批准干预请求:', requestId)
+          setInterventionRequest(null)
+          // 可以添加调用后端API来确认批准
+        }}
+        onDeny={async (requestId: string, reason?: string) => {
+          console.log('[Chat] 拒绝干预请求:', requestId, reason)
+          setInterventionRequest(null)
+          // 可以添加调用后端API来确认拒绝
+        }}
+        onModify={async (requestId: string, modifiedValue: any, response?: string) => {
+          console.log('[Chat] 修改干预请求:', requestId, modifiedValue)
+          setInterventionRequest(null)
+        }}
+      />
+      
+      {/* 创建群组弹窗 */}
+      {showCreateGroupModal && (
+        <CreateGroupModal
+          onClose={() => setShowCreateGroupModal(false)}
+          onCreated={() => {
+            setShowCreateGroupModal(false)
+            setRefreshKey(prev => prev + 1)
+          }}
+        />
+      )}
     </div>
   )
 }

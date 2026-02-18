@@ -10,6 +10,8 @@ import { galleryService } from '../services/GalleryService'
 
 import { getMainWindow } from '../index'
 import { registerOpenTool } from '../integration/OpenTool'
+import { safeCodeExecutionService } from '../services/SafeCodeExecutionService'
+import * as commandUtils from '../utils/commandUtils'
 
 registerOpenTool()
 
@@ -174,15 +176,24 @@ toolRegistry.register({
       // -r: recursive
       // -n: line number
       // -I: ignore binary
-      let cmd = `grep -r -n -I "${pattern}" "${searchPath}"`
-      if (include) {
-        cmd += ` --include="${include}"`
+      const safePattern = commandUtils.sanitizeCommand(pattern)
+      const safeSearchPath = commandUtils.sanitizeCommand(searchPath)
+      const safeInclude = include ? commandUtils.sanitizeCommand(include) : ''
+      
+      let cmd = `grep -r -n -I "${safePattern}" "${safeSearchPath}"`
+      if (safeInclude) {
+        cmd += ` --include="${safeInclude}"`
       }
       
       // Limit output
       cmd += ` | head -n 20`
       
-      const output = execSync(cmd, { encoding: 'utf8', stdio: 'pipe' })
+      // Validate command
+      if (!commandUtils.validateCommand('grep')) {
+        return { error: 'Command not allowed' }
+      }
+      
+      const output = commandUtils.safeExecSync(cmd)
       return { output: output || 'No matches found' }
     } catch (error: any) {
       // grep returns exit code 1 if no matches found, which execSync treats as error
@@ -269,7 +280,16 @@ toolRegistry.register({
         PATH: `${process.env.PATH}:/usr/local/bin:/opt/homebrew/bin:${path.join(process.env.HOME || '', 'bin')}:${path.join(process.env.HOME || '', '.nvm/versions/node')}/current/bin`
       }
 
-      const result = execSync(command, { 
+      // Sanitize and validate command
+      const safeCommand = commandUtils.sanitizeCommand(command)
+      
+      // Validate command
+      const cmdName = safeCommand.split(' ')[0].trim()
+      if (!commandUtils.validateCommand(cmdName)) {
+        return { error: `Command not allowed: ${cmdName}` }
+      }
+      
+      const result = commandUtils.safeExecSync(safeCommand, {
         encoding: 'utf8',
         cwd: cwd || process.cwd(),
         stdio: 'pipe',
@@ -1472,3 +1492,475 @@ toolRegistry.register({
     }
   }
 })
+
+// ============================================
+// 扩展工具生态系统 - Git版本控制工具
+// ============================================
+
+// Git状态查看
+toolRegistry.register({
+  name: 'git_status',
+  description: 'Show the working tree status of a Git repository',
+  parameters: [
+    { name: 'repoPath', type: 'string', description: 'Path to the Git repository (default: current directory)', required: false }
+  ],
+  handler: async (params: any) => {
+    try {
+      const repoPath = params?.repoPath || process.cwd()
+      const result = execSync('git status --porcelain', { 
+        cwd: repoPath, 
+        encoding: 'utf8',
+        timeout: 30000 
+      })
+      return { output: result || 'Working tree clean' }
+    } catch (error: any) {
+      return { error: error.message }
+    }
+  }
+})
+
+// Git日志查看
+toolRegistry.register({
+  name: 'git_log',
+  description: 'Show recent commit history',
+  parameters: [
+    { name: 'repoPath', type: 'string', description: 'Path to the Git repository', required: false },
+    { name: 'maxCount', type: 'number', description: 'Number of commits to show (default: 10)', required: false }
+  ],
+  handler: async (params: any) => {
+    try {
+      const repoPath = params?.repoPath || process.cwd()
+      const maxCount = params?.maxCount || 10
+      const result = execSync(`git log --oneline -${maxCount}`, { 
+        cwd: repoPath, 
+        encoding: 'utf8',
+        timeout: 30000 
+      })
+      return { output: result }
+    } catch (error: any) {
+      return { error: error.message }
+    }
+  }
+})
+
+// Git提交
+toolRegistry.register({
+  name: 'git_commit',
+  description: 'Create a new commit with the specified message',
+  parameters: [
+    { name: 'message', type: 'string', description: 'Commit message', required: true },
+    { name: 'repoPath', type: 'string', description: 'Path to the Git repository', required: false }
+  ],
+  handler: async (params: any) => {
+    try {
+      const message = params?.message
+      if (!message) return { error: 'Missing parameter: message' }
+      
+      const repoPath = params?.repoPath || process.cwd()
+      
+      // 先检查是否有暂存的更改
+      const status = execSync('git status --porcelain', { cwd: repoPath, encoding: 'utf8' })
+      if (!status.trim()) {
+        return { error: 'No changes to commit' }
+      }
+      
+      // 添加所有更改
+      execSync('git add -A', { cwd: repoPath, encoding: 'utf8' })
+      
+      // 创建提交
+      const result = execSync(`git commit -m "${message.replace(/"/g, '\\"')}"`, { 
+        cwd: repoPath, 
+        encoding: 'utf8',
+        timeout: 30000 
+      })
+      return { success: true, output: result || 'Commit created successfully' }
+    } catch (error: any) {
+      return { error: error.message }
+    }
+  }
+})
+
+// Git分支列表
+toolRegistry.register({
+  name: 'git_branch',
+  description: 'List all local and remote branches',
+  parameters: [
+    { name: 'repoPath', type: 'string', description: 'Path to the Git repository', required: false }
+  ],
+  handler: async (params: any) => {
+    try {
+      const repoPath = params?.repoPath || process.cwd()
+      const result = execSync('git branch -a', { 
+        cwd: repoPath, 
+        encoding: 'utf8',
+        timeout: 30000 
+      })
+      return { output: result }
+    } catch (error: any) {
+      return { error: error.message }
+    }
+  }
+})
+
+// Git差异查看
+toolRegistry.register({
+  name: 'git_diff',
+  description: 'Show changes between commits, commit and working tree, etc',
+  parameters: [
+    { name: 'target', type: 'string', description: 'Diff target: "staged", "HEAD", or commit hash', required: false },
+    { name: 'repoPath', type: 'string', description: 'Path to the Git repository', required: false }
+  ],
+  handler: async (params: any) => {
+    try {
+      const repoPath = params?.repoPath || process.cwd()
+      const target = params?.target || 'staged'
+      
+      let cmd = 'git diff'
+      if (target === 'staged') cmd = 'git diff --cached'
+      else if (target !== 'HEAD') cmd = `git diff HEAD ${target}`
+      
+      const result = execSync(cmd, { 
+        cwd: repoPath, 
+        encoding: 'utf8',
+        timeout: 30000 
+      })
+      return { output: result || 'No changes' }
+    } catch (error: any) {
+      return { error: error.message }
+    }
+  }
+})
+
+// ============================================
+// 扩展工具生态系统 - API测试工具
+// ============================================
+
+// HTTP请求工具
+toolRegistry.register({
+  name: 'http_request',
+  description: 'Make HTTP requests (GET, POST, PUT, DELETE, PATCH)',
+  parameters: [
+    { name: 'url', type: 'string', description: 'Request URL', required: true },
+    { name: 'method', type: 'string', description: 'HTTP method (GET, POST, PUT, DELETE, PATCH)', required: false },
+    { name: 'headers', type: 'object', description: 'Request headers as key-value pairs', required: false },
+    { name: 'body', type: 'string', description: 'Request body (JSON string or plain text)', required: false },
+    { name: 'timeout', type: 'number', description: 'Request timeout in milliseconds (default: 30000)', required: false }
+  ],
+  handler: async (params: any) => {
+    try {
+      const url = params?.url
+      if (!url) return { error: 'Missing parameter: url' }
+      
+      const method = params?.method || 'GET'
+      const headers = params?.headers || {}
+      const body = params?.body
+      const timeout = params?.timeout || 30000
+      
+      const axiosInstance = axios.create({
+        timeout,
+        validateStatus: () => true // 不抛出任何状态码错误
+      })
+      
+      const response = await axiosInstance({
+        url,
+        method: method.toUpperCase(),
+        headers,
+        data: body ? (() => { try { return JSON.parse(body) } catch { return body } })() : undefined
+      })
+      
+      return {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+        data: response.data
+      }
+    } catch (error: any) {
+      return { error: error.message }
+    }
+  }
+})
+
+// ============================================
+// 扩展工具生态系统 - 系统信息工具
+// ============================================
+
+// 获取系统信息
+toolRegistry.register({
+  name: 'system_info',
+  description: 'Get system information (CPU, memory, disk, OS)',
+  parameters: [],
+  handler: async () => {
+    try {
+      const [cpu, mem, disk, osInfo] = await Promise.all([
+        si.cpu(),
+        si.mem(),
+        si.fsSize(),
+        si.osInfo()
+      ])
+      
+      return {
+        cpu: {
+          manufacturer: cpu.manufacturer,
+          brand: cpu.brand,
+          cores: cpu.cores,
+          physicalCores: cpu.physicalCores,
+          speed: cpu.speed
+        },
+        memory: {
+          total: mem.total,
+          used: mem.used,
+          free: mem.free,
+          usedPercent: (mem.used / mem.total * 100).toFixed(2)
+        },
+        disk: disk.map(d => ({
+          fs: d.fs,
+          type: d.type,
+          size: d.size,
+          used: d.used,
+          available: d.available,
+          usePercent: d.use
+        })),
+        os: {
+          platform: osInfo.platform,
+          distro: osInfo.distro,
+          release: osInfo.release,
+          arch: osInfo.arch,
+          hostname: osInfo.hostname
+        }
+      }
+    } catch (error: any) {
+      return { error: error.message }
+    }
+  }
+})
+
+// 进程列表
+toolRegistry.register({
+  name: 'process_list',
+  description: 'List running processes',
+  parameters: [
+    { name: 'limit', type: 'number', description: 'Number of processes to return (default: 20)', required: false }
+  ],
+  handler: async (params: any) => {
+    try {
+      const limit = params?.limit || 20
+      const processes = await si.processes()
+      
+      // 按CPU使用率排序并限制数量
+      const sorted = processes.list
+        .sort((a, b) => b.cpu - a.cpu)
+        .slice(0, limit)
+        .map(p => ({
+          pid: p.pid,
+          name: p.name,
+          cpu: p.cpu.toFixed(2),
+          memory: p.mem.toFixed(2),
+          state: p.state
+        }))
+      
+      return { processes: sorted }
+    } catch (error: any) {
+      return { error: error.message }
+    }
+  }
+})
+
+// 杀掉进程
+toolRegistry.register({
+  name: 'kill_process',
+  description: 'Kill a process by PID',
+  parameters: [
+    { name: 'pid', type: 'number', description: 'Process ID to kill', required: true },
+    { name: 'force', type: 'boolean', description: 'Force kill (SIGKILL)', required: false }
+  ],
+  handler: async (params: any) => {
+    try {
+      const pid = params?.pid
+      if (!pid) return { error: 'Missing parameter: pid' }
+      
+      const force = params?.force || false
+      const signal = force ? 'SIGKILL' : 'SIGTERM'
+      
+      process.kill(pid, signal)
+      return { success: true, message: `Process ${pid} killed with signal ${signal}` }
+    } catch (error: any) {
+      return { error: error.message }
+    }
+  }
+})
+
+// ============================================
+// 扩展工具生态系统 - 剪贴板工具
+// ============================================
+
+// 读取剪贴板
+toolRegistry.register({
+  name: 'clipboard_read',
+  description: 'Read text from system clipboard',
+  parameters: [],
+  handler: async () => {
+    try {
+      const { clipboard } = require('electron')
+      const text = clipboard.readText()
+      return { text }
+    } catch (error: any) {
+      return { error: error.message }
+    }
+  }
+})
+
+// 写入剪贴板
+toolRegistry.register({
+  name: 'clipboard_write',
+  description: 'Write text to system clipboard',
+  parameters: [
+    { name: 'text', type: 'string', description: 'Text to write to clipboard', required: true }
+  ],
+  handler: async (params: any) => {
+    try {
+      const text = params?.text
+      if (!text) return { error: 'Missing parameter: text' }
+      
+      const { clipboard } = require('electron')
+      clipboard.writeText(text)
+      return { success: true, message: 'Text written to clipboard' }
+    } catch (error: any) {
+      return { error: error.message }
+    }
+  }
+})
+
+// ============================================
+// 扩展工具生态系统 - 搜索工具
+// ============================================
+
+// 全局搜索文件内容
+toolRegistry.register({
+  name: 'search_content',
+  description: 'Search for text in files (grep-like functionality)',
+  parameters: [
+    { name: 'pattern', type: 'string', description: 'Search pattern (regex supported)', required: true },
+    { name: 'path', type: 'string', description: 'Directory path to search in', required: false },
+    { name: 'filePattern', type: 'string', description: 'File pattern to match (e.g., "*.ts", "*.js")', required: false },
+    { name: 'ignoreCase', type: 'boolean', description: 'Case insensitive search', required: false },
+    { name: 'maxResults', type: 'number', description: 'Maximum number of results', required: false }
+  ],
+  handler: async (params: any) => {
+    try {
+      const pattern = params?.pattern
+      if (!pattern) return { error: 'Missing parameter: pattern' }
+      
+      const searchPath = params?.path || process.cwd()
+      const filePattern = params?.filePattern || '*'
+      const ignoreCase = params?.ignoreCase !== false
+      const maxResults = params?.maxResults || 100
+      
+      const { execSync } = require('child_process')
+      
+      let cmd = `grep -r -n ${ignoreCase ? '-i' : ''}`
+      if (filePattern !== '*') {
+        cmd += ` --include="${filePattern}"`
+      }
+      cmd += ` -m ${maxResults} "${pattern.replace(/"/g, '\\"')}" "${searchPath}"`
+      
+      const result = execSync(cmd, { encoding: 'utf8', timeout: 60000 })
+      
+      const lines = result.split('\n').filter(l => l.trim())
+      const matches = lines.slice(0, maxResults).map(line => {
+        const colonIndex = line.indexOf(':')
+        if (colonIndex === -1) return { line }
+        return {
+          file: line.substring(0, colonIndex),
+          content: line.substring(colonIndex + 1)
+        }
+      })
+      
+      return { matches, total: matches.length }
+    } catch (error: any) {
+      if (error.status === 1) return { matches: [], total: 0 } // grep没找到匹配
+      return { error: error.message }
+    }
+  }
+})
+
+// ============================================
+// 扩展工具生态系统 - 代码执行工具
+// ============================================
+
+// 执行Node.js代码
+toolRegistry.register({
+  name: 'execute_node',
+  description: 'Execute Node.js code and return the result',
+  parameters: [
+    { name: 'code', type: 'string', description: 'Node.js code to execute', required: true }
+  ],
+  handler: async (params: any, ctx) => {
+    try {
+      const code = params?.code
+      if (!code) return { error: 'Missing parameter: code' }
+      
+      // 捕获console输出
+      const logs: string[] = []
+      const originalConsole = { ...console }
+      console.log = (...args) => logs.push(args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '))
+      console.error = (...args) => logs.push('[ERROR] ' + args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '))
+      
+      let result
+      try {
+        result = await safeCodeExecutionService.executeCode(code)
+      } finally {
+        Object.assign(console, originalConsole)
+      }
+      
+      return {
+        result: typeof result === 'undefined' ? undefined : (typeof result === 'object' ? JSON.stringify(result) : result),
+        logs: logs.join('\n')
+      }
+    } catch (error: any) {
+      return { error: error.message }
+    }
+  }
+})
+
+// 执行Python代码（如果可用）
+toolRegistry.register({
+  name: 'execute_python',
+  description: 'Execute Python code (requires Python to be installed)',
+  parameters: [
+    { name: 'code', type: 'string', description: 'Python code to execute', required: true }
+  ],
+  handler: async (params: any) => {
+    try {
+      const code = params?.code
+      if (!code) return { error: 'Missing parameter: code' }
+      
+      const { execSync } = require('child_process')
+      
+      // 检查python是否可用
+      try {
+        execSync('python3 --version', { encoding: 'utf8', timeout: 5000 })
+      } catch {
+        return { error: 'Python is not installed or not in PATH' }
+      }
+      
+      // 创建临时文件执行
+      const fs = require('fs')
+      const path = require('path')
+      const os = require('os')
+      
+      const tempFile = path.join(os.tmpdir(), `trae_exec_${Date.now()}.py`)
+      fs.writeFileSync(tempFile, code)
+      
+      try {
+        const result = execSync(`python3 "${tempFile}"`, { encoding: 'utf8', timeout: 60000 })
+        return { output: result }
+      } finally {
+        fs.unlinkSync(tempFile)
+      }
+    } catch (error: any) {
+      return { error: error.message }
+    }
+  }
+})
+
+console.log('[ToolRegistry] Extended tools loaded: Git, HTTP, System, Clipboard, Search, Code Execution')

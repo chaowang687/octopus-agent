@@ -312,8 +312,10 @@ Score:
     suggestions: string[]
   } {
     // 提取代码块
-    const codeMatch = response.match(new RegExp(`\\`\\`\\`${language}[\\s\\S]*?\\`\\`\\``, 'g'))
-    let code = codeMatch ? codeMatch[0].replace(new RegExp(`\\`\\`\\`${language}|\\`\\`\\``, 'g'), '').trim() : ''
+    const codeBlockRegex = new RegExp(`\`\`\`${language}[\\s\\S]*?\`\`\``, 'g')
+    const codeMatch = response.match(codeBlockRegex)
+    const codeReplaceRegex = new RegExp(`\`\`\`${language}|\`\`\``, 'g')
+    let code = codeMatch ? codeMatch[0].replace(codeReplaceRegex, '').trim() : ''
 
     // 提取解释
     const explanationMatch = response.match(/Explanation:\s*([\s\S]*?)(?=Suggestions:|$)/)

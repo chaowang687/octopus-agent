@@ -13,6 +13,17 @@ export interface LLMMessage {
   content: string
 }
 
+export interface MultimodalContent {
+  type: 'input_text' | 'input_image'
+  text?: string
+  image_url?: string
+}
+
+export interface LLMMultimodalMessage {
+  role: 'system' | 'user' | 'assistant'
+  content: MultimodalContent[]
+}
+
 export interface LLMClientBase {
   id: string
   provider: 'openai' | 'deepseek' | 'claude' | 'minimax' | 'doubao'
@@ -32,6 +43,7 @@ export class LLMService {
     'deepseek-chat': 'deepseek', 'deepseek-coder': 'deepseek',
     'abab6.5s-chat': 'minimax',
     'doubao-pro-32k': 'doubao', 'doubao-pro-128k': 'doubao',
+    'doubao-seed-2-0-pro-260215': 'doubao',
     'doubao-seed-2-0-code-preview-260215': 'doubao'
   }
 
@@ -158,6 +170,28 @@ export class LLMService {
         return { success: false, error: 'Task cancelled' }
       }
       return { success: false, error: msg }
+    }
+  }
+
+  // 多模态聊天方法 - 支持图像输入
+  async chatMultimodal(model: string, messages: LLMMultimodalMessage[], options: any = {}): Promise<LLMResponse> {
+    const apiKey = this.getApiKey(model)
+    
+    if (!apiKey) {
+      return { success: false, error: `请先配置 ${model} 的 API Key` }
+    }
+
+    try {
+      const provider = this.modelToProvider[model] || model
+      
+      if (provider === 'doubao' || model.startsWith('doubao')) {
+        return await this.callDoubaoMultimodal(apiKey, messages, options)
+      } else {
+        return { success: false, error: `多模态暂不支持模型: ${model}` }
+      }
+    } catch (error: any) {
+      console.error(`多模态LLM调用失败 for ${model}:`, error)
+      return { success: false, error: error?.message || String(error) }
     }
   }
 
@@ -357,6 +391,33 @@ export class LLMService {
     if (!response.ok) {
       const errorText = await response.text().catch(() => '')
       throw new Error(`Doubao API error: ${response.status} ${response.statusText} - ${errorText.slice(0, 200)}`)
+    }
+
+    const data = await response.json()
+    return { success: true, content: data.choices?.[0]?.message?.content || '' }
+  }
+
+  // 豆包多模态模型 API - 支持图像输入
+  private async callDoubaoMultimodal(apiKey: string, messages: LLMMultimodalMessage[], options: any): Promise<LLMResponse> {
+    // 使用豆包多模态API端点
+    const response = await this.fetchWithTimeout('https://ark.cn-beijing.volces.com/api/v3/chat/completions', {
+      method: 'POST',
+      signal: options?.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: options.model || 'doubao-seed-2-0-pro-260215',
+        messages: messages,
+        max_tokens: options?.max_tokens ?? 1000,
+        temperature: options?.temperature ?? 0.7
+      })
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '')
+      throw new Error(`Doubao Multimodal API error: ${response.status} ${response.statusText} - ${errorText.slice(0, 200)}`)
     }
 
     const data = await response.json()

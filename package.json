@@ -79,7 +79,8 @@
     "redux": "^4.2.0",
     "redux-thunk": "^2.4.0",
     "systeminformation": "^5.20.0",
-    "uuid": "^9.0.0"
+    "uuid": "^9.0.0",
+    "vm2": "^3.10.5"
   },
   "devDependencies": {
     "@electron/rebuild": "^3.0.0",

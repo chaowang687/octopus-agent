@@ -410,16 +410,16 @@ export const ForceGraph:React.FC<ForceGraphProps> = ({
       })
 
       // 中心力
-      initializedNodes.forEach(node => {
+      initializedNodes.forEach((node: any) => {
         if (node.fx === null) {
           const dx = dimensions.width / 2 - (node.x || 0)
           const dy = dimensions.height / 2 - (node.y || 0)
-          (node as any).vx = ((node as any).vx || 0) + dx * 0.01
+          node.vx = (node.vx || 0) + dx * 0.01
         }
         if (node.fy === null) {
           const dx = dimensions.width / 2 - (node.x || 0)
           const dy = dimensions.height / 2 - (node.y || 0)
-          (node as any).vy = ((node as any).vy || 0) + dy * 0.01
+          node.vy = (node.vy || 0) + dy * 0.01
         }
       })
 

@@ -12,6 +12,8 @@ import Chat from './pages/Chat'
 import Gallery from './pages/Gallery'
 import SoloCoder from './pages/SoloCoder'
 import ChatWorkflow from './pages/ChatWorkflow'
+import Memory from './pages/Memory'
+import Multimodal from './pages/Multimodal'
 
 // 全局浏览器事件监听组件
 const GlobalBrowserHandler: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -102,6 +104,8 @@ function App() {
                 <Route path="/gallery" element={<Gallery />} />
                 <Route path="/solocoder" element={<SoloCoder />} />
                 <Route path="/chat-workflow" element={<ChatWorkflow />} />
+                <Route path="/memory" element={<Memory />} />
+                <Route path="/multimodal" element={<Multimodal />} />
                 <Route path="*" element={<Navigate to="/" />} />
               </Routes>
             </div>

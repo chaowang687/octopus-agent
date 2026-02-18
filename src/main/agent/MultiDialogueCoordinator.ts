@@ -132,7 +132,7 @@ export class MultiDialogueCoordinator extends EventEmitter {
 - 只有经过迭代修复，确认质量问题减少后，才能最终交付
 - 交付时必须确保核心功能可用
 
-重要：你需要为开发工程师创建项目工作目录。项目应该创建在 Desktop 目录下，例如：/Users/wangchao/Desktop/项目名
+重要：你需要为开发工程师创建项目工作目录。项目应该创建在 Desktop 目录下，例如：${PATHS.DESKTOP}/项目名
 
 当你完成分析后，明确告诉用户"需求分析完成"。`
     }],
@@ -173,7 +173,7 @@ export class MultiDialogueCoordinator extends EventEmitter {
 - 核心代码逻辑
 - 需要的Shell命令（安装依赖、启动项目等）
 
-项目将创建在: /Users/wangchao/Desktop/项目名 目录下
+项目将创建在: ${PATHS.DESKTOP}/项目名 目录下
 
 当收到PM的新需求时（来自测试/审查问题），你需要：
 - 分析需要修复的问题
@@ -341,6 +341,18 @@ export class MultiDialogueCoordinator extends EventEmitter {
     const pmResult = await this.executeAgent('pm', input)
     this.iterationRounds[this.currentRound - 1].pmAnalysis = pmResult.output
     
+    console.log('[MultiDialogue] PM result:', pmResult.success, 'output length:', pmResult.output?.length)
+    
+    // 发送PM的详细分析结果到前端
+    onMessage('agent_message', {
+      agentId: 'pm',
+      agentName: '项目经理 (PM)',
+      role: '需求分析、项目规划',
+      content: pmResult.output,
+      phase: 'pm_analysis',
+      round: this.currentRound
+    })
+    
     // 更新子任务状态
     pmSubTasks.forEach(t => t.status = 'completed')
     pmSubTasks.forEach(t => t.progress = 100)
@@ -373,6 +385,16 @@ export class MultiDialogueCoordinator extends EventEmitter {
     
     const uiResult = await this.executeAgent('ui', pmResult.output)
     this.iterationRounds[this.currentRound - 1].uiOutput = uiResult.output
+    
+    // 发送UI的详细设计结果到前端
+    onMessage('agent_message', {
+      agentId: 'ui',
+      agentName: 'UI设计师',
+      role: '界面设计、用户体验',
+      content: uiResult.output,
+      phase: 'ui_design',
+      round: this.currentRound
+    })
     
     uiSubTasks.forEach(t => t.status = 'completed')
     uiSubTasks.forEach(t => t.progress = 100)
@@ -409,6 +431,16 @@ export class MultiDialogueCoordinator extends EventEmitter {
     if (!devPlanningResult.success) {
       return { completed: false, delivered: false, currentRound: this.currentRound, summary: '开发规划失败' }
     }
+    
+    // 发送开发工程师的详细方案到前端
+    onMessage('agent_message', {
+      agentId: 'dev',
+      agentName: '全栈开发工程师',
+      role: '代码开发、系统架构',
+      content: devPlanningResult.output,
+      phase: 'dev_planning',
+      round: this.currentRound
+    })
     
     onMessage('progress', { 
       phase: 'dev', 
@@ -536,6 +568,17 @@ export class MultiDialogueCoordinator extends EventEmitter {
     })
     
     const testResult = await this.executeAgent('test', devExecutionOutput)
+    
+    // 发送测试工程师的详细测试报告到前端
+    onMessage('agent_message', {
+      agentId: 'test',
+      agentName: '测试工程师',
+      role: '测试用例、测试执行',
+      content: testResult.output,
+      phase: 'testing',
+      round: this.currentRound
+    })
+    
     let testPassed = false
     let testSeverity = 'minor'
     
@@ -575,6 +618,17 @@ export class MultiDialogueCoordinator extends EventEmitter {
     })
     
     const reviewResult = await this.executeAgent('review', devExecutionOutput)
+    
+    // 发送代码审查员的详细审查报告到前端
+    onMessage('agent_message', {
+      agentId: 'review',
+      agentName: '代码审查员',
+      role: '代码质量、安全分析',
+      content: reviewResult.output,
+      phase: 'code_review',
+      round: this.currentRound
+    })
+    
     let reviewPassed = false
     
     if (reviewResult.success) {
@@ -791,6 +845,8 @@ ${reviewResult}
         temperature: 0.7,
         max_tokens: 8000
       })
+
+      console.log('[MultiDialogue] executeAgent', agentId, 'response success:', response.success, 'content length:', response.content?.length)
 
       if (!response.success || !response.content) {
         throw new Error(response.error || '调用失败')
