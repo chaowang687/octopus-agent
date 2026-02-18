@@ -8,8 +8,10 @@ import { toolRegistry } from './ToolRegistry'
 import { browserService } from '../services/BrowserService'
 import { galleryService } from '../services/GalleryService'
 
-// 导入主窗口获取函数
 import { getMainWindow } from '../index'
+import { registerOpenTool } from '../integration/OpenTool'
+
+registerOpenTool()
 
 // 辅助函数：获取主窗口
 function getMainWin(): BrowserWindow | null {
@@ -180,7 +182,7 @@ toolRegistry.register({
       // Limit output
       cmd += ` | head -n 20`
       
-      const output = execSync(cmd, { encoding: 'utf8' })
+      const output = execSync(cmd, { encoding: 'utf8', stdio: 'pipe' })
       return { output: output || 'No matches found' }
     } catch (error: any) {
       // grep returns exit code 1 if no matches found, which execSync treats as error
@@ -235,21 +237,56 @@ toolRegistry.register({
   description: 'Execute a shell command',
   parameters: [
     { name: 'command', type: 'string', description: 'Command to execute', required: true },
-    { name: 'cwd', type: 'string', description: 'Working directory', required: false }
+    { name: 'cwd', type: 'string', description: 'Working directory', required: false },
+    { name: 'timeout', type: 'number', description: 'Timeout in milliseconds (default: 300000 for npm install, 60000 for others)', required: false }
   ],
-  handler: async (params: any) => {
+  handler: async (params: any, ctx) => {
     try {
       const command = params?.command
       const cwd = params?.cwd
+      const timeout = params?.timeout
       
       if (!command) return { error: 'Missing parameter: command' }
 
+      // 检查取消信号
+      if (ctx?.signal?.aborted) {
+        return { error: 'Command cancelled by user' }
+      }
+
+      // 根据命令类型设置默认超时时间
+      let defaultTimeout = 60000 // 默认60秒
+      if (command.includes('npm install') || command.includes('npm ci') || command.includes('yarn install') || command.includes('pnpm install')) {
+        defaultTimeout = 300000 // npm install 5分钟
+      } else if (command.includes('npm run build') || command.includes('npm build') || command.includes('npm run dev')) {
+        defaultTimeout = 180000 // 构建命令 3分钟
+      }
+
+      const finalTimeout = timeout || defaultTimeout
+
+      // 扩展PATH环境变量，添加常见路径
+      const extendedEnv = {
+        ...process.env,
+        PATH: `${process.env.PATH}:/usr/local/bin:/opt/homebrew/bin:${path.join(process.env.HOME || '', 'bin')}:${path.join(process.env.HOME || '', '.nvm/versions/node')}/current/bin`
+      }
+
       const result = execSync(command, { 
         encoding: 'utf8',
-        cwd: cwd || process.cwd()
+        cwd: cwd || process.cwd(),
+        stdio: 'pipe',
+        timeout: finalTimeout,
+        maxBuffer: 1024 * 1024 * 10, // 10MB缓冲区
+        env: extendedEnv
       })
       return { output: result }
     } catch (error: any) {
+      // 处理超时错误
+      if (error.killed && error.signal === 'SIGTERM') {
+        return { error: `Command timed out after ${params?.timeout || 'default'}ms. The command may still be running in the background.` }
+      }
+      // 处理取消信号
+      if (ctx?.signal?.aborted) {
+        return { error: 'Command cancelled by user' }
+      }
       return { error: error.message }
     }
   }
@@ -578,7 +615,7 @@ toolRegistry.register({
       if (!fs.existsSync(projectPath)) fs.mkdirSync(projectPath, { recursive: true })
       
       if (type === 'npm') {
-        execSync('npm init -y', { cwd: projectPath })
+        execSync('npm init -y', { cwd: projectPath, stdio: 'pipe' })
         return { success: true, message: 'NPM project initialized' }
       }
       return { error: 'Unsupported project type' }
@@ -664,7 +701,7 @@ toolRegistry.register({
       const cwd = params?.cwd
       if (!cwd) return { error: 'Missing parameter: cwd' }
       
-      const output = execSync('git status', { cwd, encoding: 'utf8' })
+      const output = execSync('git status', { cwd, encoding: 'utf8', stdio: 'pipe' })
       return { output }
     } catch (error: any) {
       return { error: error.message }
@@ -683,7 +720,7 @@ toolRegistry.register({
       const cwd = params?.cwd
       if (!cwd) return { error: 'Missing parameter: cwd' }
       
-      execSync('git init', { cwd })
+      execSync('git init', { cwd, stdio: 'pipe' })
       return { success: true }
     } catch (error: any) {
       return { error: error.message }
@@ -706,7 +743,7 @@ toolRegistry.register({
       if (!files) return { error: 'Missing parameter: files' }
       if (!cwd) return { error: 'Missing parameter: cwd' }
       
-      execSync(`git add ${files}`, { cwd })
+      execSync(`git add ${files}`, { cwd, stdio: 'pipe' })
       return { success: true }
     } catch (error: any) {
       return { error: error.message }
@@ -729,7 +766,7 @@ toolRegistry.register({
       if (!message) return { error: 'Missing parameter: message' }
       if (!cwd) return { error: 'Missing parameter: cwd' }
 
-      execSync(`git commit -m "${message}"`, { cwd })
+      execSync(`git commit -m "${message}"`, { cwd, stdio: 'pipe' })
       return { success: true }
     } catch (error: any) {
       return { error: error.message }

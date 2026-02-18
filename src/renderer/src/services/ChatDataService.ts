@@ -236,6 +236,11 @@ export class ChatDataService {
     }
   }
 
+  deleteSession(id: string) {
+    this.sessions = this.sessions.filter(s => s.id !== id)
+    this.saveSessions()
+  }
+
   // Message Handling (Basic persistence per session)
   saveMessages(sessionId: string, messages: any[]) {
     const session = this.getSession(sessionId)

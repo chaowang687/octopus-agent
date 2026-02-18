@@ -26,8 +26,6 @@ type ChatCompletionMessage = {
 
 export class LLMService {
   private apiKeysPath: string
-
-  // 模型ID到provider的映射
   private modelToProvider: Record<string, string> = {
     'gpt-4o': 'openai', 'gpt-4o-mini': 'openai', 'gpt-3.5-turbo': 'openai',
     'claude-3-opus': 'claude', 'claude-3-sonnet': 'claude', 'claude-3-haiku': 'claude',
@@ -45,11 +43,9 @@ export class LLMService {
     try {
       if (fs.existsSync(this.apiKeysPath)) {
         const apiKeys = JSON.parse(fs.readFileSync(this.apiKeysPath, 'utf8'))
-        // 优先使用模型名查找，其次使用provider映射
         if (apiKeys[model]) {
           return apiKeys[model]
         }
-        // 尝试通过provider映射获取
         const provider = this.modelToProvider[model]
         if (provider && apiKeys[provider]) {
           return apiKeys[provider]
@@ -351,7 +347,7 @@ export class LLMService {
         'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: options.model || 'doubao-seed-2-0-code-preview-260215',
+        model: options.model || 'deepseek-coder',
         messages: messages,
         max_tokens: options?.max_tokens ?? 1000,
         temperature: options?.temperature ?? 0.7

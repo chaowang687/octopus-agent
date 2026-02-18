@@ -4,6 +4,7 @@ import { llmService } from '../services/LLMService'
 import type { ToolContext } from './ToolRegistry'
 import * as path from 'path'
 import * as fs from 'fs'
+import { ErrorHandler, ErrorCategory } from '../utils/ErrorHandler'
 
 export interface ExecutionResult {
   success: boolean
@@ -27,23 +28,19 @@ export interface ExecutionProgressEvent {
 }
 
 export class Executor {
-  // 辅助函数：修正相对路径为绝对路径
   private fixPath(filePath: string, taskDir?: string): string {
     if (!filePath) return filePath
     
-    // 如果已经是绝对路径，直接返回
     if (path.isAbsolute(filePath)) {
       return filePath
     }
     
-    // 定义可能的根目录
     const possibleRoots = [
       '/Users/wangchao/Desktop/本地化TRAE',
       '/Users/wangchao/Desktop',
       process.cwd()
     ]
     
-    // 如果有taskDir，优先使用
     if (taskDir) {
       const fullPath = path.join(taskDir, filePath)
       if (fs.existsSync(fullPath)) {
@@ -51,7 +48,6 @@ export class Executor {
       }
     }
     
-    // 尝试在可能的根目录下查找
     for (const root of possibleRoots) {
       const fullPath = path.join(root, filePath)
       if (fs.existsSync(fullPath)) {
@@ -144,7 +140,18 @@ export class Executor {
       try {
         const result = await tool.handler(currentParams, ctx)
         if (result.error) {
-          throw new Error(result.error)
+          const appError = ErrorHandler.createError(
+            result.error || `Tool ${step.tool} execution failed`,
+            ErrorCategory.TOOL_EXECUTION,
+            ErrorHandler.determineSeverity({ message: result.error || 'Tool execution failed' }),
+            {
+              component: 'Executor',
+              operation: `execute_${step.tool}`,
+              stepId: step.id,
+              tool: step.tool
+            }
+          )
+          throw appError
         }
         stepResults[step.id] = result
         success = true
@@ -172,19 +179,81 @@ export class Executor {
           resultSummary
         })
       } catch (error: any) {
-        errorMessage = error.message
-        console.warn(`Step ${step.id} failed: ${errorMessage}. Attempting auto-correction...`)
-        onProgress?.({
-          type: 'step_error',
+        const appError = ErrorHandler.handleError(error, {
+          component: 'Executor',
+          operation: `execute_${step.tool}`,
           stepId: step.id,
-          tool: step.tool,
-          description: step.description,
-          error: errorMessage,
-          durationMs: Date.now() - startedAt,
-          retryCount: 0,
-          maxRetries,
-          final: false
+          tool: step.tool
         })
+        errorMessage = appError.message
+        console.warn(`Step ${step.id} failed: ${errorMessage}. Attempting auto-correction...`)
+        
+        // 检查是否是超时错误，如果是，对于某些命令可能需要增加超时时间
+        const isTimeoutError = errorMessage.includes('timed out') || errorMessage.includes('timeout')
+        const isLongRunningCommand = step.tool === 'execute_command' && 
+          (currentParams.command?.includes('npm install') || 
+           currentParams.command?.includes('npm run build') ||
+           currentParams.command?.includes('yarn install'))
+        
+        // 对于长时间运行的命令超时，增加超时时间并重试，不使用LLM修正
+        if (isTimeoutError && isLongRunningCommand) {
+          console.log(`Detected timeout for long-running command, increasing timeout...`)
+          const increasedTimeout = 600000 // 增加到10分钟
+          currentParams.timeout = increasedTimeout
+          try {
+            console.log(`Retrying step ${step.id} with increased timeout: ${increasedTimeout}ms`)
+            const retryStartedAt = Date.now()
+            const result = await tool.handler(currentParams, ctx)
+            if (result.error) {
+              throw new Error(result.error || `Tool ${step.tool} execution failed with increased timeout`)
+            }
+            stepResults[step.id] = result
+            success = true
+            console.log(`Step ${step.id} completed successfully with increased timeout`)
+            let resultSummary: string | undefined
+            resultSummary =
+              typeof result.output === 'string' ? result.output.slice(0, 200)
+              : typeof result.path === 'string' ? result.path
+              : undefined
+            onProgress?.({
+              type: 'step_success',
+              stepId: step.id,
+              tool: step.tool,
+              description: step.description,
+              parameters: currentParams,
+              durationMs: Date.now() - retryStartedAt,
+              artifacts: Array.isArray(result.artifacts) ? result.artifacts : undefined,
+              resultSummary
+            })
+          } catch (retryError: any) {
+            errorMessage = retryError.message || `Unknown error executing ${step.tool} with increased timeout`
+            console.warn(`Step ${step.id} failed even with increased timeout: ${errorMessage}`)
+            onProgress?.({
+              type: 'step_error',
+              stepId: step.id,
+              tool: step.tool,
+              description: step.description,
+              error: errorMessage,
+              durationMs: Date.now() - startedAt,
+              retryCount: 0,
+              maxRetries,
+              final: false
+            })
+          }
+        } else {
+          // 其他错误，使用LLM修正
+          onProgress?.({
+            type: 'step_error',
+            stepId: step.id,
+            tool: step.tool,
+            description: step.description,
+            error: errorMessage,
+            durationMs: Date.now() - startedAt,
+            retryCount: 0,
+            maxRetries,
+            final: false
+          })
+        }
       }
 
       // Retry loop with LLM correction
@@ -220,7 +289,7 @@ export class Executor {
             const retryStartedAt = Date.now()
             const result = await tool.handler(fixedParams, ctx)
             if (result.error) {
-              throw new Error(result.error)
+              throw new Error(result.error || `Tool ${step.tool} execution failed after retry`)
             }
             stepResults[step.id] = result
             success = true
@@ -249,7 +318,7 @@ export class Executor {
             })
             break
           } catch (error: any) {
-            errorMessage = error.message
+            errorMessage = error.message || `Unknown error executing ${step.tool} after retry`
             currentParams = fixedParams // Use the fixed params as the base for next correction
             retryCount++
             onProgress?.({

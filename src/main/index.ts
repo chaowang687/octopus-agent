@@ -250,6 +250,85 @@ app.whenReady().then(() => {
     console.error('❌ 注册chat:sendMessage处理函数失败:', error)
   }
 
+  // 注册 task:execute 处理器 - 用于复杂开发任务（调用 Planner + Executor 执行工具）
+  try {
+    ipcMain.handle('task:execute', async (_, instruction: string, options?: { agentId?: string; sessionId?: string; system?: string; complexity?: string; taskDir?: string }) => {
+      try {
+        console.log(`[task:execute] 收到任务: ${instruction.slice(0, 50)}...`)
+        
+        // 强制使用 System2 和中等复杂度 - 让认知引擎决定具体处理方式
+        const targetSystem = 'system2'
+        const complexity = 'medium'
+        
+        console.log(`[task:execute] 强制使用 System2 + 复杂度=medium`)
+        
+        // 直接调用 TaskEngine 执行任务
+        const result = await taskEngine.executeTask(instruction, 'deepseek-coder', {
+          ...options,
+          system: targetSystem,
+          complexity
+        })
+        
+        console.log(`[task:execute] 执行完成: success=${result.success}`)
+        
+        // 构造返回给前端的格式
+        let responseContent = ''
+        
+        if (result.success) {
+          // 如果有执行步骤，说明执行了任务
+          if (result.result && Object.keys(result.result).length > 0) {
+            for (const [stepId, stepResult] of Object.entries(result.result)) {
+              const stepPlan = result.plan?.steps.find((s: any) => s.id === stepId)
+              if (stepPlan?.tool === 'respond_to_user' && (stepResult as any).message) {
+                responseContent = String((stepResult as any).message)
+                break
+              }
+            }
+
+            if (!responseContent) {
+              responseContent = `任务已执行完成。\n\n**执行结果：**\n`
+              for (const [stepId, stepResult] of Object.entries(result.result)) {
+                const stepPlan = result.plan?.steps.find((s: any) => s.id === stepId)
+                const description = stepPlan ? stepPlan.description : stepId
+                
+                if ((stepResult as any).message) {
+                  responseContent += `- ${description}: ${(stepResult as any).message}\n`
+                } else if ((stepResult as any).output) {
+                  responseContent += `- ${description}: \n\`\`\`\n${(stepResult as any).output.trim()}\n\`\`\`\n`
+                } else {
+                  responseContent += `- ${description}: 完成\n`
+                }
+              }
+            }
+          } else {
+            // 如果没有执行步骤，可能是纯对话
+            responseContent = result.plan?.reasoning || '任务已完成'
+             
+            if (result.result) {
+              for (const res of Object.values(result.result)) {
+                if ((res as any).message) {
+                  responseContent = (res as any).message
+                }
+              }
+            }
+          }
+        } else {
+          responseContent = `任务执行遇到问题：${result.error}`
+        }
+
+        return { success: true, content: responseContent, result }
+
+      } catch (error: any) {
+        console.error('task:execute 失败:', error)
+        return { success: false, error: error.message }
+      }
+    })
+    
+    console.log('✅ task:execute 处理函数已注册')
+  } catch (error: any) {
+    console.error('❌ 注册 task:execute 处理函数失败:', error)
+  }
+
   ipcMain.handle('chat:cancel', () => {
     const cancelled = taskEngine.cancelCurrentTask()
     return { success: true, cancelled }
@@ -274,6 +353,7 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
   createWindow()
+  
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
@@ -296,7 +376,7 @@ ipcMain.handle('system:captureScreen', async () => {
   try {
     const tempPath = path.join(app.getPath('temp'), `screenshot_${Date.now()}.png`)
     // macOS screencapture -i 交互式截图
-    execSync(`screencapture -i "${tempPath}"`)
+    execSync(`screencapture -i "${tempPath}"`, { stdio: 'pipe' })
     
     if (fs.existsSync(tempPath)) {
       const imageBuffer = fs.readFileSync(tempPath)
@@ -334,7 +414,8 @@ ipcMain.handle('system:executeCommand', (_, command: string, args: string[]) => 
     const result = execSync(`${command} ${args.join(' ')}`, { 
       encoding: 'utf8',
       env: extendedEnv,
-      cwd: process.env.HOME
+      cwd: process.env.HOME,
+      stdio: 'pipe'
     })
     return { success: true, output: result }
   } catch (error: any) {
@@ -351,7 +432,7 @@ ipcMain.handle('system:executeComplexCommand', (_, command: string, options?: an
       cwd: process.cwd()
     }
     
-    const execOptions = { ...defaultOptions, ...options }
+    const execOptions = { ...defaultOptions, ...options, stdio: 'pipe' }
     const result = execSync(command, execOptions)
     return { success: true, output: result }
   } catch (error: any) {
@@ -373,7 +454,8 @@ ipcMain.handle('system:executeShellScript', (_, script: string, cwd?: string) =>
       encoding: 'utf8',
       timeout: 300000, // 5分钟超时
       maxBuffer: 1024 * 1024 * 50, // 50MB缓冲区
-      cwd: cwd || process.cwd()
+      cwd: cwd || process.cwd(),
+      stdio: 'pipe'
     })
     
     // 删除临时文件
@@ -810,7 +892,7 @@ ipcMain.handle('tools:findPath', (_, toolId: string) => {
 
     // Use mdfind to search
     const cmd = `mdfind "kMDItemKind == 'Application' && kMDItemFSName == '${searchName}'" | head -n 1`
-    const result = execSync(cmd, { encoding: 'utf8' }).trim()
+    const result = execSync(cmd, { encoding: 'utf8', stdio: 'pipe' }).trim()
 
     if (result && fs.existsSync(result)) {
       return { success: true, path: result }
@@ -819,7 +901,7 @@ ipcMain.handle('tools:findPath', (_, toolId: string) => {
     // Special handling for Unity Hub if Unity.app not found directly
     if (toolId === 'unity') {
        const hubCmd = `mdfind "kMDItemKind == 'Application' && kMDItemFSName == 'Unity Hub.app'" | head -n 1`
-       const hubResult = execSync(hubCmd, { encoding: 'utf8' }).trim()
+       const hubResult = execSync(hubCmd, { encoding: 'utf8', stdio: 'pipe' }).trim()
        if (hubResult && fs.existsSync(hubResult)) {
          return { success: true, path: hubResult }
        }
@@ -888,7 +970,7 @@ ipcMain.handle('tools:build', (_, buildPath: string, tool: string, target: strin
 ipcMain.handle('tools:open', (_, openPath: string, tool?: string) => {
   if (tool === 'vscode') {
     try {
-      execSync(`code "${openPath}"`, { encoding: 'utf8' })
+      execSync(`code "${openPath}"`, { encoding: 'utf8', stdio: 'pipe' })
       return { success: true, message: `Opened ${openPath} with VS Code` }
     } catch (error) {
       return { success: false, error: 'VS Code not found' }
@@ -900,7 +982,7 @@ ipcMain.handle('tools:open', (_, openPath: string, tool?: string) => {
 
 ipcMain.handle('tools:vscode:openProject', (_, projectPath: string) => {
   try {
-    execSync(`code "${projectPath}"`, { encoding: 'utf8' })
+    execSync(`code "${projectPath}"`, { encoding: 'utf8', stdio: 'pipe' })
     return { success: true, message: `Opened project ${projectPath} with VS Code` }
   } catch (error: any) {
     return { success: false, error: error.message }
@@ -929,7 +1011,7 @@ ipcMain.handle('tools:vscode:executeCommand', (_, command: string, args: string[
   try {
     // 执行VSCode命令
     const commandStr = `code ${args.map(arg => `"${arg}"`).join(' ')} --command ${command}`
-    execSync(commandStr, { encoding: 'utf8' })
+    execSync(commandStr, { encoding: 'utf8', stdio: 'pipe' })
     return { success: true, message: `Executed VS Code command: ${command}` }
   } catch (error: any) {
     return { success: false, error: error.message }
@@ -1356,24 +1438,7 @@ app.whenReady().then(() => {
 
 // AI对话命名空间已在app.whenReady()回调中注册
 
-// 智能任务规划和执行
-ipcMain.handle('task:execute', async (_, instruction: string, options?: any) => {
-  try {
-    console.log(`执行智能任务，指令: ${instruction}`)
-    
-    const model = options?.model || 'openai'
-    const agentOptions = {
-      agentId: options?.agentId,
-      sessionId: options?.sessionId
-    }
-    const result = await taskEngine.executeTask(instruction, model, agentOptions)
-    return result
-  } catch (error: any) {
-    console.error('执行任务失败:', error)
-    return { success: false, error: error.message }
-  }
-})
-
+// 智能任务取消
 ipcMain.handle('task:cancel', () => {
   const cancelled = taskEngine.cancelCurrentTask()
   return { success: true, cancelled }

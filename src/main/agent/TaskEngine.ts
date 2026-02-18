@@ -10,6 +10,8 @@ import { cognitiveEngine, DecisionTrace, RoutingDecision } from './CognitiveEngi
 import { EmotionRoutingDecision, emotionProcessor } from './EmotionTypes'
 import { modelRouter } from './ModelRouter'
 import { multiAgentCoordinator, AgentMessage } from './MultiAgentCoordinator'
+import { multiDialogueCoordinator } from './MultiDialogueCoordinator'
+import { ErrorHandler, ErrorCategory } from '../utils/ErrorHandler'
 import './tools'
 
 export interface TaskProgressEvent {
@@ -43,6 +45,7 @@ export interface TaskProgressEvent {
   retryCount?: number
   maxRetries?: number
   taskDir?: string
+  thinkingReasoning?: string
 }
 
 export interface AgentOptions {
@@ -63,14 +66,14 @@ export class TaskEngine extends EventEmitter {
   }
 
   async executeTask(instruction: string, model: string = 'openai', agentOptions?: AgentOptions): Promise<any> {
+    let selectedModel: string = model
+    
     try {
-      // 智能路由决策 - 使用认知引擎
       let routingDecision: RoutingDecision
       let targetSystem: 'system1' | 'system2'
       let complexity: 'low' | 'medium' | 'high'
       let emotion: any = null
       
-      // 如果用户指定了系统，使用用户指定
       if (agentOptions?.system) {
         targetSystem = agentOptions.system as 'system1' | 'system2'
         routingDecision = {
@@ -82,16 +85,12 @@ export class TaskEngine extends EventEmitter {
         }
         complexity = (agentOptions?.complexity as 'low' | 'medium' | 'high') || 'low'
       } else {
-        // 使用认知引擎自动决策（带情绪分析）
-        // 传递完整的对话历史（包括助手的消息），以便判断是否需要继续之前的System2任务
         const emotionDecision = await cognitiveEngine.routeWithEmotion(instruction, {
-          dialogueHistory: this.history.map(m => m.role === 'user' ? `[用户]: ${m.content}` : `[助手]: ${m.content}`).join('\n')
+          dialogueHistory: this.history.map(m => m.role === 'user' ? `[用户]: ${m.content}` : `[助手]: ${m.content}`)
         })
         
-        // 提取情绪向量用于模型选择
         emotion = emotionDecision.emotion
         
-        // 转换为 RoutingDecision 格式以保持兼容性
         routingDecision = {
           decisionId: emotionDecision.decisionId,
           selectedSystem: emotionDecision.selectedSystem,
@@ -101,8 +100,6 @@ export class TaskEngine extends EventEmitter {
         }
         targetSystem = emotionDecision.selectedSystem
         
-        // 根据置信度和情绪确定复杂度
-        // 如果cognitiveEngine已经返回了复杂度设置，优先使用
         if ((emotionDecision as any).complexity) {
           complexity = (emotionDecision as any).complexity
         } else if (emotionDecision.emotion.risk > 0.6 || emotionDecision.emotion.uncertainty > 0.7) {
@@ -114,8 +111,6 @@ export class TaskEngine extends EventEmitter {
         }
       }
       
-      // 使用模型路由器自动选择模型
-      let selectedModel: string
       let modelOptions: any
       try {
         if (targetSystem === 'system1') {
@@ -131,7 +126,6 @@ export class TaskEngine extends EventEmitter {
           console.log(`ModelRouter: System2 选择模型 ${selectedModel}`)
         }
       } catch (routerError: any) {
-        // 模型路由器失败，回退到用户指定的模型
         console.warn(`ModelRouter: ${routerError.message}, 使用用户指定模型 ${model}`)
         selectedModel = model
         modelOptions = {}
@@ -139,37 +133,38 @@ export class TaskEngine extends EventEmitter {
       
       console.log(`TaskEngine: 认知引擎路由 - ${targetSystem}, 置信度: ${routingDecision.confidence.toFixed(2)}, 原因: ${routingDecision.reason}`)
       
-      // 创建决策轨迹
       this.currentTrace = cognitiveEngine.createTrace(instruction, targetSystem)
       
-      // 判断是否需要使用多智能体协作模式（复杂开发任务）
-      const isComplexDevTask = /开发|构建|实现|设计|创建|编程|代码|全栈|前端|后端|系统|应用|app|网站/i.test(instruction) && complexity !== 'low'
+      const isComplexDevTask = targetSystem === 'system2' && complexity !== 'low'
       
-      console.log(`[TaskEngine] 路由决策: 系统=${targetSystem}, 复杂度=${complexity}, 多智能体模式=${isComplexDevTask}`)
+      console.log(`[TaskEngine] 路由决策: 系统=${targetSystem}, 复杂度=${complexity}`)
       console.log(`[TaskEngine] 指令内容: ${instruction.slice(0, 100)}...`)
       
-      // 根据系统类型选择不同的处理逻辑，传递选中的模型
       if (targetSystem === 'system1') {
         console.log(`[TaskEngine] 执行 System1 快速响应`)
         return await this.executeSystem1Task(instruction, selectedModel, routingDecision, complexity, modelOptions)
       } else if (isComplexDevTask) {
-        // 复杂开发任务使用多智能体协作模式
-        console.log(`[TaskEngine] 执行多智能体协作模式 (PM→UI→Dev→Test→Review)`)
-        return await this.executeMultiAgentTask(instruction, selectedModel, agentOptions, routingDecision, complexity)
+        console.log(`[TaskEngine] 执行多智能体对话+工具执行模式`)
+        return await this.executeMultiDialogueTask(instruction, selectedModel, agentOptions)
       } else {
         console.log(`[TaskEngine] 执行 System2 深度思考模式`)
         return await this.executeSystem2Task(instruction, selectedModel, agentOptions, routingDecision, complexity, modelOptions)
       }
     } catch (error: any) {
+      const appError = ErrorHandler.handleError(error, {
+        component: 'TaskEngine',
+        operation: 'executeTask',
+        instruction: instruction?.slice(0, 100),
+        model: selectedModel
+      })
       console.error('TaskEngine error:', error)
       return {
         success: false,
-        error: error.message
+        error: appError.message
       }
     }
   }
 
-  // 快系统任务处理
   private async executeSystem1Task(
     instruction: string, 
     model: string = 'deepseek',
@@ -197,7 +192,6 @@ export class TaskEngine extends EventEmitter {
         timestamp: Date.now()
       } satisfies TaskProgressEvent)
 
-      // 更新历史
       this.history.push({ role: 'user', content: instruction })
       this.history.push({ role: 'assistant', content: response })
       if (this.history.length > 20) {
@@ -222,15 +216,20 @@ export class TaskEngine extends EventEmitter {
         }
       }
     } catch (error: any) {
+      const appError = ErrorHandler.handleError(error, {
+        component: 'TaskEngine',
+        operation: 'executeSystem1Task',
+        instruction: instruction?.slice(0, 100),
+        model: model
+      })
       console.error('快系统任务处理失败:', error)
       return {
         success: false,
-        error: error.message
+        error: appError.message
       }
     }
   }
 
-  // 慢系统任务处理
   private async executeSystem2Task(
     instruction: string, 
     model: string = 'openai', 
@@ -302,8 +301,17 @@ export class TaskEngine extends EventEmitter {
         const thinkingStartedAt = Date.now()
         const plan = await planner.createPlan('', sessionHistory, selectedModel, { signal, taskDir })
         const thinkingDurationMs = Date.now() - thinkingStartedAt
-        this.emit('progress', { taskId, type: 'thinking', timestamp: Date.now(), iteration: iterations + 1, maxIterations, durationMs: thinkingDurationMs } satisfies TaskProgressEvent)
-        this.emit('progress', { taskId, type: 'plan_generated', timestamp: Date.now(), iteration: iterations + 1, maxIterations, durationMs: thinkingDurationMs, planSteps: plan.steps.map(s => ({ id: s.id, tool: s.tool, description: s.description })) } satisfies TaskProgressEvent)
+        // 发射思考事件，包含思考内容reasoning
+        this.emit('progress', { 
+          taskId, 
+          type: 'thinking', 
+          timestamp: Date.now(), 
+          iteration: iterations + 1, 
+          maxIterations, 
+          durationMs: thinkingDurationMs,
+          thinkingReasoning: plan.reasoning 
+        } satisfies TaskProgressEvent)
+        this.emit('progress', { taskId, type: 'plan_generated', timestamp: Date.now(), iteration: iterations + 1, maxIterations, durationMs: thinkingDurationMs, planSteps: plan.steps.map(s => ({ id: s.id, tool: s.tool, description: s.description })), thinkingReasoning: plan.reasoning } satisfies TaskProgressEvent)
 
         const planForHistory = { reasoning: plan.reasoning, steps: plan.steps.map(s => ({ id: s.id, tool: s.tool, description: s.description })) }
         sessionHistory.push({ role: 'assistant', content: JSON.stringify(planForHistory) })
@@ -409,15 +417,21 @@ export class TaskEngine extends EventEmitter {
         error: lastError
       }
     } catch (error: any) {
+      const appError = ErrorHandler.handleError(error, {
+        component: 'TaskEngine',
+        operation: 'executeSystem2Task',
+        instruction: instruction?.slice(0, 100),
+        model: model
+      })
       console.error('慢系统任务处理失败:', error)
-      return { success: false, error: error.message }
+      return { success: false, error: appError.message }
     }
   }
 
   // 多智能体协作任务处理
   private async executeMultiAgentTask(
     instruction: string,
-    model: string = 'doubao-seed-2-0-code-preview-260215',
+    model: string = 'deepseek-coder',
     agentOptions?: AgentOptions,
     routingDecision?: RoutingDecision,
     complexity: 'low' | 'medium' | 'high' = 'medium'
@@ -545,10 +559,16 @@ ${result.summary?.slice(0, 2000) || '已完成'}
         collaborationHistory: multiAgentCoordinator.getCollaborationHistory()
       }
     } catch (error: any) {
+      const appError = ErrorHandler.handleError(error, {
+        component: 'TaskEngine',
+        operation: 'executeMultiAgentTask',
+        instruction: instruction?.slice(0, 100),
+        model: model
+      })
       console.error('多智能体协作失败:', error)
       return {
         success: false,
-        error: error.message
+        error: appError.message
       }
     }
   }
@@ -576,6 +596,107 @@ ${result.summary?.slice(0, 2000) || '已完成'}
       return true
     }
     return false
+  }
+
+  // 多智能体对话+工具执行模式
+  private async executeMultiDialogueTask(
+    instruction: string,
+    model: string,
+    agentOptions?: AgentOptions
+  ): Promise<any> {
+    try {
+      const taskId = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+      const taskDir = path.join(app.getPath('userData'), 'tasks', taskId)
+      fs.mkdirSync(taskDir, { recursive: true })
+
+      this.emit('progress', {
+        taskId,
+        type: 'task_start',
+        timestamp: Date.now(),
+        taskDir,
+        requestedModel: model,
+        modelUsed: model,
+        description: '开始多智能体协作任务'
+      } satisfies TaskProgressEvent)
+
+      // 提取项目名称
+      const projectName = instruction.slice(0, 20).replace(/[^\\w\\u4e00-\\u9fa5]/g, '_')
+
+      // 初始化多智能体对话协调器
+      const initResult = await multiDialogueCoordinator.initializeProject(projectName, instruction)
+      
+      // 发送初始化消息，显示所有对话框
+      this.emit('progress', {
+        taskId,
+        type: 'agent_message',
+        timestamp: Date.now(),
+        agentId: 'system',
+        agentName: '系统',
+        role: '协调员',
+        content: `开始多智能体协作任务：${projectName}\n\n创建了 ${initResult.dialogues.length} 个对话窗口：\n${initResult.dialogues.map(d => `- ${d.agent.name}`).join('\\n')}`,
+        phase: 'init'
+      } satisfies any)
+
+      // 执行多轮迭代
+      const result = await multiDialogueCoordinator.executeIteration(instruction, (type: string, data: any) => {
+        // 将协调器的消息转发到前端
+        if (type === 'phase') {
+          this.emit('progress', {
+            taskId,
+            type: 'agent_message',
+            timestamp: Date.now(),
+            agentId: data.agent || 'system',
+            agentName: data.agent || '系统',
+            role: data.phase,
+            content: `开始执行阶段: ${data.phase}`,
+            phase: data.phase
+          } satisfies any)
+        } else if (type === 'progress') {
+          this.emit('progress', {
+            taskId,
+            type: 'progress',
+            timestamp: Date.now(),
+            progress: data.progress,
+            phase: data.phase,
+            agent: data.agent,
+            message: data.message,
+            subTasks: data.subTasks
+          } satisfies any)
+        } else if (type === 'delivered') {
+          this.emit('progress', {
+            taskId,
+            type: 'task_done',
+            timestamp: Date.now(),
+            message: data.summary
+          } satisfies any)
+        }
+      })
+
+      // 返回结果
+      return {
+        success: result.completed,
+        delivered: result.delivered,
+        requestedModel: model,
+        modelUsed: model,
+        result: {
+          message: result.summary,
+          taskDir: taskDir,
+          iteration: result.currentRound
+        }
+      }
+    } catch (error: any) {
+      const appError = ErrorHandler.handleError(error, {
+        component: 'TaskEngine',
+        operation: 'executeMultiDialogueTask',
+        instruction: instruction?.slice(0, 100),
+        model: model
+      })
+      console.error('多智能体对话任务失败:', error)
+      return {
+        success: false,
+        error: appError.message
+      }
+    }
   }
 
   clearHistory() {

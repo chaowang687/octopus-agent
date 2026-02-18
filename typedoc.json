@@ -1,0 +1,60 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": [
+    "src/main/agent/TaskEngine.ts",
+    "src/main/agent/Executor.ts",
+    "src/main/agent/Planner.ts",
+    "src/main/services/LLMService.ts",
+    "src/main/utils/ErrorHandler.ts"
+  ],
+  "out": "docs/api",
+  "exclude": [
+    "**/*.test.ts",
+    "**/tests/**",
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/renderer/**"
+  ],
+  "excludePrivate": true,
+  "excludeProtected": false,
+  "excludeInternal": true,
+  "readme": "README.md",
+  "name": "本地化TRAE API文档",
+  "theme": "default",
+  "gitRevision": "main",
+  "sort": ["source-order"],
+  "kindSortOrder": [
+    "Document",
+    "Module",
+    "Namespace",
+    "Enum",
+    "EnumMember",
+    "Class",
+    "Interface",
+    "TypeAlias",
+    "Constructor",
+    "Property",
+    "Method",
+    "Function",
+    "Variable"
+  ],
+  "categorizeByGroup": true,
+  "defaultCategory": "Other",
+  "categoryOrder": [
+    "Core",
+    "Agent",
+    "Services",
+    "Utils",
+    "Types",
+    "Other"
+  ],
+  "includeVersion": true,
+  "hideGenerator": true,
+  "searchInComments": true,
+  "searchInDocuments": true,
+  "cleanOutputDir": true,
+  "watch": false,
+  "preserveWatchOutput": false,
+  "logLevel": "Info",
+  "skipErrorChecking": true
+}

@@ -15,11 +15,37 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ currentSessionId, onSelectSes
   const [showCreateAgent, setShowCreateAgent] = useState(false)
   const [showCreateGroup, setShowCreateGroup] = useState(false)
   const [agents, setAgents] = useState<Agent[]>([])
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; sessionId: string } | null>(null)
 
   const refreshData = () => {
     setSessions([...chatDataService.getSessions()])
     setAgents(chatDataService.getAgents())
   }
+
+  const handleContextMenu = (e: React.MouseEvent, sessionId: string) => {
+    e.preventDefault()
+    setContextMenu({ x: e.clientX, y: e.clientY, sessionId })
+  }
+
+  const handleDeleteSession = (sessionId: string) => {
+    if (confirm('确定要删除这个对话吗？')) {
+      chatDataService.deleteSession(sessionId)
+      refreshData()
+      if (sessionId === currentSessionId) {
+        const remaining = chatDataService.getSessions()
+        if (remaining.length > 0) {
+          onSelectSession(remaining[0])
+        }
+      }
+    }
+    setContextMenu(null)
+  }
+
+  useEffect(() => {
+    const handleClick = () => setContextMenu(null)
+    document.addEventListener('click', handleClick)
+    return () => document.removeEventListener('click', handleClick)
+  }, [])
 
   useEffect(() => {
     refreshData()
@@ -162,6 +188,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ currentSessionId, onSelectSes
             <div 
               key={session.id}
               onClick={() => onSelectSession(session)}
+              onContextMenu={(e) => handleContextMenu(e, session.id)}
               className={`sidebar-session-item ${isActive ? 'active' : ''}`}
             >
               {/* 头像 */}
@@ -204,6 +231,42 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ currentSessionId, onSelectSes
 
       {showCreateAgent && <CreateAgentModal onClose={() => setShowCreateAgent(false)} onCreated={refreshData} />}
       {showCreateGroup && <CreateGroupModal onClose={() => setShowCreateGroup(false)} onCreated={refreshData} />}
+
+      {/* 右键菜单 */}
+      {contextMenu && (
+        <div
+          style={{
+            position: 'fixed',
+            top: contextMenu.y,
+            left: contextMenu.x,
+            backgroundColor: '#fff',
+            border: '1px solid rgba(0,0,0,0.1)',
+            borderRadius: '8px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            zIndex: 1000,
+            minWidth: '120px',
+            overflow: 'hidden'
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div
+            onClick={() => handleDeleteSession(contextMenu.sessionId)}
+            style={{
+              padding: '10px 16px',
+              cursor: 'pointer',
+              fontSize: '13px',
+              color: '#ff4d4f',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#fff1f0'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#fff'}
+          >
+            🗑️ 删除对话
+          </div>
+        </div>
+      )}
     </div>
   )
 }

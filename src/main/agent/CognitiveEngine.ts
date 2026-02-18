@@ -7,7 +7,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import { app } from 'electron'
-import { llmService, LLMMessage } from './LLMService'
+import { llmService, LLMMessage } from '../services/LLMService'
 import { 
   EmotionVector, 
   EmotionProcessor, 
@@ -451,7 +451,7 @@ export class CognitiveEngine {
     const continueKeywords = ['继续', '下一步', '执行', '好的', '挺好', '开始', '继续执行', '开始执行']
     const isContinueInstruction = continueKeywords.some(kw => instruction.toLowerCase().includes(kw.toLowerCase()))
     
-    if (isContinueInstruction && context?.dialogueHistory && context.dialogueHistory.length > 0) {
+    if (isContinueInstruction && context?.dialogueHistory && Array.isArray(context.dialogueHistory) && context.dialogueHistory.length > 0) {
       // 检查对话历史中是否有System2任务的痕迹
       const historyText = context.dialogueHistory.join(' ').toLowerCase()
       const system2Indicators = ['需求分析', 'pm', '设计师', '开发', '实现', '任务', '计划', '完成', '阶段']
@@ -487,17 +487,39 @@ export class CognitiveEngine {
 
     console.log(`情绪向量: ${emotionProcessor.emotionToString(emotion)}`)
 
-    // 2. 计算动态置信度阈值
+    // 2. 用LLM快速判断用户意图类型（最关键的一步！）
+    const intentDecision = await this.analyzeIntentWithLLM(instruction)
+    console.log(`[IntentAnalysis] ${intentDecision.intent}: ${intentDecision.reason}`)
+
+    // 如果LLM判断需要执行操作，强制使用System2
+    if (intentDecision.intent === 'action') {
+      const decision: EmotionRoutingDecision = {
+        decisionId,
+        selectedSystem: 'system2',
+        confidence: 0.95,
+        dynamicThreshold: 0.8,
+        emotion,
+        reason: `LLM意图判断: 需要执行操作 (${intentDecision.reason})`,
+        matchedSkills: undefined,
+        hasConflict: false,
+        conflictReason: undefined,
+        durationMs: Date.now() - startTime,
+        complexity: 'medium' as any
+      }
+      return decision
+    }
+
+    // 3. 计算动态置信度阈值
     const baseThreshold = this.config.system1Threshold
     const dynamicThreshold = emotionProcessor.calculateDynamicThreshold(emotion, baseThreshold)
 
-    // 3. 基础路由决策（使用原有逻辑）
+    // 4. 基础路由决策（使用原有逻辑）
     const baseDecision = await this.route(instruction)
 
-    // 4. 冲突检测
+    // 5. 冲突检测
     const conflict = emotionProcessor.detectConflict(emotion)
 
-    // 5. 综合决策
+    // 6. 综合决策
     let selectedSystem: 'system1' | 'system2'
     let finalConfidence = baseDecision.confidence
     let reason = baseDecision.reason
@@ -898,6 +920,58 @@ export class CognitiveEngine {
       cacheSize: this.decisionCache.size,
       tracesCount
     }
+  }
+
+  /**
+   * 用LLM快速分析用户意图 - 决定是需要执行操作还是纯对话
+   * 这是决定使用System1还是System2的最关键判断
+   */
+  private async analyzeIntentWithLLM(instruction: string): Promise<{ intent: 'action' | 'chat'; reason: string }> {
+    const systemPrompt = `你需要分析用户的指令，判断用户的意图类型。
+
+用户意图分为两类：
+1. action（执行操作）：需要创建/修改/执行某些实际任务，如：
+   - 创建网页、应用、项目、文件
+   - 编写代码、调试程序
+   - 下载、安装、运行程序
+   - 搜索并下载图片/资源
+   - 写文章、做报告、生成内容
+   - 任何"帮我..."、"我要..."、"请帮我..."
+
+2. chat（纯对话）：只是聊天、问答、解释、讨论，如：
+   - 解释概念、回答问题
+   - 闲聊、问候
+   - 讨论想法
+   - 查询信息（天气、时间等简单查询除外，这类属于action）
+   - 分析、比较、建议
+
+请直接返回JSON格式（不需要其他内容）：
+{"intent": "action"或"chat", "reason": "简短的原因说明"}
+
+注意：如果用户说"开发一个X"、"创建一个Y"、"帮我做Z"、"写一个W"这些都是action。`
+
+    try {
+      const response = await llmService.chat('deepseek-chat', [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `用户指令: ${instruction}` }
+      ], {
+        temperature: 0.3,
+        max_tokens: 200,
+        response_format: { type: 'json_object' }
+      })
+
+      if (response.success && response.content) {
+        const parsed = JSON.parse(response.content)
+        if (parsed.intent === 'action' || parsed.intent === 'chat') {
+          return { intent: parsed.intent, reason: parsed.reason || 'LLM判断' }
+        }
+      }
+    } catch (error) {
+      console.error('[IntentAnalysis] LLM调用失败:', error)
+    }
+
+    // 如果LLM调用失败，默认返回chat（保守策略，让其他逻辑补充判断）
+    return { intent: 'chat', reason: 'LLM调用失败，使用默认判断' }
   }
 }
 

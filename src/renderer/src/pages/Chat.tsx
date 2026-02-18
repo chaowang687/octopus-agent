@@ -56,6 +56,13 @@ interface TaskProgressEvent {
   retryCount?: number
   maxRetries?: number
   taskDir?: string
+  // 思考过程内容
+  thinkingReasoning?: string
+  // plan_created事件字段
+  reasoning?: string
+  stepCount?: number
+  round?: number
+  // execution_progress事件字段
   // 多智能体协作相关
   agentId?: string
   agentName?: string
@@ -306,13 +313,23 @@ const Chat: React.FC = () => {
 
       if (evt.type === 'thinking') {
         const d = formatDuration(evt.durationMs)
-        if (d) {
+        // 显示思考内容和思考时长
+        const thinkingContent = evt.thinkingReasoning || ''
+        const thinkingPreview = thinkingContent.length > 200 ? thinkingContent.slice(0, 200) + '...' : thinkingContent
+        
+        if (d || thinkingContent) {
+          // 同时添加到消息和日志
+          const thinkingMsg = `深度思考中 ${d ? `(${d})` : ''}：${thinkingPreview}`
           setMessages(prev => [...prev, {
             id: `thinking-${evt.timestamp}`,
             role: 'assistant',
-            content: `已思考 ${d}`,
-            timestamp: new Date()
+            content: thinkingMsg,
+            timestamp: new Date(),
+            thinking: thinkingContent  // 保存完整思考内容
           }])
+          
+          // 添加到日志面板
+          setTaskLogs(prev => [...prev, `[${time}] ${thinkingMsg}`])
         }
         return
       }
@@ -324,6 +341,14 @@ const Chat: React.FC = () => {
 
       if (evt.type === 'plan_generated') {
         const planSteps = evt.planSteps || []
+        const thinkingContent = evt.thinkingReasoning || ''
+        
+        // 显示思考内容到日志
+        if (thinkingContent) {
+          const thinkingPreview = thinkingContent.length > 300 ? thinkingContent.slice(0, 300) + '...' : thinkingContent
+          setTaskLogs(prev => [...prev, `[${time}] 思考过程：${thinkingPreview}`])
+        }
+        
         setTaskLogs(prev => [...prev, `[${time}] 生成计划：${planSteps.length} 步`])
         setTaskSteps(planSteps.map(s => ({
           key: `${evt.iteration || 1}:${s.id}`,
@@ -593,6 +618,99 @@ const Chat: React.FC = () => {
         })
         return
       }
+
+      // 处理进度更新事件 - 显示子任务和进度百分比
+      if (evt.type === 'progress') {
+        const progress = evt.progress || 0
+        const phase = evt.phase || ''
+        const agent = evt.agent || ''
+        const message = evt.message || ''
+        const subTasks = evt.subTasks || []
+        
+        // 构建进度日志
+        let progressLog = `[${time}] 📊 ${agent} - ${phase}: ${progress}%`
+        if (message) {
+          progressLog += ` - ${message}`
+        }
+        setTaskLogs(prev => [...prev, progressLog])
+        
+        // 如果有子任务，显示子任务详情
+        if (subTasks.length > 0) {
+          const subTaskDetails = subTasks.map((t: any) => {
+            const statusIcon = t.status === 'completed' ? '✅' : t.status === 'in_progress' ? '🔄' : t.status === 'failed' ? '❌' : '⬜'
+            return `  ${statusIcon} ${t.name} (${t.progress || 0}%)`
+          }).join('\n')
+          setTaskLogs(prev => [...prev, subTaskDetails])
+        }
+        
+        // 更新任务历史记录
+        setTaskHistory(prev => {
+          const updated = prev.map(item => 
+            item.id === taskId 
+              ? { ...item, logs: [...item.logs, progressLog] }
+              : item
+          )
+          localStorage.setItem('trae_task_history', JSON.stringify(updated))
+          return updated
+        })
+        
+        // 在聊天界面也显示进度消息
+        const progressMessage: Message = {
+          id: `progress-${evt.timestamp}`,
+          role: 'assistant',
+          content: `📊 **${agent}** - ${phase}\n\n进度: ${progress}%\n\n${message}\n\n${subTasks.map((t: any) => {
+            const statusIcon = t.status === 'completed' ? '✅' : t.status === 'in_progress' ? '🔄' : t.status === 'failed' ? '❌' : '⬜'
+            return `${statusIcon} ${t.name}: ${t.progress || 0}%`
+          }).join('\n')}`,
+          timestamp: new Date(),
+          status: 'completed'
+        }
+        setMessages(prev => [...prev, progressMessage])
+        return
+      }
+
+      // 处理计划创建事件 - 显示思考内容
+      if (evt.type === 'plan_created') {
+        const reasoning = evt.reasoning || ''
+        const stepCount = evt.stepCount || 0
+        const round = evt.round || 1
+        
+        const reasoningPreview = reasoning.length > 300 ? reasoning.slice(0, 300) + '...' : reasoning
+        
+        // 添加思考内容到日志
+        if (reasoning) {
+          setTaskLogs(prev => [...prev, `[${time}] 💭 深度思考 (第${round}轮): ${reasoningPreview}`])
+        }
+        setTaskLogs(prev => [...prev, `[${time}] 📋 生成执行计划: ${stepCount} 个步骤`])
+        
+        // 在聊天界面显示思考过程
+        setMessages(prev => [...prev, {
+          id: `plan-${evt.timestamp}`,
+          role: 'assistant',
+          content: `💭 **深度思考 (第${round}轮)**\n\n${reasoning}\n\n📋 **执行计划**: ${stepCount} 个步骤`,
+          timestamp: new Date(),
+          status: 'completed'
+        }])
+        return
+      }
+
+      // 处理执行进度事件
+      if (evt.type === 'execution_progress') {
+        const stepId = evt.stepId || ''
+        const tool = evt.tool || ''
+        const description = evt.description || ''
+        const stepDuration = formatDuration(evt.durationMs)
+        
+        if (evt.type === 'step_start') {
+          setTaskLogs(prev => [...prev, `[${time}] 🔧 执行步骤: ${description || stepId}`])
+        } else if (evt.type === 'step_success') {
+          setTaskLogs(prev => [...prev, `[${time}] ✅ 完成: ${description || stepId} ${stepDuration ? `(${stepDuration})` : ''}`])
+        } else if (evt.type === 'step_error') {
+          const errorLog = `[${time}] ❌ 失败: ${description || stepId} - ${evt.error || ''}`
+          setTaskLogs(prev => [...prev, errorLog])
+        }
+        return
+      }
     })
 
     return unsubscribe
@@ -618,71 +736,8 @@ const Chat: React.FC = () => {
     const targetSystem = complexity === 'low' ? 'system1' : 'system2'
     handleSystemSwitch(targetSystem)
     
-    // 如果是System 2复杂任务，自动为每个智能体创建独立对话框
-    const isNewSession = !currentSession || currentSession.type === 'direct'
-    if (targetSystem === 'system2' && isNewSession) {
-      console.log(`[Chat] System2模式 - 创建多对话框协作`)
-      const projectName = input.slice(0, 15) + (input.length > 15 ? '...' : '')
-      
-      // 创建多对话框模式 - 每个智能体独立对话框
-      const agents = ['agent-pm', 'agent-ui', 'agent-dev', 'agent-test-generator', 'agent-code-reviewer']
-      const agentNames: Record<string, string> = {
-        'agent-pm': 'PM-需求分析',
-        'agent-ui': 'UI设计',
-        'agent-dev': '开发编码',
-        'agent-test-generator': '测试用例',
-        'agent-code-reviewer': '代码审查'
-      }
-      
-      const newDialogueSessions: { agentId: string; sessionId: string; status: string }[] = []
-      
-      // 为每个智能体创建独立会话
-      for (const agentId of agents) {
-        const agent = chatDataService.getAgent(agentId)
-        if (agent) {
-          // 检查是否已存在该智能体的直接会话
-          let session = chatDataService.getSessions().find(s => 
-            s.type === 'direct' && s.members.includes(agentId)
-          )
-          
-          if (!session) {
-            // 创建新会话
-            session = chatDataService.createSession(
-              `${agentNames[agentId]} - ${projectName}`,
-              [agentId],
-              'direct'
-            )
-          }
-          
-          newDialogueSessions.push({
-            agentId,
-            sessionId: session.id,
-            status: 'waiting'
-          })
-        }
-      }
-      
-      // 设置多对话框模式
-      if (newDialogueSessions.length > 0) {
-        setMultiDialogueMode(true)
-        setDialogueSessions(newDialogueSessions)
-        // 切换到第一个对话框 (PM)
-        setCurrentDialogueIndex(0)
-        
-        const pmSession = newDialogueSessions[0]
-        const pmSessionData = chatDataService.getSessions().find(s => s.id === pmSession.sessionId)
-        if (pmSessionData) {
-          setCurrentSession(pmSessionData)
-        }
-        
-        // 更新状态
-        setDialogueSessions(prev => prev.map((d, i) => 
-          i === 0 ? { ...d, status: 'working' } : d
-        ))
-      }
-      
-      setRefreshKey(prev => prev + 1)  // 刷新侧边栏
-    }
+    // 后端 task.execute 会使用 MultiDialogueCoordinator 处理多智能体协作
+    // 前端通过 progress 事件接收各个智能体的输出
     
     // 根据系统更新当前使用的模型名称
     if (targetSystem === 'system1') {
@@ -774,12 +829,17 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
 
       const agentId = currentSession && currentSession.members.length > 0 ? currentSession.members[0] : undefined
       const sessionId = currentSession ? currentSession.id : undefined
-      const chatApi: any = window.electron.chat
-      const result = await chatApi.sendMessage(selectedModel, contentToSend, { 
+      
+      // 统一使用 task.execute，让后端认知引擎决定使用 System1 还是 System2
+      // 这样可以实现 LLM 意图判断来决定处理方式
+      console.log(`[Chat] 使用 task.execute，后端将根据LLM意图判断决定处理方式`)
+      const taskApi: any = window.electron.task
+      const result = await taskApi.execute(contentToSend, { 
         agentId, 
         sessionId,
         system: targetSystem,
-        complexity
+        complexity,
+        taskDir: `/Users/wangchao/Desktop/${input.slice(0, 15).replace(/[^\\w]/g, '_')}`
       })
       
       setMessages(prev => prev.filter(msg => msg.id !== thinkingMessage.id))

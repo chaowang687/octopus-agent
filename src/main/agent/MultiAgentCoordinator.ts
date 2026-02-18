@@ -73,7 +73,7 @@ export class MultiAgentCoordinator extends EventEmitter {
       name: '全栈开发工程师',
       type: 'code_generator',
       role: '全栈开发工程师 (Dev)',
-      model: 'doubao-seed-2-0-code-preview-260215',
+      model: 'deepseek-coder',
       capabilities: ['code_generation', 'fullstack_development', 'api_design', 'database_design'],
       status: 'idle'
     })
@@ -84,7 +84,7 @@ export class MultiAgentCoordinator extends EventEmitter {
       name: '测试工程师',
       type: 'test_generator',
       role: '测试工程师 (Test Engineer)',
-      model: 'doubao-seed-2-0-code-preview-260215',
+      model: 'deepseek-coder',
       capabilities: ['test_generation', 'unit_test', 'integration_test', 'e2e_test'],
       status: 'idle'
     })
@@ -95,7 +95,7 @@ export class MultiAgentCoordinator extends EventEmitter {
       name: '代码审查员',
       type: 'code_reviewer',
       role: '代码审查员 (Code Reviewer)',
-      model: 'doubao-seed-2-0-code-preview-260215',
+      model: 'deepseek-coder',
       capabilities: ['code_review', 'security_analysis', 'performance_analysis', 'best_practices'],
       status: 'idle'
     })
@@ -106,7 +106,7 @@ export class MultiAgentCoordinator extends EventEmitter {
       name: '项目经理',
       type: 'document_generator',
       role: '项目经理 (PM)',
-      model: 'doubao-pro-32k',
+      model: 'deepseek-coder',
       capabilities: ['requirement_analysis', 'project_planning', 'progress_tracking', 'summary'],
       status: 'idle'
     })
@@ -117,7 +117,7 @@ export class MultiAgentCoordinator extends EventEmitter {
       name: 'UI设计师',
       type: 'ui_designer',
       role: 'UI设计师/前端工程师',
-      model: 'doubao-seed-2-0-code-preview-260215',
+      model: 'deepseek-coder',
       capabilities: ['ui_design', 'frontend_development', 'responsive_layout', 'ux_improvement'],
       status: 'idle'
     })
@@ -152,7 +152,7 @@ export class MultiAgentCoordinator extends EventEmitter {
 `
 
     try {
-      const response = await llmService.chat('doubao-pro-32k', [
+      const response = await llmService.chat('deepseek-coder', [
         { role: 'system', content: '你是一个任务分析专家。只需返回JSON数组，不要有其他内容。' },
         { role: 'user', content: prompt }
       ], {

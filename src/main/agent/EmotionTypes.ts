@@ -288,12 +288,14 @@ export class EmotionProcessor {
   }
 
   private calculateFamiliarity(input: string, history?: string[]): number {
-    if (!history || history.length === 0) return 0
+    if (!history || !Array.isArray(history) || history.length === 0) return 0
     
     let maxSimilarity = 0
     for (const pastInput of history.slice(-5)) {
-      const similarity = this.calculateTextSimilarity(input, pastInput)
-      maxSimilarity = Math.max(maxSimilarity, similarity)
+      if (typeof pastInput === 'string') {
+        const similarity = this.calculateTextSimilarity(input, pastInput)
+        maxSimilarity = Math.max(maxSimilarity, similarity)
+      }
     }
     
     return maxSimilarity
