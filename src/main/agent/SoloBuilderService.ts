@@ -1,7 +1,4 @@
-import * as fs from 'fs'
-import * as path from 'path'
 import { llmService } from '../services/LLMService'
-import { toolRegistry } from './ToolRegistry'
 import { contextManager } from './ContextManager'
 
 interface AppBuildingRequest {
@@ -52,19 +49,13 @@ interface PRDGenerationResult {
   errors?: string[]
 }
 
-interface UIGenerationResult {
-  success: boolean
-  uiCode: string
-  components: string[]
-  designSystem: string
-  errors?: string[]
-}
+
 
 export class SoloBuilderService {
   // 应用构建
   async buildApp(request: AppBuildingRequest): Promise<AppBuildingResult> {
     try {
-      const { instruction, appType, techStack, context, features } = request
+      const { instruction, appType, techStack, context } = request
       
       // 1. 生成PRD
       const prdResult = await this.generatePRD({
@@ -186,10 +177,10 @@ export class SoloBuilderService {
     try {
       const { prd, techStack, context, designStyle } = request
       
-      const prompt = this.buildFrontendGenerationPrompt(prd, techStack, designStyle)
+      const prompt = this.buildFrontendGenerationPrompt(prd, techStack, designStyle || 'modern')
       const enhancedPrompt = context ? await contextManager.injectContext(prompt, context) : prompt
       
-      const response = await llmService.chat('openai', [
+      const response = await llmService.chat('deepseek-chat', [
         { role: 'system', content: `You are an expert frontend developer. Generate complete frontend code using ${techStack}.` },
         { role: 'user', content: enhancedPrompt }
       ], {
@@ -392,7 +383,6 @@ Output the database schema and setup instructions.`
     let match
     
     while ((match = sectionRegex.exec(prd)) !== null) {
-      const level = match[1].length
       const title = match[2].trim()
       
       // 提取section内容

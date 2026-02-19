@@ -42,11 +42,7 @@ const DualSystemSidebar: React.FC = () => {
     return '#ea4335'
   }
 
-  const getScoreBgColor = (score: number) => {
-    if (score >= 80) return '#e6f4ea'
-    if (score >= 60) return '#fef7e0'
-    return '#fce8e6'
-  }
+
 
   return (
     <div style={{

@@ -11,7 +11,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import { app } from 'electron'
-import { llmService, LLMMessage } from '../services/LLMService'
+import { llmService } from '../services/LLMService'
 import { EmotionVector } from './EmotionTypes'
 
 // ============================================
@@ -536,11 +536,10 @@ if (fs.existsSync(this.configPath)) {
   }
 
   /**
-   * 根据任务类型智能路由模型（核心方法）
+   * 根据任务类型选择模型
    * @param taskType 任务类型
-   * @param instruction 用户输入（用于进一步分析）
    */
-  routeByTaskType(taskType: TaskType, instruction?: string): RoutingDecisionResult {
+  routeByTaskType(taskType: TaskType): RoutingDecisionResult {
     const routingConfig = TASK_TYPE_ROUTING[taskType]
     const alternatives: string[] = [routingConfig.primary, ...routingConfig.fallback]
     
@@ -620,7 +619,7 @@ if (fs.existsSync(this.configPath)) {
    */
   route(instruction: string): RoutingDecisionResult {
     const taskType = this.analyzeTaskType(instruction)
-    return this.routeByTaskType(taskType, instruction)
+    return this.routeByTaskType(taskType)
   }
 }
 

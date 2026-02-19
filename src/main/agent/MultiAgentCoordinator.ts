@@ -2,7 +2,6 @@ import { EventEmitter } from 'events'
 import { llmService, LLMMessage } from '../services/LLMService'
 import * as path from 'path'
 import * as fs from 'fs'
-import { app } from 'electron'
 
 // 智能体类型定义
 export type AgentType = 'code_generator' | 'test_generator' | 'code_reviewer' | 'document_generator' | 'ui_designer'
@@ -43,13 +42,56 @@ export interface AgentMessage {
   content: string
   timestamp: number
   phase: string
+  messageType: 'task' | 'response' | 'question' | 'suggestion' | 'handover' | 'system'
+  targetAgentId?: string
+  conversationId?: string
+  priority: 'low' | 'medium' | 'high'
+}
+
+// 智能体能力评估
+export interface AgentCapabilityAssessment {
+  agentId: string
+  agentType: AgentType
+  capabilities: {
+    capability: string
+    score: number // 0-100
+    confidence: number // 0-1
+  }[]
+  overallScore: number // 0-100
+  timestamp: number
+}
+
+// 智能体协作请求
+export interface AgentCollaborationRequest {
+  id: string
+  task: string
+  requiredCapabilities: string[]
+  priority: 'low' | 'medium' | 'high'
+  deadline?: number
+  context: any
+}
+
+// 智能体通信统计
+export interface AgentCommunicationStats {
+  totalMessages: number
+  messagesByType: Record<string, number>
+  averageResponseTime: number
+  successRate: number
+  lastCommunication: number
 }
 
 export class MultiAgentCoordinator extends EventEmitter {
   private agents: Map<AgentType, Agent> = new Map()
-  private tasks: Map<string, AgentTask> = new Map()
   private collaborationHistory: AgentMessage[] = []
   private currentPhase: string = 'init'
+  private agentCapabilities: Map<AgentType, AgentCapabilityAssessment> = new Map()
+  private communicationStats: Map<string, AgentCommunicationStats> = new Map()
+  private taskAssignments: Map<string, string> = new Map() // taskId -> agentId
+  private resourceManager: any = {
+    activeTasks: 0,
+    maxConcurrentTasks: 3,
+    taskPriorities: new Map<string, 'low' | 'medium' | 'high'>()
+  }
   
   // 任务阶段配置
   private phases: CollaborationPhase[] = [
@@ -177,9 +219,18 @@ export class MultiAgentCoordinator extends EventEmitter {
   // 执行多智能体协作
   async executeCollaboration(
     instruction: string,
-    onAgentMessage: (msg: AgentMessage) => void
+    onAgentMessage: (msg: AgentMessage) => void,
+    taskDir?: string
   ): Promise<{ success: boolean; result: any; summary: string }> {
     this.collaborationHistory = []
+    
+    console.log(`[MultiAgentCoordinator] 开始协作，任务目录: ${taskDir || '未指定'}`)
+    
+    // 分析任务是否是前端任务
+    const frontendKeywords = ['ui', 'frontend', '界面', '设计', 'react', 'vue', 'angular', 'html', 'css', 'javascript', 'typescript']
+    const isFrontendTask = frontendKeywords.some(keyword => 
+      instruction.toLowerCase().includes(keyword.toLowerCase())
+    )
     
     // 1. 需求分析阶段
     const analysisPhase = this.phases.find(p => p.name === 'analysis')!
@@ -188,6 +239,92 @@ export class MultiAgentCoordinator extends EventEmitter {
     // PM分析需求
     const pmAgent = this.agents.get('document_generator')!
     pmAgent.status = 'working'
+    
+    // 如果指定了任务目录，PM需要创建项目文件夹和Plan
+    if (taskDir) {
+      try {
+        // 创建项目文件夹
+        const projectFolder = path.join(taskDir, 'project')
+        if (!fs.existsSync(projectFolder)) {
+          fs.mkdirSync(projectFolder, { recursive: true })
+          console.log(`[MultiAgentCoordinator] PM创建项目文件夹: ${projectFolder}`)
+        }
+        
+        // 生成Plan
+        const planPrompt = `作为项目经理，请为以下任务生成详细的项目计划：
+
+任务：${instruction}
+
+请按以下格式生成项目计划：
+
+# 项目计划
+
+## 项目目标
+[描述项目的核心目标和预期成果]
+
+## 里程碑
+- [里程碑1]: [描述和预期完成时间]
+- [里程碑2]: [描述和预期完成时间]
+- [里程碑3]: [描述和预期完成时间]
+
+## 实施步骤
+### 步骤1: [步骤名称]
+- [子步骤1.1]
+- [子步骤1.2]
+- [注意事项]
+
+### 步骤2: [步骤名称]
+- [子步骤2.1]
+- [子步骤2.2]
+- [注意事项]
+
+## 技术细节
+- [技术栈说明]
+- [架构设计要点]
+- [关键技术决策]
+
+## 风险评估
+- [潜在风险1]: [应对措施]
+- [潜在风险2]: [应对措施]
+
+## 交付物清单
+- [交付物1]
+- [交付物2]
+- [交付物3]`
+
+        const planResult = await this.executeAgentTask(
+          pmAgent,
+          planPrompt,
+          {}
+        )
+        
+        // 保存Plan为.md文件
+        const planFilePath = path.join(projectFolder, 'PROJECT_PLAN.md')
+        fs.writeFileSync(planFilePath, planResult, 'utf-8')
+        console.log(`[MultiAgentCoordinator] PM保存项目计划: ${planFilePath}`)
+        
+        // 发送项目创建完成消息
+        const planMsg: AgentMessage = {
+          agentId: pmAgent.id,
+          agentName: pmAgent.name,
+          role: pmAgent.role,
+          content: `📁 **项目初始化完成**
+
+已创建项目文件夹: ${projectFolder}
+已生成项目计划: PROJECT_PLAN.md
+
+${planResult}`,
+          timestamp: Date.now(),
+          phase: '项目初始化',
+          messageType: 'response',
+          priority: 'high'
+        }
+        this.collaborationHistory.push(planMsg)
+        onAgentMessage(planMsg)
+      } catch (error) {
+        console.error('[MultiAgentCoordinator] PM创建项目失败:', error)
+      }
+    }
     
     const analysisResult = await this.executeAgentTask(
       pmAgent,
@@ -212,7 +349,9 @@ export class MultiAgentCoordinator extends EventEmitter {
       role: pmAgent.role,
       content: analysisResult,
       timestamp: Date.now(),
-      phase: '需求分析'
+      phase: '需求分析',
+      messageType: 'response',
+      priority: 'medium'
     }
     this.collaborationHistory.push(analysisMsg)
     onAgentMessage(analysisMsg)
@@ -226,7 +365,9 @@ export class MultiAgentCoordinator extends EventEmitter {
       role: '协调员',
       content: `📋 需求分析完成。现在由 **UI设计师/前端工程师** 接手，进行界面与架构设计...`,
       timestamp: Date.now(),
-      phase: '交接'
+      phase: '交接',
+      messageType: 'handover',
+      priority: 'medium'
     }
     this.collaborationHistory.push(handoffMsg1)
     onAgentMessage(handoffMsg1)
@@ -264,7 +405,9 @@ ${analysisResult}
       role: uiAgent.role,
       content: designResult,
       timestamp: Date.now(),
-      phase: 'UI设计'
+      phase: 'UI设计',
+      messageType: 'response',
+      priority: 'medium'
     }
     this.collaborationHistory.push(designMsg)
     onAgentMessage(designMsg)
@@ -278,7 +421,9 @@ ${analysisResult}
       role: '协调员',
       content: `🎨 UI设计完成。现在由 **全栈开发工程师 (Dev)** 接手，进行代码实现...`,
       timestamp: Date.now(),
-      phase: '交接'
+      phase: '交接',
+      messageType: 'handover',
+      priority: 'medium'
     }
     this.collaborationHistory.push(handoffMsg2)
     onAgentMessage(handoffMsg2)
@@ -325,7 +470,9 @@ ${this.agents.get('ui_designer')?.lastOutput || ''}
       role: codeAgent.role,
       content: codeResult,
       timestamp: Date.now(),
-      phase: '代码实现'
+      phase: '代码实现',
+      messageType: 'response',
+      priority: 'medium'
     }
     this.collaborationHistory.push(codeMsg)
     onAgentMessage(codeMsg)
@@ -339,7 +486,9 @@ ${this.agents.get('ui_designer')?.lastOutput || ''}
       role: '协调员',
       content: `💻 代码实现完成。现在由 **测试工程师** 接手，生成测试用例...`,
       timestamp: Date.now(),
-      phase: '交接'
+      phase: '交接',
+      messageType: 'handover',
+      priority: 'medium'
     }
     this.collaborationHistory.push(handoffMsg3)
     onAgentMessage(handoffMsg3)
@@ -376,7 +525,9 @@ ${codeResult}
       role: testAgent.role,
       content: testResult,
       timestamp: Date.now(),
-      phase: '测试生成'
+      phase: '测试生成',
+      messageType: 'response',
+      priority: 'medium'
     }
     this.collaborationHistory.push(testMsg)
     onAgentMessage(testMsg)
@@ -390,7 +541,9 @@ ${codeResult}
       role: '协调员',
       content: `🧪 测试用例生成完成。现在由 **代码审查员** 接手，进行代码审查...`,
       timestamp: Date.now(),
-      phase: '交接'
+      phase: '交接',
+      messageType: 'handover',
+      priority: 'medium'
     }
     this.collaborationHistory.push(handoffMsg4)
     onAgentMessage(handoffMsg4)
@@ -431,7 +584,9 @@ ${testResult}
       role: reviewAgent.role,
       content: reviewResult,
       timestamp: Date.now(),
-      phase: '代码审查'
+      phase: '代码审查',
+      messageType: 'response',
+      priority: 'medium'
     }
     this.collaborationHistory.push(reviewMsg)
     onAgentMessage(reviewMsg)
@@ -445,7 +600,9 @@ ${testResult}
       role: '协调员',
       content: `🔍 代码审查完成。现在由 **项目经理 (PM)** 接手，进行最终总结...`,
       timestamp: Date.now(),
-      phase: '交接'
+      phase: '交接',
+      messageType: 'handover',
+      priority: 'medium'
     }
     this.collaborationHistory.push(handoffMsg5)
     onAgentMessage(handoffMsg5)
@@ -487,7 +644,9 @@ ${testResult}
       role: pmAgent.role,
       content: summaryResult,
       timestamp: Date.now(),
-      phase: '项目总结'
+      phase: '项目总结',
+      messageType: 'response',
+      priority: 'high'
     }
     this.collaborationHistory.push(summaryMsg)
     onAgentMessage(summaryMsg)
@@ -502,7 +661,9 @@ ${testResult}
       role: '协调员',
       content: `✅ 项目开发完成！所有智能体已完成协作。\n\n如需继续优化或添加新功能，请告诉我！`,
       timestamp: Date.now(),
-      phase: '完成'
+      phase: '完成',
+      messageType: 'system',
+      priority: 'high'
     }
     this.collaborationHistory.push(completeMsg)
     onAgentMessage(completeMsg)
@@ -624,6 +785,297 @@ ${this.getRoleDescription(agent.type)}
       agent.status = 'idle'
       agent.lastOutput = undefined
     })
+
+    this.taskAssignments.clear()
+    this.resourceManager.activeTasks = 0
+    this.resourceManager.taskPriorities.clear()
+  }
+
+  // 评估智能体能力
+  async assessAgentCapabilities(agentType: AgentType): Promise<AgentCapabilityAssessment> {
+    const agent = this.agents.get(agentType)
+    if (!agent) {
+      throw new Error(`Agent not found: ${agentType}`)
+    }
+
+    // 使用LLM评估能力
+    const assessment = await this.evaluateCapabilities(agent)
+    this.agentCapabilities.set(agentType, assessment)
+
+    return assessment
+  }
+
+  // 评估智能体能力（使用LLM）
+  private async evaluateCapabilities(agent: Agent): Promise<AgentCapabilityAssessment> {
+    const capabilities = agent.capabilities
+    const assessments = []
+
+    for (const capability of capabilities) {
+      // 这里可以使用LLM进行更详细的能力评估
+      // 为了简化，我们使用基于能力名称的启发式评估
+      const score = this.calculateCapabilityScore(capability)
+      assessments.push({
+        capability,
+        score,
+        confidence: 0.8 // 模拟置信度
+      })
+    }
+
+    const overallScore = assessments.reduce((sum, a) => sum + a.score, 0) / assessments.length
+
+    return {
+      agentId: agent.id,
+      agentType: agent.type,
+      capabilities: assessments,
+      overallScore,
+      timestamp: Date.now()
+    }
+  }
+
+  // 计算能力评分
+  private calculateCapabilityScore(capability: string): number {
+    // 基于能力名称的启发式评分
+    const capabilityScores: Record<string, number> = {
+      'code_generation': 90,
+      'fullstack_development': 85,
+      'api_design': 80,
+      'database_design': 75,
+      'test_generation': 85,
+      'unit_test': 80,
+      'integration_test': 75,
+      'e2e_test': 70,
+      'code_review': 85,
+      'security_analysis': 80,
+      'performance_analysis': 75,
+      'best_practices': 80,
+      'requirement_analysis': 85,
+      'project_planning': 80,
+      'progress_tracking': 75,
+      'summary': 80,
+      'ui_design': 85,
+      'frontend_development': 80,
+      'responsive_layout': 75,
+      'ux_improvement': 70
+    }
+
+    return capabilityScores[capability] || 70
+  }
+
+  // 发送消息
+  async sendMessage(message: AgentMessage): Promise<boolean> {
+    // 验证消息
+    if (!message.agentId || !message.content) {
+      return false
+    }
+
+    // 添加到历史记录
+    this.collaborationHistory.push(message)
+
+    // 更新通信统计
+    this.updateCommunicationStats(message)
+
+    // 处理消息路由
+    if (message.targetAgentId) {
+      // 定向消息
+      return this.routeMessage(message)
+    } else {
+      // 广播消息
+      return this.broadcastMessage(message)
+    }
+  }
+
+  // 路由消息
+  private async routeMessage(message: AgentMessage): Promise<boolean> {
+    // 查找目标智能体
+    const targetAgent = Array.from(this.agents.values()).find(a => a.id === message.targetAgentId)
+    if (!targetAgent) {
+      return false
+    }
+
+    // 处理消息
+    this.processMessage(message, targetAgent)
+    return true
+  }
+
+  // 广播消息
+  private async broadcastMessage(message: AgentMessage): Promise<boolean> {
+    // 向所有智能体广播消息
+    for (const agent of Array.from(this.agents.values())) {
+      this.processMessage(message, agent)
+    }
+    return true
+  }
+
+  // 处理消息
+  private async processMessage(message: AgentMessage, agent: Agent): Promise<void> {
+    // 这里可以添加消息处理逻辑
+    // 例如，根据消息类型执行不同的操作
+    switch (message.messageType) {
+      case 'task':
+        // 处理任务消息
+        break
+      case 'question':
+        // 处理问题消息
+        break
+      case 'suggestion':
+        // 处理建议消息
+        break
+      case 'handover':
+        // 处理交接消息
+        break
+      case 'system':
+        // 处理系统消息
+        break
+    }
+
+    // 触发消息事件
+    this.emit('message', { message, agent })
+  }
+
+  // 更新通信统计
+  private updateCommunicationStats(message: AgentMessage): void {
+    const agentId = message.agentId
+    const stats = this.communicationStats.get(agentId) || {
+      totalMessages: 0,
+      messagesByType: {},
+      averageResponseTime: 0,
+      successRate: 0,
+      lastCommunication: Date.now()
+    }
+
+    stats.totalMessages++
+    stats.messagesByType[message.messageType] = (stats.messagesByType[message.messageType] || 0) + 1
+    stats.lastCommunication = Date.now()
+
+    this.communicationStats.set(agentId, stats)
+  }
+
+  // 获取通信统计
+  getCommunicationStats(agentId?: string): AgentCommunicationStats | Map<string, AgentCommunicationStats> {
+    if (agentId) {
+      return this.communicationStats.get(agentId) || {
+        totalMessages: 0,
+        messagesByType: {},
+        averageResponseTime: 0,
+        successRate: 0,
+        lastCommunication: 0
+      }
+    }
+    return this.communicationStats
+  }
+
+  // 分配任务给最合适的智能体
+  async assignTask(requiredCapabilities: string[]): Promise<AgentType | null> {
+    // 评估每个智能体的能力
+    const assessments: { agentType: AgentType; score: number }[] = []
+
+    for (const [agentType] of Array.from(this.agents.entries())) {
+      const assessment = await this.assessAgentCapabilities(agentType)
+      const score = this.calculateTaskCompatibility(assessment, requiredCapabilities)
+      assessments.push({ agentType, score })
+    }
+
+    // 按兼容性排序
+    assessments.sort((a, b) => b.score - a.score)
+
+    // 选择最佳智能体
+    if (assessments.length > 0 && assessments[0].score > 50) {
+      return assessments[0].agentType
+    }
+
+    return null
+  }
+
+  // 计算任务兼容性
+  private calculateTaskCompatibility(assessment: AgentCapabilityAssessment, requiredCapabilities: string[]): number {
+    if (requiredCapabilities.length === 0) {
+      return assessment.overallScore
+    }
+
+    let totalScore = 0
+    let count = 0
+
+    for (const reqCap of requiredCapabilities) {
+      const capAssessment = assessment.capabilities.find(c => c.capability === reqCap)
+      if (capAssessment) {
+        totalScore += capAssessment.score
+        count++
+      }
+    }
+
+    return count > 0 ? totalScore / count : 0
+  }
+
+  // 处理协作请求
+  async handleCollaborationRequest(request: AgentCollaborationRequest): Promise<{ success: boolean; assignedAgents: AgentType[] }> {
+    // 分析任务需求
+    const requiredAgents = await this.analyzeTaskRequirements(request.task)
+
+    // 分配任务
+    const assignedAgents: AgentType[] = []
+    for (const agentType of requiredAgents) {
+      // 检查智能体是否可用
+      const agent = this.agents.get(agentType)
+      if (agent && agent.status === 'idle') {
+        assignedAgents.push(agentType)
+      }
+    }
+
+    return {
+      success: assignedAgents.length > 0,
+      assignedAgents
+    }
+  }
+
+  // 监控智能体状态
+  monitorAgentStatus(): void {
+    // 定期检查智能体状态
+    setInterval(() => {
+      for (const [, agent] of Array.from(this.agents.entries())) {
+        if (agent.status === 'working' && this.isAgentStuck()) {
+          // 智能体可能卡住了，需要干预
+          this.handleAgentStuck(agent)
+        }
+      }
+    }, 30000) // 每30秒检查一次
+  }
+
+  // 检查智能体是否卡住
+  private isAgentStuck(): boolean {
+    // 这里可以添加更复杂的逻辑
+    // 例如，检查最后输出时间
+    return false
+  }
+
+  // 处理智能体卡住的情况
+  private async handleAgentStuck(agent: Agent): Promise<void> {
+    // 重置智能体状态
+    agent.status = 'idle'
+
+    // 发送系统消息
+    const message: AgentMessage = {
+      agentId: 'system',
+      agentName: '系统',
+      role: '协调员',
+      content: `智能体 ${agent.name} 似乎卡住了，已重置其状态`,
+      timestamp: Date.now(),
+      phase: '系统',
+      messageType: 'system',
+      priority: 'high'
+    }
+
+    await this.sendMessage(message)
+  }
+
+  // 获取智能体能力评估
+  getAgentCapabilities(agentType: AgentType): AgentCapabilityAssessment | undefined {
+    return this.agentCapabilities.get(agentType)
+  }
+
+  // 优化资源分配
+  optimizeResourceAllocation(): void {
+    // 这里可以添加资源优化逻辑
+    // 例如，根据任务优先级调整智能体分配
   }
 }
 

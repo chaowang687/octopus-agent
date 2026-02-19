@@ -1,6 +1,6 @@
 import * as fs from 'fs'
 import * as path from 'path'
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow } from 'electron'
 import { execSync } from 'child_process'
 import axios from 'axios'
 import * as si from 'systeminformation'
@@ -113,7 +113,7 @@ toolRegistry.register({
     { name: 'pattern', type: 'string', description: 'Glob pattern (e.g. "**/*.ts")', required: true },
     { name: 'cwd', type: 'string', description: 'Root directory for the glob (default: task directory)', required: false }
   ],
-  handler: async (params: any, ctx) => {
+  handler: async (params: any, ctx?: any) => {
     try {
       const pattern = params?.pattern
       const cwd = params?.cwd
@@ -251,7 +251,7 @@ toolRegistry.register({
     { name: 'cwd', type: 'string', description: 'Working directory', required: false },
     { name: 'timeout', type: 'number', description: 'Timeout in milliseconds (default: 300000 for npm install, 60000 for others)', required: false }
   ],
-  handler: async (params: any, ctx) => {
+  handler: async (params: any, ctx?: any) => {
     try {
       const command = params?.command
       const cwd = params?.cwd
@@ -319,7 +319,7 @@ toolRegistry.register({
   parameters: [
     { name: 'url', type: 'string', description: 'URL to fetch', required: true }
   ],
-  handler: async (params: any, ctx) => {
+  handler: async (params: any, ctx?: any) => {
     try {
       const url = params?.url
       if (!url) return { error: 'Missing parameter: url' }
@@ -393,7 +393,7 @@ toolRegistry.register({
   parameters: [
     { name: 'query', type: 'string', description: 'Search query', required: true }
   ],
-  handler: async (params: any, ctx) => {
+  handler: async (params: any, ctx?: any) => {
     try {
       const query = params?.query
       if (!query) return { error: 'Missing parameter: query' }
@@ -413,7 +413,7 @@ toolRegistry.register({
     { name: 'query', type: 'string', description: 'Search query', required: true },
     { name: 'count', type: 'number', description: 'Max number of images (default 10)', required: false }
   ],
-  handler: async (params: any, ctx) => {
+  handler: async (params: any, ctx?: any) => {
     try {
       const query = params?.query
       const count = params?.count ?? 10
@@ -434,7 +434,7 @@ toolRegistry.register({
     { name: 'count', type: 'number', description: 'Number of images to download (default: 9)', required: false },
     { name: 'dir', type: 'string', description: 'Directory to save images', required: false }
   ],
-  handler: async (params: any, ctx) => {
+  handler: async (params: any, ctx?: any) => {
     try {
       const query = params?.query;
       const rawCount = params?.count ?? 9;
@@ -510,7 +510,7 @@ toolRegistry.register({
     { name: 'filename', type: 'string', description: 'Optional filename', required: false },
     { name: 'dir', type: 'string', description: 'Optional directory (default: taskDir/imgs)', required: false }
   ],
-  handler: async (params: any, ctx) => {
+  handler: async (params: any, ctx?: any) => {
     try {
       const url = params?.url
       const filename = params?.filename
@@ -698,7 +698,7 @@ toolRegistry.register({
   parameters: [
     { name: 'path', type: 'string', description: 'Absolute path to the image', required: true }
   ],
-  handler: async (params: any, ctx) => {
+  handler: async (params: any, ctx?: any) => {
     try {
       const readImage = toolRegistry.getTool('read_image')
       if (!readImage) return { error: 'read_image tool not available' }
@@ -952,7 +952,7 @@ toolRegistry.register({
     { name: 'url', type: 'string', description: 'URL of the page to interact with', required: false },
     { name: 'selector', type: 'string', description: 'CSS selector of the element to click', required: true }
   ],
-  handler: async (params: any, ctx) => {
+  handler: async (params: any, ctx?: any) => {
     try {
       const selector = params?.selector
       if (!selector) return { error: 'Missing parameter: selector' }
@@ -981,7 +981,7 @@ toolRegistry.register({
     { name: 'selector', type: 'string', description: 'CSS selector of the input element', required: true },
     { name: 'text', type: 'string', description: 'Text to type into the element', required: true }
   ],
-  handler: async (params: any, ctx) => {
+  handler: async (params: any, ctx?: any) => {
     try {
       const selector = params?.selector
       const text = params?.text
@@ -1010,7 +1010,7 @@ toolRegistry.register({
   parameters: [
     { name: 'scrollTop', type: 'number', description: 'Pixel position to scroll to (vertical)', required: true }
   ],
-  handler: async (params: any, ctx) => {
+  handler: async (params: any, ctx?: any) => {
     try {
       const scrollTop = params?.scrollTop
       if (typeof scrollTop !== 'number') return { error: 'Missing parameter: scrollTop (number)' }
@@ -1037,7 +1037,7 @@ toolRegistry.register({
   parameters: [
     { name: 'url', type: 'string', description: 'URL of the page to screenshot', required: true }
   ],
-  handler: async (params: any, ctx) => {
+  handler: async (params: any, ctx?: any) => {
     try {
       const url = params?.url
       if (!url) return { error: 'Missing parameter: url' }
@@ -1068,7 +1068,7 @@ toolRegistry.register({
   parameters: [
     { name: 'url', type: 'string', description: 'URL of the page to analyze', required: true }
   ],
-  handler: async (params: any, ctx) => {
+  handler: async (params: any, ctx?: any) => {
     try {
       const url = params?.url
       if (!url) return { error: 'Missing parameter: url' }
@@ -1089,7 +1089,7 @@ toolRegistry.register({
     { name: 'url', type: 'string', description: 'URL of the page to run script on', required: true },
     { name: 'script', type: 'string', description: 'JavaScript code to execute', required: true }
   ],
-  handler: async (params: any, ctx) => {
+  handler: async (params: any, ctx?: any) => {
     try {
       const url = params?.url
       const script = params?.script
@@ -1111,7 +1111,7 @@ toolRegistry.register({
   parameters: [
     { name: 'url', type: 'string', description: 'URL to navigate to', required: true }
   ],
-  handler: async (params: any, ctx) => {
+  handler: async (params: any) => {
     try {
       const url = params?.url
       if (!url) return { error: 'Missing parameter: url' }
@@ -1145,7 +1145,7 @@ toolRegistry.register({
     { name: 'selector', type: 'string', description: 'CSS selector to wait for', required: true },
     { name: 'timeout', type: 'number', description: 'Timeout in milliseconds (default 10000)', required: false }
   ],
-  handler: async (params: any, ctx) => {
+  handler: async (params: any, ctx?: any) => {
     try {
       const url = params?.url
       const selector = params?.selector
@@ -1203,7 +1203,7 @@ toolRegistry.register({
   parameters: [
     { name: 'url', type: 'string', description: 'Video URL to play', required: true }
   ],
-  handler: async (params: any, ctx) => {
+  handler: async (params: any, ctx?: any) => {
     try {
       const url = params?.url
       if (!url) return { error: 'Missing parameter: url' }
@@ -1240,7 +1240,7 @@ toolRegistry.register({
     { name: 'key', type: 'string', description: 'Key to press (Enter, Tab, Escape, ArrowDown, etc.)', required: true },
     { name: 'selector', type: 'string', description: 'Optional CSS selector to focus before pressing key', required: false }
   ],
-  handler: async (params: any, ctx) => {
+  handler: async (params: any, ctx?: any) => {
     try {
       const url = params?.url
       const key = params?.key
@@ -1265,7 +1265,7 @@ toolRegistry.register({
     { name: 'path', type: 'string', description: 'Local path to save the file', required: true },
     { name: 'referer', type: 'string', description: 'Optional referer URL for the request', required: false }
   ],
-  handler: async (params: any, ctx) => {
+  handler: async (params: any, ctx?: any) => {
     try {
       const url = params?.url
       const savePath = params?.path
@@ -1865,8 +1865,8 @@ toolRegistry.register({
       
       const result = execSync(cmd, { encoding: 'utf8', timeout: 60000 })
       
-      const lines = result.split('\n').filter(l => l.trim())
-      const matches = lines.slice(0, maxResults).map(line => {
+      const lines = result.split('\n').filter((l: string) => l.trim())
+      const matches = lines.slice(0, maxResults).map((line: string) => {
         const colonIndex = line.indexOf(':')
         if (colonIndex === -1) return { line }
         return {
@@ -1894,7 +1894,7 @@ toolRegistry.register({
   parameters: [
     { name: 'code', type: 'string', description: 'Node.js code to execute', required: true }
   ],
-  handler: async (params: any, ctx) => {
+  handler: async (params: any) => {
     try {
       const code = params?.code
       if (!code) return { error: 'Missing parameter: code' }

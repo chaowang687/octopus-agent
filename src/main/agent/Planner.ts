@@ -1,7 +1,5 @@
 import { llmService, LLMMessage } from '../services/LLMService'
-import { toolRegistry } from './ToolRegistry'
-import * as os from 'os'
-import * as path from 'path'
+
 import { PATHS } from '../config/paths'
 
 // ============================================
@@ -74,33 +72,7 @@ export interface Plan {
 
 export class Planner {
   async createPlan(instruction: string, history: LLMMessage[] = [], model: string = 'openai', options: any = {}): Promise<Plan> {
-    const fullToolsDescription = toolRegistry.getToolsDescription()
-    // Limit tool description to ~5000 chars to save tokens for history/reasoning
-    const toolsDescription = fullToolsDescription.length > 5000
-      ? `${fullToolsDescription.slice(0, 5000)}\n... (tools list truncated for length)`
-      : fullToolsDescription
-    const homeDir = os.homedir()
-    const desktopPath = path.join(homeDir, 'Desktop')
-    
-    // 获取工作目录（如果有的话）
-    const taskDir = options?.taskDir || ''
-    const workspacePath = PATHS.PROJECT_ROOT
-    
-    const workingDirInfo = taskDir 
-      ? `\n- Working Directory (任务工作目录): ${taskDir}`
-      : `\n- Workspace Path (项目根目录): ${workspacePath}`
-    
-    const pathExamples = taskDir 
-      ? `\n\nPATH EXAMPLES - For this task, use paths like:
-  - ${path.join(taskDir, 'src/index.ts')}
-  - ${path.join(taskDir, 'src/renderer/index.html')}
-  - ${path.join(taskDir, 'package.json')}
-  DO NOT use: main/index.ts, src/main.js, or any relative paths.`
-      : `\n\nPATH EXAMPLES - ALWAYS use full absolute paths:
-  - ${workspacePath}/src/main/index.ts
-  - ${workspacePath}/src/renderer/index.html
-  - ${PATHS.getProjectPath('项目名')}/src/index.js
-  DO NOT use: main/index.ts, src/main.js, ./src, /path/to/..., or any relative paths.`
+
     
     const systemPrompt = `You are a task PLANNER. Your job is to create a detailed JSON plan with MULTIPLE steps.
 
@@ -113,16 +85,19 @@ CRITICAL REQUIREMENTS:
 2. Steps should be ordered logically (create directories first, then files, then install dependencies, then run)
 3. NEVER create only 1 step - that is too simplistic
 4. ALWAYS include: create project folder → create source files → install dependencies → verify with command
+5. ALWAYS end with a "respond_to_user" step to provide final result to the user
+6. The "respond_to_user" step should be the LAST step and include a summary message
 
 Output format (MUST follow this structure):
 {"reasoning": "I will create the project step by step", "steps": [
   {"id": "step_1", "tool": "create_directory", "parameters": {"path": "${PATHS.getWorkspacePath('notepad')}"}, "description": "Create notepad project directory"},
       {"id": "step_2", "tool": "write_file", "parameters": {"path": "${PATHS.getWorkspacePath('notepad')}/index.html", "content": "<!DOCTYPE html>..."}, "description": "Create main HTML file"},
       {"id": "step_3", "tool": "execute_command", "parameters": {"command": "cd ${PATHS.getWorkspacePath('notepad')} && npm init -y"}, "description": "Initialize npm project"},
-      {"id": "step_4", "tool": "execute_command", "parameters": {"command": "cd ${PATHS.getWorkspacePath('notepad')} && npm install"}, "description": "Install project dependencies"}
+      {"id": "step_4", "tool": "execute_command", "parameters": {"command": "cd ${PATHS.getWorkspacePath('notepad')} && npm install"}, "description": "Install project dependencies"},
+      {"id": "step_5", "tool": "respond_to_user", "parameters": {"message": "项目创建完成！已创建简易笔记本应用，包含以下功能：..."}, "description": "Report completion to user"}
 ]}
 
-IMPORTANT: Output ONLY valid JSON with at least 3 steps, no other text!`
+IMPORTANT: Output ONLY valid JSON with at least 3 steps, MUST include respond_to_user as the final step, no other text!`
 
     const messages: LLMMessage[] = [
       { role: 'system', content: systemPrompt },
@@ -149,14 +124,34 @@ IMPORTANT: Output ONLY valid JSON with at least 3 steps, no other text!`
     const response = await llmService.chat(model, messages, planOptions)
 
     if (!response.success || !response.content) {
-      throw new Error(`Failed to generate plan: ${response.error || 'Empty response'}`)
+      console.warn(`Planner: LLM error - ${response.error || 'Empty response'}`)
+      const now = Date.now()
+      return {
+        planId: `plan_${Date.now()}_error`,
+        originalGoal: instruction,
+        steps: [],
+        reasoning: `Failed to create plan: ${response.error || 'Empty response'}`,
+        currentStepId: null,
+        autoExecute: true,
+        createdAt: now,
+        updatedAt: now
+      }
     }
+
+    console.log('[Planner] LLM 原始响应 (前 500 字符):', response.content?.slice(0, 500))
+    console.log('[Planner] LLM 原始响应长度:', response.content?.length)
 
     const extractJson = (text: string): string | null => {
       const trimmed = text.trim()
+      console.log('[Planner] 开始提取 JSON，输入长度:', trimmed.length)
+      
       // First try to extract from markdown code block
       const codeBlockMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/)
-      if (codeBlockMatch?.[1]) return codeBlockMatch[1].trim()
+      if (codeBlockMatch?.[1]) {
+        const jsonStr = codeBlockMatch[1].trim()
+        console.log('[Planner] 从代码块提取 JSON，长度:', jsonStr.length)
+        return jsonStr
+      }
 
       // If no code block, try to find the JSON object directly
       const firstObj = trimmed.indexOf('{')
@@ -165,15 +160,19 @@ IMPORTANT: Output ONLY valid JSON with at least 3 steps, no other text!`
         firstObj === -1 ? firstArr
         : firstArr === -1 ? firstObj
         : Math.min(firstObj, firstArr)
-      if (start === -1) return null
+      if (start === -1) {
+        console.log('[Planner] 未找到 JSON 开始标记')
+        return null
+      }
 
-      // Simple extraction strategy: find the matching closing brace
+      // Enhanced extraction strategy: find the matching closing brace with better string handling
       const open = trimmed[start]
       const close = open === '{' ? '}' : ']'
       
       let depth = 0
       let inString = false
       let escaped = false
+      let jsonEnd = -1
       
       for (let i = start; i < trimmed.length; i++) {
         const ch = trimmed[i]
@@ -197,17 +196,20 @@ IMPORTANT: Output ONLY valid JSON with at least 3 steps, no other text!`
         if (ch === open) depth++
         if (ch === close) depth--
 
-        if (depth === 0) return trimmed.slice(start, i + 1)
+        if (depth === 0) {
+          jsonEnd = i + 1
+          break
+        }
       }
 
-      // Fallback: if proper nesting failed (e.g. malformed JSON), try to return everything from start to end
-      // This allows the repair mechanism to have a chance with the full content
-      const lastClose = trimmed.lastIndexOf(close)
-      if (lastClose > start) {
-        return trimmed.slice(start, lastClose + 1)
+      if (jsonEnd === -1) {
+        console.log('[Planner] 未找到匹配的 JSON 结束标记')
+        return null
       }
 
-      return null
+      const jsonStr = trimmed.slice(start, jsonEnd)
+      console.log('[Planner] 提取的 JSON 长度:', jsonStr.length)
+      return jsonStr
     }
 
     const validatePlan = (p: any): p is Plan => {
@@ -227,9 +229,62 @@ IMPORTANT: Output ONLY valid JSON with at least 3 steps, no other text!`
     const parsePlanOrThrow = (raw: string): Plan => {
       const jsonStr = extractJson(raw)
       if (!jsonStr) throw new Error('No JSON found in LLM response')
-      const plan = JSON.parse(jsonStr) as Plan
-      if (!validatePlan(plan)) throw new Error('Parsed JSON does not match Plan schema')
-      return plan
+      
+      console.log('[Planner] 提取的 JSON (前 500 字符):', jsonStr?.slice(0, 500))
+      console.log('[Planner] 提取的 JSON 长度:', jsonStr?.length)
+      
+      try {
+        const plan = JSON.parse(jsonStr) as Plan
+        console.log('[Planner] 解析后的计划步骤数:', plan?.steps?.length)
+        
+        if (!validatePlan(plan)) {
+          throw new Error('Parsed JSON does not match Plan schema')
+        }
+        
+        return plan
+      } catch (parseError: any) {
+        console.error('[Planner] JSON 解析失败:', parseError.message)
+        console.error('[Planner] 错误位置:', parseError.stack)
+        
+        // 尝试修复常见的 JSON 错误
+        try {
+          const repaired = repairJson(jsonStr)
+          console.log('[Planner] 尝试修复 JSON')
+          const plan = JSON.parse(repaired) as Plan
+          
+          if (validatePlan(plan)) {
+            console.log('[Planner] JSON 修复成功')
+            return plan
+          }
+        } catch (repairError: any) {
+          console.error('[Planner] JSON 修复失败:', repairError.message)
+        }
+        
+        throw new Error(`Failed to parse plan JSON: ${parseError.message}`)
+      }
+    }
+    
+    const repairJson = (jsonStr: string): string => {
+      // 尝试修复常见的 JSON 错误
+      let repaired = jsonStr
+      
+      // 修复未转义的引号（在字符串值中）
+      // 这是一个简单的启发式方法，可能无法处理所有情况
+      repaired = repaired.replace(/"([^"]*)"([^",\s\]}]*?)"/g, (match, p1, p2) => {
+        // 如果 p2 包含未转义的引号，尝试修复
+        if (p2.includes('"')) {
+          return `"${p1}${p2.replace(/"/g, '\\"')}"`
+        }
+        return match
+      })
+      
+      // 修复尾随逗号
+      repaired = repaired.replace(/,(\s*[}\]])/g, '$1')
+      
+      // 修复单引号
+      repaired = repaired.replace(/'([^']*)'/g, '"$1"')
+      
+      return repaired
     }
 
     const maybeEnforceImageGrid = (p: Plan): Plan => {
@@ -274,16 +329,23 @@ IMPORTANT: Output ONLY valid JSON with at least 3 steps, no other text!`
 
       const stepId = `download_images_${Date.now()}`
       return {
+        planId: `plan_${Date.now()}`,
+        originalGoal: instruction,
         reasoning: p.reasoning || 'Provide a 9-image gallery for user selection.',
         steps: [
           {
             id: stepId,
             tool: 'batch_download_images',
             parameters: { query, count: 9 },
-            description: 'Search and download 9 candidate images for user selection'
+            description: 'Search and download 9 candidate images for user selection',
+            status: StepStatus.PENDING
           },
           ...p.steps.filter(s => s?.tool !== 'respond_to_user')
-        ]
+        ],
+        currentStepId: null,
+        autoExecute: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
       }
     }
 

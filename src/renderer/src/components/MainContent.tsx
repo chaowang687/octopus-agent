@@ -407,7 +407,7 @@ const MainContent: React.FC = () => {
     })
 
     // 监听webview-action事件（来自agent工具）
-    const unsubscribeWebviewAction = api.events.onWebviewAction && api.events.onWebviewAction((data: { action: string; selector?: string; text?: string; scrollTop?: number }) => {
+    const unsubscribeWebviewAction = api.events.onWebviewAction && api.events.onWebviewAction((data: { action: string; selector?: string; text?: string; scrollTop?: number; url?: string }) => {
       console.log('[Renderer] Received webview-action:', data)
       const webview = webviewRefs.current[activeTabId]
       if (!webview) {

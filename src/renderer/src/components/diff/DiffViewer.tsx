@@ -311,7 +311,7 @@ export const SemanticChangeList: React.FC<SemanticChangeListProps> = ({
             backgroundColor: changeTypeColors[change.type].bg,
             borderRadius: '8px'
           }}>
-            {change.type === 'add' ? '✨' :
+            {change.type === 'added' ? '✨' :
              change.type === 'fix' ? '🔧' :
              change.type === 'refactor' ? '♻️' :
              change.type === 'style' ? '🎨' :
@@ -604,8 +604,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
   changes,
   semanticChanges = [],
   impactAnalysis,
-  viewMode = 'unified',
-  onFileClick
+  viewMode = 'unified'
 }) => {
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set())
 

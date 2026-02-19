@@ -119,9 +119,17 @@ export class ErrorHandler {
     let appError: AppError
 
     if (error instanceof AppError) {
-      appError = error
       if (context && Object.keys(context).length > 0) {
-        appError.context = { ...appError.context, ...context }
+        // 使用AppError构造函数创建新的错误对象，因为context是只读属性
+        appError = new AppError(
+          error.message,
+          error.category,
+          error.severity,
+          { ...error.context, ...context },
+          error.originalError
+        )
+      } else {
+        appError = error
       }
     } else {
       const category = this.categorizeError(error)

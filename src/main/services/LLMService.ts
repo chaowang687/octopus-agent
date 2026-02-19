@@ -1,6 +1,6 @@
 import * as fs from 'fs'
 import * as path from 'path'
-import { app } from 'electron'
+import { app, safeStorage } from 'electron'
 
 export interface LLMResponse {
   success: boolean
@@ -46,6 +46,15 @@ export class LLMService {
     'doubao-seed-2-0-pro-260215': 'doubao',
     'doubao-seed-2-0-code-preview-260215': 'doubao'
   }
+  
+  // API 密钥缓存
+  private apiKeyCache: Map<string, {
+    key: string
+    timestamp: number
+  }> = new Map()
+  
+  // 缓存过期时间（毫秒）
+  private cacheTTL = 5 * 60 * 1000 // 5分钟
 
   constructor() {
     this.apiKeysPath = path.join(app.getPath('userData'), 'apiKeys.json')
@@ -53,14 +62,28 @@ export class LLMService {
 
   public getApiKey(model: string): string | null {
     try {
+      // 先检查缓存
+      const cachedKey = this.getCachedApiKey(model)
+      if (cachedKey) {
+        return cachedKey
+      }
+
       if (fs.existsSync(this.apiKeysPath)) {
         const apiKeys = JSON.parse(fs.readFileSync(this.apiKeysPath, 'utf8'))
         if (apiKeys[model]) {
-          return apiKeys[model]
+          // 尝试解密 API 密钥
+          const key = this.decryptApiKey(apiKeys[model])
+          // 缓存 API 密钥
+          this.cacheApiKey(model, key)
+          return key
         }
         const provider = this.modelToProvider[model]
         if (provider && apiKeys[provider]) {
-          return apiKeys[provider]
+          // 尝试解密 API 密钥
+          const key = this.decryptApiKey(apiKeys[provider])
+          // 缓存 API 密钥
+          this.cacheApiKey(model, key)
+          return key
         }
         return null
       }
@@ -70,11 +93,97 @@ export class LLMService {
     return null
   }
 
+  private getCachedApiKey(model: string): string | null {
+    const cached = this.apiKeyCache.get(model)
+    if (cached) {
+      const now = Date.now()
+      if (now - cached.timestamp < this.cacheTTL) {
+        return cached.key
+      }
+      // 缓存过期，移除
+      this.apiKeyCache.delete(model)
+    }
+    return null
+  }
+
+  private cacheApiKey(model: string, key: string): void {
+    this.apiKeyCache.set(model, {
+      key,
+      timestamp: Date.now()
+    })
+    
+    // 限制缓存大小，最多缓存 50 个密钥
+    if (this.apiKeyCache.size > 50) {
+      // 移除最早的缓存项
+      const oldestEntry = this.apiKeyCache.entries().next()
+      if (!oldestEntry.done && oldestEntry.value) {
+        const oldestKey = oldestEntry.value[0]
+        this.apiKeyCache.delete(oldestKey)
+      }
+    }
+  }
+
+  public setApiKey(model: string, key: string): boolean {
+    try {
+      let apiKeys: any = {}
+      if (fs.existsSync(this.apiKeysPath)) {
+        apiKeys = JSON.parse(fs.readFileSync(this.apiKeysPath, 'utf8'))
+      }
+      
+      // 加密存储 API 密钥
+      apiKeys[model] = this.encryptApiKey(key)
+      fs.writeFileSync(this.apiKeysPath, JSON.stringify(apiKeys, null, 2))
+      
+      // 清除对应缓存，确保下次获取时能获取到新的密钥
+      this.apiKeyCache.delete(model)
+      
+      return true
+    } catch (error) {
+      console.error('Failed to write API keys:', error)
+      return false
+    }
+  }
+
+  private encryptApiKey(key: string): string {
+    try {
+      if (safeStorage.isEncryptionAvailable()) {
+        const encrypted = safeStorage.encryptString(key)
+        return encrypted.toString('base64')
+      }
+      // 如果加密不可用，返回原始密钥（仅用于开发环境）
+      return key
+    } catch (error) {
+      console.error('Failed to encrypt API key:', error)
+      return key
+    }
+  }
+
+  private decryptApiKey(encryptedKey: string): string {
+    try {
+      if (safeStorage.isEncryptionAvailable() && encryptedKey.length > 32) {
+        const buffer = Buffer.from(encryptedKey, 'base64')
+        return safeStorage.decryptString(buffer)
+      }
+      // 如果解密失败或不是加密的密钥，返回原始值
+      return encryptedKey
+    } catch (error) {
+      console.error('Failed to decrypt API key:', error)
+      return encryptedKey
+    }
+  }
+
   public getAvailableModels(): string[] {
     try {
       if (fs.existsSync(this.apiKeysPath)) {
         const apiKeys = JSON.parse(fs.readFileSync(this.apiKeysPath, 'utf8'))
-        return Object.keys(apiKeys).filter(key => apiKeys[key] && apiKeys[key].length > 0)
+        return Object.keys(apiKeys).filter(key => {
+          try {
+            const decryptedKey = this.decryptApiKey(apiKeys[key])
+            return decryptedKey && decryptedKey.length > 0
+          } catch {
+            return false
+          }
+        })
       }
     } catch (error) {
       console.error('Failed to read API keys:', error)

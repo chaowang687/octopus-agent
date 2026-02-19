@@ -1,7 +1,4 @@
-import * as fs from 'fs'
-import * as path from 'path'
 import { llmService } from '../services/LLMService'
-import { toolRegistry } from './ToolRegistry'
 import { contextManager } from './ContextManager'
 
 interface CodeGenerationRequest {
@@ -115,10 +112,10 @@ export class SoloCoderService {
   // 测试生成
   async generateTests(request: TestGenerationRequest): Promise<TestGenerationResult> {
     try {
-      const { code, language, testFramework, context } = request
+      const { code, language, context } = request
       
       // 构建提示
-      const prompt = this.buildTestGenerationPrompt(code, language, testFramework)
+      const prompt = this.buildTestGenerationPrompt(code, language)
       
       // 注入上下文
       const enhancedPrompt = context ? await contextManager.injectContext(prompt, context) : prompt
@@ -127,7 +124,7 @@ export class SoloCoderService {
       const response = await llmService.chat('deepseek', [
         {
           role: 'system',
-          content: `You are an expert ${language} tester. Generate comprehensive tests using ${testFramework}.`
+          content: `You are an expert ${language} tester. Generate comprehensive tests.`
         },
         {
           role: 'user',
@@ -149,7 +146,7 @@ export class SoloCoderService {
       }
       
       // 提取测试代码和解释
-      const { tests, explanation, coverage } = this.parseTestGenerationResponse(response.content, testFramework)
+      const { tests, explanation, coverage } = this.parseTestGenerationResponse(response.content)
       
       return {
         success: true,
@@ -252,8 +249,8 @@ Suggestions:
   }
 
   // 构建测试生成提示
-  private buildTestGenerationPrompt(code: string, language: string, testFramework: string): string {
-    return `Generate ${testFramework} tests for the following ${language} code:
+  private buildTestGenerationPrompt(code: string, language: string): string {
+    return `Generate tests for the following ${language} code:
 
 ${language}
 ${code}
@@ -262,7 +259,7 @@ ${code}
 Requirements:
 1. Tests should be comprehensive and cover all major functionality
 2. Include edge cases and error handling
-3. Follow best practices for ${testFramework}
+3. Follow best practices for testing
 4. Provide a brief explanation of the test strategy
 5. Estimate test coverage
 
@@ -334,7 +331,7 @@ Score:
   }
 
   // 解析测试生成响应
-  private parseTestGenerationResponse(response: string, testFramework: string): {
+  private parseTestGenerationResponse(response: string): {
     tests: string
     explanation: string
     coverage: string

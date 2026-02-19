@@ -1,4 +1,4 @@
-import { BrowserWindow } from 'electron'
+import { BrowserWindow, Event } from 'electron'
 
 export interface SearchResult {
   title: string
@@ -273,7 +273,7 @@ export class BrowserService {
   // 点击网页元素
   async clickElement(url: string, selector: string, signal?: AbortSignal): Promise<{ success: boolean; message: string }> {
     return new Promise((resolve, reject) => {
-      const win = this.createBrowserWindow(true)
+      const win = createBrowserWindow(true)
 
       const timeout = setTimeout(() => {
         if (!win.isDestroyed()) win.destroy()
@@ -336,7 +336,7 @@ export class BrowserService {
   // 在输入框中输入文字
   async typeText(url: string, selector: string, text: string, signal?: AbortSignal): Promise<{ success: boolean; message: string }> {
     return new Promise((resolve, reject) => {
-      const win = this.createBrowserWindow(true)
+      const win = createBrowserWindow(true)
 
       const timeout = setTimeout(() => {
         if (!win.isDestroyed()) win.destroy()
@@ -411,7 +411,7 @@ export class BrowserService {
   // 滚动页面
   async scrollPage(url: string, scrollTop: number, signal?: AbortSignal): Promise<{ success: boolean; message: string }> {
     return new Promise((resolve, reject) => {
-      const win = this.createBrowserWindow(true)
+      const win = createBrowserWindow(true)
 
       const timeout = setTimeout(() => {
         if (!win.isDestroyed()) win.destroy()
@@ -530,7 +530,7 @@ export class BrowserService {
   // 获取页面元素信息
   async getPageElements(url: string, signal?: AbortSignal): Promise<{ success: boolean; elements: any[]; message: string }> {
     return new Promise((resolve, reject) => {
-      const win = this.createBrowserWindow(true)
+      const win = createBrowserWindow(true)
 
       const timeout = setTimeout(() => {
         if (!win.isDestroyed()) win.destroy()
@@ -618,7 +618,7 @@ export class BrowserService {
   // 执行JavaScript代码
   async executeScript(url: string, script: string, signal?: AbortSignal): Promise<{ success: boolean; result: any; message: string }> {
     return new Promise((resolve, reject) => {
-      const win = this.createBrowserWindow(true)
+      const win = createBrowserWindow(true)
 
       const timeout = setTimeout(() => {
         if (!win.isDestroyed()) win.destroy()
@@ -664,7 +664,7 @@ export class BrowserService {
         }
       })
 
-      win.webContents.on('did-fail-load', (_, errorCode, errorDescription) => {
+      win.webContents.on('did-fail-load', (_: Event, errorCode: number, errorDescription: string) => {
         clearTimeout(timeout)
         if (!win.isDestroyed()) win.destroy()
         reject(new Error(`Failed to load: ${errorDescription} (${errorCode})`))
@@ -818,7 +818,7 @@ export class BrowserService {
       }))
       return { success: true, tabs, message: `Found ${tabs.length} tabs` }
     } catch (error: any) {
-      return { success: false, tabs: [], error: error.message }
+      return { success: false, tabs: [], message: error.message }
     }
   }
 
@@ -834,7 +834,7 @@ export class BrowserService {
       this.activeWindow = targetWindow
       return { success: true, message: `Switched to window ${windowId}` }
     } catch (error: any) {
-      return { success: false, error: error.message }
+      return { success: false, message: error.message }
     }
   }
 
@@ -1085,12 +1085,12 @@ export class BrowserService {
         // 如果没有活动窗口，创建一个临时窗口
         const win = createBrowserWindow(false)
         await win.loadURL(url)
-        const cookies = await win.session.cookies.get({ url })
+        const cookies = await win.webContents.session.cookies.get({ url })
         win.close()
         return { success: true, cookies, message: `Got ${cookies.length} cookies` }
       }
       
-      const cookies = await this.activeWindow.session.cookies.get({ url })
+      const cookies = await this.activeWindow.webContents.session.cookies.get({ url })
       return { success: true, cookies, message: `Got ${cookies.length} cookies` }
     } catch (error: any) {
       return { success: false, cookies: [], message: error.message }
@@ -1105,7 +1105,7 @@ export class BrowserService {
         await win.loadURL(url)
         
         for (const cookie of cookies) {
-          await win.session.cookies.set({
+          await win.webContents.session.cookies.set({
             url,
             name: cookie.name,
             value: cookie.value,
@@ -1118,7 +1118,7 @@ export class BrowserService {
       }
 
       for (const cookie of cookies) {
-        await this.activeWindow.session.cookies.set({
+        await this.activeWindow.webContents.session.cookies.set({
           url,
           name: cookie.name,
           value: cookie.value,
@@ -1140,16 +1140,16 @@ export class BrowserService {
       }
 
       if (url) {
-        const cookies = await this.activeWindow.session.cookies.get({ url })
+        const cookies = await this.activeWindow.webContents.session.cookies.get({ url })
         for (const cookie of cookies) {
-          await this.activeWindow.session.cookies.remove(url, cookie.name)
+          await this.activeWindow.webContents.session.cookies.remove(url, cookie.name)
         }
         return { success: true, message: `Cleared cookies for ${url}` }
       } else {
         // 清除所有cookie
-        const cookies = await this.activeWindow.session.cookies.get({})
+        const cookies = await this.activeWindow.webContents.session.cookies.get({})
         for (const cookie of cookies) {
-          await this.activeWindow.session.cookies.remove(cookie.domain || url, cookie.name)
+          await this.activeWindow.webContents.session.cookies.remove(cookie.domain || url || '', cookie.name)
         }
         return { success: true, message: 'Cleared all cookies' }
       }

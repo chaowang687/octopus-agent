@@ -1,9 +1,10 @@
 import { EventEmitter } from 'events'
-import { llmService, LLMMessage } from '../services/LLMService'
+import { llmService } from '../services/LLMService'
 import { planner, Plan } from './Planner'
 import { executor, ExecutionProgressEvent } from './Executor'
 import * as path from 'path'
 import * as os from 'os'
+import { PATHS } from '../config/paths'
 
 // 进度详情
 export interface ProgressDetail {
@@ -59,7 +60,6 @@ export interface IterationRound {
 export class MultiDialogueCoordinator extends EventEmitter {
   private dialogues: Map<string, DialogueState> = new Map()
   private executionOrder: string[] = []
-  private currentIndex: number = 0
   private sharedContext: Record<string, any> = {}
   private iterationRounds: IterationRound[] = []
   private currentRound: number = 1
@@ -68,48 +68,7 @@ export class MultiDialogueCoordinator extends EventEmitter {
   private taskDir: string = ''  // 任务工作目录
   private devPlan: Plan | null = null  // 开发阶段的执行计划
   
-  // 进度跟踪
-  private currentProgress: ProgressDetail = {
-    phase: '',
-    agent: '',
-    progress: 0,
-    subTasks: [],
-    message: ''
-  }
-  
-  // 辅助方法：发送进度更新
-  private updateProgress(phase: string, agent: string, progress: number, message: string, subTasks?: { name: string, status: string, progress: number }[]) {
-    this.currentProgress = {
-      phase,
-      agent,
-      progress,
-      subTasks: subTasks || this.currentProgress.subTasks,
-      message
-    }
-    this.emit('progress', this.currentProgress)
-  }
-  
-  // 辅助方法：更新子任务状态
-  private updateSubTask(taskName: string, status: 'pending' | 'in_progress' | 'completed' | 'failed', progress?: number) {
-    const subTasks = this.currentProgress.subTasks.map(task => {
-      if (task.name === taskName) {
-        return { 
-          ...task, 
-          status, 
-          progress: progress ?? (status === 'completed' ? 100 : status === 'in_progress' ? 50 : 0) 
-        }
-      }
-      return task
-    })
-    const overallProgress = Math.round(subTasks.reduce((sum, t) => sum + t.progress, 0) / subTasks.length)
-    this.emit('progress', { 
-      ...this.currentProgress, 
-      subTasks,
-      progress: overallProgress 
-    })
-    this.currentProgress.subTasks = subTasks
-    this.currentProgress.progress = overallProgress
-  }
+
   
   // 智能体配置
   private agentConfigs: Map<string, DialogueAgent> = new Map([
@@ -237,8 +196,16 @@ export class MultiDialogueCoordinator extends EventEmitter {
   }> {
     // 创建任务工作目录
     const desktopPath = path.join(os.homedir(), 'Desktop')
-    const safeTaskName = taskName.replace(/[^\w\u4e00-\u9fa5]/g, '_').trim()
-    this.taskDir = path.join(desktopPath, safeTaskName)
+    // 使用安全的目录名：保留中文、字母、数字和短横线
+    const safeTaskName = taskName
+      .replace(/[^\w\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef_-]/g, '_')  // 保留中文、日文、韩文字符
+      .replace(/_+/g, '_')  // 多个下划线合并为一个
+      .trim()
+      .slice(0, 50)  // 限制长度
+    
+    // 如果目录名为空，使用默认名称
+    const finalTaskName = safeTaskName || `project_${Date.now()}`
+    this.taskDir = path.join(desktopPath, finalTaskName)
     
     this.dialogues.clear()
     this.sharedContext = {
@@ -269,7 +236,8 @@ export class MultiDialogueCoordinator extends EventEmitter {
     
     // 记录第一轮
     this.iterationRounds.push({
-      round: 1
+      round: 1,
+      delivered: false
     })
     
     const dialogues = Array.from(this.dialogues.values())
@@ -324,11 +292,11 @@ export class MultiDialogueCoordinator extends EventEmitter {
     let summary = ''
 
     // ==================== 1. PM分析需求 ====================
-    const pmSubTasks = [
-      { name: '理解用户需求', status: 'in_progress' as const, progress: 0 },
-      { name: '拆解用户故事', status: 'pending' as const, progress: 0 },
-      { name: '制定项目计划', status: 'pending' as const, progress: 0 },
-      { name: '分配任务给团队', status: 'pending' as const, progress: 0 }
+    const pmSubTasks: { name: string, status: 'pending' | 'in_progress' | 'completed' | 'failed', progress: number }[] = [
+      { name: '理解用户需求', status: 'in_progress', progress: 0 },
+      { name: '拆解用户故事', status: 'pending', progress: 0 },
+      { name: '制定项目计划', status: 'pending', progress: 0 },
+      { name: '分配任务给团队', status: 'pending', progress: 0 }
     ]
     onMessage('progress', { 
       phase: 'pm', 
@@ -369,11 +337,11 @@ export class MultiDialogueCoordinator extends EventEmitter {
     }
 
     // ==================== 2. UI设计 ====================
-    const uiSubTasks = [
-      { name: '分析PM需求文档', status: 'in_progress' as const, progress: 0 },
-      { name: '设计页面结构', status: 'pending' as const, progress: 0 },
-      { name: '设计组件架构', status: 'pending' as const, progress: 0 },
-      { name: '输出UI设计稿', status: 'pending' as const, progress: 0 }
+    const uiSubTasks: { name: string, status: 'pending' | 'in_progress' | 'completed' | 'failed', progress: number }[] = [
+      { name: '分析PM需求文档', status: 'in_progress', progress: 0 },
+      { name: '设计页面结构', status: 'pending', progress: 0 },
+      { name: '设计组件架构', status: 'pending', progress: 0 },
+      { name: '输出UI设计稿', status: 'pending', progress: 0 }
     ]
     onMessage('progress', { 
       phase: 'ui', 
@@ -459,6 +427,7 @@ export class MultiDialogueCoordinator extends EventEmitter {
     
     // 3.2 使用Planner生成可执行计划
     let planTimeout = false
+    console.log('[MultiDialogue] 开始生成执行计划, taskDir:', this.taskDir)
     try {
       // 增加超时时间到5分钟
       const planPromise = planner.createPlan(
@@ -473,6 +442,7 @@ export class MultiDialogueCoordinator extends EventEmitter {
       )
       
       this.devPlan = await Promise.race([planPromise, timeoutPromise]) as Plan
+      console.log('[MultiDialogue] 计划生成成功, 步骤数:', this.devPlan.steps.length)
       
       onMessage('plan_created', { 
         round: this.currentRound, 
@@ -772,7 +742,7 @@ export class MultiDialogueCoordinator extends EventEmitter {
 
     // 8. 开始下一轮迭代
     this.currentRound++
-    this.iterationRounds.push({ round: this.currentRound })
+    this.iterationRounds.push({ round: this.currentRound, delivered: false })
     
     summary += `\n\n🔄 开始第${this.currentRound}轮迭代...`
     
@@ -837,11 +807,13 @@ ${reviewResult}
       // 构建上下文
       const contextPrompt = this.buildContextPrompt(agentId)
       
-      const response = await llmService.chat(dialogue.agent.model, [
+      const messages: any[] = [
         { role: 'system', content: dialogue.agent.systemPrompt },
         ...(contextPrompt ? [{ role: 'system', content: contextPrompt }] : []),
         { role: 'user', content: input }
-      ], {
+      ]
+      
+      const response = await llmService.chat(dialogue.agent.model, messages, {
         temperature: 0.7,
         max_tokens: 8000
       })

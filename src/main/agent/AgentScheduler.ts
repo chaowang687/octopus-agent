@@ -1,7 +1,4 @@
 import { EventEmitter } from 'events'
-import { TaskEngine } from './TaskEngine'
-import { planner } from './Planner'
-import { executor } from './Executor'
 import { toolRegistry } from './ToolRegistry'
 import { llmService } from '../services/LLMService'
 import * as fs from 'fs'
@@ -42,14 +39,11 @@ interface TaskPlan {
 }
 
 export class AgentScheduler extends EventEmitter {
-  private taskEngine: TaskEngine
   private tasks: Map<string, Task> = new Map()
   private agents: Map<string, Agent> = new Map()
-  private contextStore: Map<string, any> = new Map()
 
   constructor() {
     super()
-    this.taskEngine = new TaskEngine()
     this.initializeAgents()
   }
 
@@ -232,22 +226,20 @@ export class AgentScheduler extends EventEmitter {
     // 根据任务类型选择智能体
     const agent = this.selectAgent(taskParseResult.intent)
     
-    // 执行任务
-    const result = await this.taskEngine.executeTask(instruction, agent.model, agentOptions)
-    
     // 更新任务状态
     const task = this.tasks.get(taskId)
     if (task) {
-      task.status = result.success ? 'completed' : 'failed'
+      task.status = 'pending'
       task.updatedAt = new Date()
       this.tasks.set(taskId, task)
     }
     
+    // 返回调度结果，不执行任务（由 TaskEngine 继续执行）
     return {
-      success: result.success,
+      success: true,
       task_id: taskId,
       plan,
-      result,
+      result: null, // 任务将由 TaskEngine 继续执行
       agent_id: agent.id
     }
   }
@@ -272,20 +264,39 @@ export class AgentScheduler extends EventEmitter {
 
   private selectAgent(intent: string): Agent {
     // 根据意图选择合适的智能体
+    let selectedAgent: Agent | undefined;
+    
     switch (intent) {
       case 'code_generation':
       case 'code_review':
-        return this.agents.get('agent-solo-coder') || this.agents.values().next().value
+        selectedAgent = this.agents.get('agent-solo-coder');
+        break;
       case 'test_generation':
-        return this.agents.get('agent-test-generator') || this.agents.values().next().value
+        selectedAgent = this.agents.get('agent-test-generator');
+        break;
       case 'app_building':
-        return this.agents.get('agent-solo-builder') || this.agents.values().next().value
+        selectedAgent = this.agents.get('agent-solo-builder');
+        break;
       case 'security_analysis':
       case 'performance_analysis':
-        return this.agents.get('agent-reviewer') || this.agents.values().next().value
+        selectedAgent = this.agents.get('agent-reviewer');
+        break;
       default:
-        return this.agents.get('agent-solo-coder') || this.agents.values().next().value
+        selectedAgent = this.agents.get('agent-solo-coder');
+        break;
     }
+    
+    // 如果没有找到指定的智能体，返回第一个可用的智能体
+    if (!selectedAgent) {
+      selectedAgent = this.agents.values().next().value;
+    }
+    
+    // 确保总是返回一个有效的智能体
+    if (!selectedAgent) {
+      throw new Error('No agents available in AgentScheduler');
+    }
+    
+    return selectedAgent;
   }
 
   private async getProjectStructure(): Promise<any> {
@@ -369,4 +380,13 @@ export class AgentScheduler extends EventEmitter {
   }
 }
 
-export const agentScheduler = new AgentScheduler()
+let agentSchedulerInstance: AgentScheduler | null = null
+
+export function getAgentScheduler(): AgentScheduler {
+  if (!agentSchedulerInstance) {
+    agentSchedulerInstance = new AgentScheduler()
+  }
+  return agentSchedulerInstance
+}
+
+export const agentScheduler = getAgentScheduler()

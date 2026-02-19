@@ -268,7 +268,7 @@ export class SystemService {
   }
 
   // 慢系统处理
-  async processSystem2(instruction: string, model: string = 'openai', onProgress?: (event: TaskProgressEvent) => void): Promise<string> {
+  async processSystem2(instruction: string, model: string = 'openai', _onProgress?: (event: TaskProgressEvent) => void): Promise<string> {
     try {
       console.log('慢系统: 开始深度处理')
       

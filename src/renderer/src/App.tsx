@@ -14,6 +14,8 @@ import SoloCoder from './pages/SoloCoder'
 import ChatWorkflow from './pages/ChatWorkflow'
 import Memory from './pages/Memory'
 import Multimodal from './pages/Multimodal'
+import ProjectManagement from './pages/ProjectManagement'
+import Library from './pages/Library'
 
 // 全局浏览器事件监听组件
 const GlobalBrowserHandler: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -57,15 +59,13 @@ const GlobalBrowserHandler: React.FC<{ children: React.ReactNode }> = ({ childre
 
 function App() {
   const [isLoading, setIsLoading] = useState(true)
-  const [systemInfo, setSystemInfo] = useState<any>(null)
 
   useEffect(() => {
     const initApp = async () => {
       try {
         const api = (window as any).electron?.system
         if (api?.getSystemInfo) {
-          const info = await api.getSystemInfo()
-          setSystemInfo(info)
+          await api.getSystemInfo()
         }
       } catch (error) {
         console.error('初始化应用失败:', error)
@@ -106,6 +106,8 @@ function App() {
                 <Route path="/chat-workflow" element={<ChatWorkflow />} />
                 <Route path="/memory" element={<Memory />} />
                 <Route path="/multimodal" element={<Multimodal />} />
+                <Route path="/projects" element={<ProjectManagement />} />
+                <Route path="/library" element={<Library />} />
                 <Route path="*" element={<Navigate to="/" />} />
               </Routes>
             </div>

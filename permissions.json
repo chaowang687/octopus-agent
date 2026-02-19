@@ -1,0 +1,252 @@
+{
+  "version": "1.0",
+  "agents": [
+    {
+      "agentId": "project-manager",
+      "agentName": "项目经理",
+      "mode": "plan",
+      "tools": {
+        "read_file": {
+          "read": true,
+          "write": false,
+          "execute": false,
+          "level": "allow"
+        },
+        "list_dir": {
+          "read": true,
+          "write": false,
+          "execute": false,
+          "level": "allow"
+        },
+        "grep_search": {
+          "read": true,
+          "write": false,
+          "execute": false,
+          "level": "allow"
+        },
+        "web_fetch": {
+          "read": true,
+          "write": false,
+          "execute": false,
+          "level": "allow"
+        },
+        "write_file": {
+          "read": false,
+          "write": true,
+          "execute": false,
+          "level": "deny"
+        },
+        "execute_command": {
+          "read": false,
+          "write": false,
+          "execute": true,
+          "level": "deny"
+        }
+      },
+      "commands": [
+        {
+          "pattern": "*",
+          "level": "deny",
+          "reason": "规划智能体不允许执行命令"
+        }
+      ],
+      "files": {
+        "read": [
+          "**/*"
+        ],
+        "write": [],
+        "deny": [
+          "**/*.env",
+          "**/secrets/**",
+          "**/.git/**"
+        ]
+      }
+    },
+    {
+      "agentId": "ui-designer",
+      "agentName": "UI设计师",
+      "mode": "subagent",
+      "tools": {
+        "read_file": {
+          "read": true,
+          "write": false,
+          "execute": false,
+          "level": "allow"
+        },
+        "write_file": {
+          "read": false,
+          "write": true,
+          "execute": false,
+          "level": "ask"
+        },
+        "execute_command": {
+          "read": false,
+          "write": false,
+          "execute": true,
+          "level": "ask"
+        }
+      },
+      "commands": [
+        {
+          "pattern": "npm install",
+          "level": "allow"
+        },
+        {
+          "pattern": "npm run dev",
+          "level": "allow"
+        },
+        {
+          "pattern": "npm run build",
+          "level": "allow"
+        },
+        {
+          "pattern": "rm -rf",
+          "level": "deny",
+          "reason": "危险操作，需要手动确认"
+        },
+        {
+          "pattern": "*",
+          "level": "ask"
+        }
+      ],
+      "files": {
+        "read": [
+          "**/*.{tsx,ts,css,scss,html}"
+        ],
+        "write": [
+          "**/*.{tsx,ts,css,scss,html}"
+        ],
+        "deny": [
+          "**/node_modules/**",
+          "**/.git/**",
+          "**/dist/**"
+        ]
+      }
+    },
+    {
+      "agentId": "fullstack-developer",
+      "agentName": "全栈开发",
+      "mode": "build",
+      "tools": {
+        "read_file": {
+          "read": true,
+          "write": false,
+          "execute": false,
+          "level": "allow"
+        },
+        "write_file": {
+          "read": false,
+          "write": true,
+          "execute": false,
+          "level": "allow"
+        },
+        "execute_command": {
+          "read": false,
+          "write": false,
+          "execute": true,
+          "level": "ask"
+        }
+      },
+      "commands": [
+        {
+          "pattern": "npm install",
+          "level": "allow"
+        },
+        {
+          "pattern": "npm run dev",
+          "level": "allow"
+        },
+        {
+          "pattern": "npm run build",
+          "level": "allow"
+        },
+        {
+          "pattern": "npm test",
+          "level": "allow"
+        },
+        {
+          "pattern": "git *",
+          "level": "ask"
+        },
+        {
+          "pattern": "rm -rf",
+          "level": "deny",
+          "reason": "危险操作，需要手动确认"
+        },
+        {
+          "pattern": "sudo *",
+          "level": "deny",
+          "reason": "禁止使用 sudo"
+        },
+        {
+          "pattern": "*",
+          "level": "ask"
+        }
+      ],
+      "files": {
+        "read": [
+          "**/*"
+        ],
+        "write": [
+          "**/*.{ts,tsx,js,jsx,json,css,scss,html,md}"
+        ],
+        "deny": [
+          "**/node_modules/**",
+          "**/.git/**",
+          "**/dist/**",
+          "**/*.env",
+          "**/secrets/**"
+        ]
+      }
+    },
+    {
+      "agentId": "general-researcher",
+      "agentName": "通用研究员",
+      "mode": "subagent",
+      "tools": {
+        "read_file": {
+          "read": true,
+          "write": false,
+          "execute": false,
+          "level": "allow"
+        },
+        "web_fetch": {
+          "read": true,
+          "write": false,
+          "execute": false,
+          "level": "allow"
+        },
+        "write_file": {
+          "read": false,
+          "write": true,
+          "execute": false,
+          "level": "deny"
+        },
+        "execute_command": {
+          "read": false,
+          "write": false,
+          "execute": true,
+          "level": "deny"
+        }
+      },
+      "commands": [
+        {
+          "pattern": "*",
+          "level": "deny",
+          "reason": "研究员不允许执行命令"
+        }
+      ],
+      "files": {
+        "read": [
+          "**/*.{md,txt,json}"
+        ],
+        "write": [],
+        "deny": [
+          "**/node_modules/**",
+          "**/.git/**",
+          "**/dist/**"
+        ]
+      }
+    }
+  ]
+}

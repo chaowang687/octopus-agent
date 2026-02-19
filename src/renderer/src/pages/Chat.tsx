@@ -4,7 +4,7 @@ import ChatSidebar from '../components/ChatSidebar'
 import CreateGroupModal from '../components/CreateGroupModal'
 import ReasoningVisualizer from '../components/ReasoningVisualizer'
 import InterventionModal from '../components/InterventionModal'
-import { chatDataService, ChatSession, Agent } from '../services/ChatDataService'
+import { chatDataService, ChatSession } from '../services/ChatDataService'
 
 interface Message {
   id: string
@@ -14,6 +14,23 @@ interface Message {
   status?: 'sending' | 'sent' | 'completed' | 'error'
   thinking?: string
   attachments?: Attachment[]
+  skills?: {
+    agentType: string
+    matchedSkills: Array<{
+      name: string
+      description: string
+      matchScore: number
+      relevance: 'high' | 'medium' | 'low'
+      category?: string
+      reason: string
+      knowledge?: {
+        coreConcepts?: string[]
+        keySteps?: string[]
+        bestPractices?: string[]
+      }
+    }>
+    retrievalTime: number
+  }
 }
 
 interface Attachment {
@@ -22,19 +39,6 @@ interface Attachment {
   name: string
   preview?: string
   url?: string
-}
-
-interface TaskStep {
-  key: string
-  id: string
-  tool: string
-  description: string
-  status: 'pending' | 'running' | 'success' | 'error'
-  error?: string
-  retryCount?: number
-  maxRetries?: number
-  durationMs?: number
-  artifacts?: any[]
 }
 
 interface TaskProgressEvent {
@@ -77,6 +81,31 @@ interface TaskProgressEvent {
   progress?: string
   nextStep?: string
   quality?: string
+  // 技能检索相关
+  skillsRetrieved?: {
+    agentType: string
+    matchedSkills: Array<{
+      name: string
+      description: string
+      matchScore: number
+      relevance: 'high' | 'medium' | 'low'
+      category?: string
+      reason: string
+      knowledge?: {
+        coreConcepts?: string[]
+        keySteps?: string[]
+        bestPractices?: string[]
+      }
+    }>
+    retrievalTime: number
+  }
+  // 自我纠正相关
+  correctionStrategy?: string
+  correctionExplanation?: string
+  // 推理步骤相关
+  reasoningStep?: any
+  // 干预请求相关
+  intervention?: any
 }
 
 const ImageAttachment: React.FC<{ filePath: string; alt: string }> = ({ filePath, alt }) => {
@@ -101,6 +130,200 @@ const ImageAttachment: React.FC<{ filePath: string; alt: string }> = ({ filePath
   return <img src={src} alt={alt} style={{ maxWidth: '200px', borderRadius: '4px' }} />
 }
 
+const SkillsDisplay: React.FC<{ skills: Message['skills'] }> = ({ skills }) => {
+  const [expanded, setExpanded] = useState(false)
+  const [expandedSkills, setExpandedSkills] = useState<Record<string, boolean>>({})
+
+  if (!skills || skills.matchedSkills.length === 0) return null
+
+  const toggleSkill = (skillName: string) => {
+    setExpandedSkills(prev => ({
+      ...prev,
+      [skillName]: !prev[skillName]
+    }))
+  }
+
+  const getRelevanceColor = (relevance: string) => {
+    switch (relevance) {
+      case 'high': return '#4CAF50'
+      case 'medium': return '#FF9800'
+      case 'low': return '#9E9E9E'
+      default: return '#9E9E9E'
+    }
+  }
+
+  const getRelevanceLabel = (relevance: string) => {
+    switch (relevance) {
+      case 'high': return '高'
+      case 'medium': return '中'
+      case 'low': return '低'
+      default: return '未知'
+    }
+  }
+
+  return (
+    <div style={{
+      marginTop: '8px',
+      padding: '12px',
+      backgroundColor: '#F5F5F5',
+      borderRadius: '8px',
+      border: '1px solid #E0E0E0'
+    }}>
+      <div 
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          cursor: 'pointer',
+          marginBottom: expanded ? '8px' : '0'
+        }}
+        onClick={() => setExpanded(!expanded)}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '16px' }}>🎯</span>
+          <span style={{ fontWeight: 600, fontSize: '14px', color: '#333' }}>
+            技能包 ({skills.matchedSkills.length}个)
+          </span>
+          <span style={{ 
+            fontSize: '11px', 
+            padding: '2px 6px', 
+            borderRadius: '4px',
+            backgroundColor: '#E3F2FD',
+            color: '#1565C0'
+          }}>
+            {skills.agentType}
+          </span>
+          <span style={{ fontSize: '11px', color: '#757575' }}>
+            耗时: {skills.retrievalTime}ms
+          </span>
+        </div>
+        <span style={{ fontSize: '12px', color: '#757575' }}>
+          {expanded ? '▼' : '▶'}
+        </span>
+      </div>
+
+      {expanded && (
+        <div style={{ marginTop: '8px' }}>
+          {skills.matchedSkills.map((skill, _index) => {
+            const isSkillExpanded = expandedSkills[skill.name] || false
+            return (
+              <div 
+                key={skill.name}
+                style={{
+                  marginBottom: _index < skills.matchedSkills.length - 1 ? '8px' : '0',
+                  padding: '8px',
+                  backgroundColor: 'white',
+                  borderRadius: '6px',
+                  border: '1px solid #E0E0E0'
+                }}
+              >
+                <div 
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    cursor: 'pointer'
+                  }}
+                  onClick={() => toggleSkill(skill.name)}
+                >
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                      <span style={{ fontWeight: 600, fontSize: '13px', color: '#333' }}>
+                        {skill.name}
+                      </span>
+                      <span style={{ 
+                        fontSize: '10px', 
+                        padding: '2px 6px', 
+                        borderRadius: '3px',
+                        backgroundColor: getRelevanceColor(skill.relevance) + '20',
+                        color: getRelevanceColor(skill.relevance),
+                        fontWeight: 500
+                      }}>
+                        {getRelevanceLabel(skill.relevance)}相关度
+                      </span>
+                      <span style={{ fontSize: '11px', color: '#757575' }}>
+                        匹配: {(skill.matchScore * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#666', lineHeight: '1.4' }}>
+                      {skill.description}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: '10px', color: '#757575', marginLeft: '8px' }}>
+                    {isSkillExpanded ? '▼' : '▶'}
+                  </span>
+                </div>
+
+                {isSkillExpanded && (
+                  <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #E0E0E0' }}>
+                    <div style={{ fontSize: '11px', color: '#757575', marginBottom: '4px' }}>
+                      <strong>匹配原因:</strong> {skill.reason}
+                    </div>
+                    
+                    {skill.knowledge && (
+                      <div style={{ marginTop: '8px' }}>
+                        {skill.knowledge.coreConcepts && skill.knowledge.coreConcepts.length > 0 && (
+                          <div style={{ marginBottom: '6px' }}>
+                            <div style={{ fontSize: '11px', fontWeight: 600, color: '#333', marginBottom: '3px' }}>
+                              核心概念:
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                              {skill.knowledge.coreConcepts.map((concept, _i) => (
+                                <span 
+                                  key={concept}
+                                  style={{
+                                    fontSize: '10px',
+                                    padding: '2px 6px',
+                                    borderRadius: '3px',
+                                    backgroundColor: '#E3F2FD',
+                                    color: '#1565C0'
+                                  }}
+                                >
+                                  {concept}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {skill.knowledge.keySteps && skill.knowledge.keySteps.length > 0 && (
+                          <div style={{ marginBottom: '6px' }}>
+                            <div style={{ fontSize: '11px', fontWeight: 600, color: '#333', marginBottom: '3px' }}>
+                              关键步骤:
+                            </div>
+                            <ol style={{ fontSize: '10px', color: '#666', margin: '0', paddingLeft: '16px', lineHeight: '1.4' }}>
+                              {skill.knowledge.keySteps.map((step, _i) => (
+                                <li key={step}>{step}</li>
+                              ))}
+                            </ol>
+                          </div>
+                        )}
+                        
+                        {skill.knowledge.bestPractices && skill.knowledge.bestPractices.length > 0 && (
+                          <div>
+                            <div style={{ fontSize: '11px', fontWeight: 600, color: '#333', marginBottom: '3px' }}>
+                              最佳实践:
+                            </div>
+                            <ul style={{ fontSize: '10px', color: '#666', margin: '0', paddingLeft: '16px', lineHeight: '1.4' }}>
+                              {skill.knowledge.bestPractices.map((practice, _i) => (
+                                <li key={practice}>{practice}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 const Chat: React.FC = () => {
   const navigate = useNavigate()
   const [currentSession, setCurrentSession] = useState<ChatSession | null>(null)
@@ -109,13 +332,9 @@ const Chat: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [isDragging, setIsDragging] = useState(false)
-  const [selectedPreviewKey, setSelectedPreviewKey] = useState<string>('')
-  const [selectedPreviewName, setSelectedPreviewName] = useState<string>('')
 
   const [showTaskPreview, setShowTaskPreview] = useState(false)
-  const [taskTitle, setTaskTitle] = useState<string>('')
   const [taskStatus, setTaskStatus] = useState<'idle' | 'running' | 'done' | 'cancelled' | 'error'>('idle')
-  const [taskSteps, setTaskSteps] = useState<TaskStep[]>([])
   const [taskLogs, setTaskLogs] = useState<string[]>([])
   // 任务进度历史记录
   const [taskHistory, setTaskHistory] = useState<{
@@ -133,7 +352,6 @@ const Chat: React.FC = () => {
       return []
     }
   })
-  const [taskDir, setTaskDir] = useState<string>('')
   const currentTaskIdRef = useRef<string | null>(null)
   
   // === 新增：推理可视化状态 ===
@@ -147,20 +365,12 @@ const Chat: React.FC = () => {
 
   // 双系统状态
   const [systemState, setSystemState] = useState<'system1' | 'system2' | 'switching'>('system1')
-  const [taskComplexity, setTaskComplexity] = useState<'low' | 'medium' | 'high'>('low')
   const [showSystemIndicator, setShowSystemIndicator] = useState(false)
-  const [system1Response, setSystem1Response] = useState<string>('')
-  const [showSystem1Response, setShowSystem1Response] = useState(false)
 
   // 多智能体协作状态
-  const [isMultiAgentMode, setIsMultiAgentMode] = useState(false)
   const [showCreateGroupModal, setShowCreateGroupModal] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)  // 用于刷新侧边栏
-  const [agentCollaboration, setAgentCollaboration] = useState<{
-    agents: { id: string; name: string; role: string; status: string }[]
-    currentPhase: string
-  } | null>(null)
-  
+
   // 多对话框协作模式 - 每个智能体独立对话框
   const [multiDialogueMode, setMultiDialogueMode] = useState(false)
   const [dialogueSessions, setDialogueSessions] = useState<{
@@ -187,16 +397,11 @@ const Chat: React.FC = () => {
     }
   }, [navigate])
   
-  const [selectedModel, setSelectedModel] = useState('openai')
   // 当前使用的模型名称（自动判断后显示）
   const [currentModelName, setCurrentModelName] = useState<string>('DeepSeek (快速响应)')
-  const [models] = useState<{ id: string; name: string }[]>([
-    { id: 'openai', name: 'OpenAI GPT-4' },
-    { id: 'claude', name: 'Claude 3.5 Sonnet' },
-    { id: 'minimax', name: 'MiniMax' },
-    { id: 'deepseek', name: 'DeepSeek V3' },
-    { id: 'doubao', name: 'Doubao' }
-  ])
+  
+  // 项目路径选择
+  const [projectPath, setProjectPath] = useState<string>('')
   
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -215,7 +420,7 @@ const Chat: React.FC = () => {
       if (currentSession.type === 'direct' && currentSession.members.length > 0) {
         const agent = chatDataService.getAgent(currentSession.members[0])
         if (agent?.model) {
-          setSelectedModel(agent.model)
+          // Model is synced but we don't need to store it
         }
       }
     } else {
@@ -243,10 +448,6 @@ const Chat: React.FC = () => {
           configuredModels.push(model)
         }
       }
-      
-      if (!configuredModels.includes('openai') && configuredModels.length > 0) {
-        setSelectedModel(configuredModels[0])
-      }
     }
     checkModels()
   }, [])
@@ -256,25 +457,6 @@ const Chat: React.FC = () => {
     if (!api) return
 
     const unsubscribe = window.electron.task.onProgress((evt: TaskProgressEvent) => {
-      const toolLabel = (tool?: string) => {
-        if (!tool) return '工具'
-        const map: Record<string, string> = {
-          search_images: '批量图片搜索',
-          search_web: '网页搜索',
-          fetch_webpage: '网页抓取',
-          download_image: '下载图片',
-          read_image: '图片读取',
-          glob_paths: 'Glob',
-          read_file: '文件读取',
-          write_file: '文件写入',
-          create_directory: '创建目录',
-          list_files: '列出文件',
-          execute_command: '执行命令',
-          respond_to_user: '回复'
-        }
-        return map[tool] || tool
-      }
-
       const formatDuration = (ms?: number) => {
         if (!ms || ms <= 0) return ''
         return `${(ms / 1000).toFixed(2)}s`
@@ -297,8 +479,6 @@ const Chat: React.FC = () => {
               : ''
         const startLog = `[${time}] 任务开始${modelInfo}`
         setTaskLogs([startLog])
-        setTaskSteps([])
-        setTaskDir(evt.taskDir || '')
         setShowTaskPreview(true) // Auto-show task panel on start
         if (evt.taskDir) {
           setTaskLogs(prev => [...prev, `[${time}] 工作目录：${evt.taskDir}`])
@@ -343,6 +523,33 @@ const Chat: React.FC = () => {
         return
       }
 
+      // 处理技能检索事件
+      if (evt.type === 'skills_retrieved' && evt.skillsRetrieved) {
+        const skillsData = evt.skillsRetrieved
+        const skillsCount = skillsData.matchedSkills.length
+        const retrievalTime = skillsData.retrievalTime
+        
+        console.log('[Chat] 收到技能检索事件:', skillsData)
+        
+        // 添加技能检索消息
+        const skillsMessage: Message = {
+          id: `skills-${evt.timestamp}`,
+          role: 'assistant',
+          content: `🎯 **技能检索完成**\n\n智能体类型: ${skillsData.agentType}\n检索到 ${skillsCount} 个相关技能 (耗时: ${retrievalTime}ms)`,
+          timestamp: new Date(),
+          status: 'completed',
+          skills: skillsData
+        }
+        
+        setMessages(prev => [...prev, skillsMessage])
+        
+        // 添加到日志
+        const skillsLog = `[${time}] 🎯 技能检索: ${skillsData.agentType} - ${skillsCount}个技能 (${retrievalTime}ms)`
+        setTaskLogs(prev => [...prev, skillsLog])
+        
+        return
+      }
+
       if (evt.type === 'iteration_start') {
         setTaskLogs(prev => [...prev, `[${time}] 迭代 ${evt.iteration}/${evt.maxIterations}`])
         return
@@ -359,120 +566,22 @@ const Chat: React.FC = () => {
         }
         
         setTaskLogs(prev => [...prev, `[${time}] 生成计划：${planSteps.length} 步`])
-        setTaskSteps(planSteps.map(s => ({
-          key: `${evt.iteration || 1}:${s.id}`,
-          id: s.id,
-          tool: s.tool,
-          description: s.description,
-          status: 'pending'
-        })))
         return
       }
 
       if (evt.type === 'step_start' && evt.stepId) {
-        const key = `${evt.iteration || 1}:${evt.stepId}`
-        setTaskSteps(prev => prev.map(s => s.key === key ? { ...s, status: 'running' } : s))
         return
       }
 
       if (evt.type === 'retry' && evt.stepId) {
-        const key = `${evt.iteration || 1}:${evt.stepId}`
-        setTaskSteps(prev => prev.map(s => s.key === key ? { ...s, retryCount: evt.retryCount, maxRetries: evt.maxRetries } : s))
         return
       }
 
       if (evt.type === 'step_success' && evt.stepId) {
-        const key = `${evt.iteration || 1}:${evt.stepId}`
-        setTaskSteps(prev => prev.map(s => s.key === key ? {
-          ...s,
-          status: 'success',
-          error: undefined,
-          retryCount: evt.retryCount,
-          maxRetries: evt.maxRetries,
-          durationMs: evt.durationMs,
-          artifacts: evt.artifacts
-        } : s))
-
-        const isInteractiveTool = evt.tool === 'respond_to_user' || evt.tool === 'ask_user'
-        const artifacts = Array.isArray(evt.artifacts) ? evt.artifacts : []
-        
-        if (isInteractiveTool || artifacts.length > 0) {
-            const attachments: Attachment[] = []
-            let hasVisualContent = false
-
-            for (const a of artifacts as any[]) {
-              if (a?.type === 'image') {
-                attachments.push({
-                  type: 'image',
-                  path: a.path || '',
-                  name: a.name || (a.path ? String(a.path).split('/').pop() : 'Image'),
-                  preview: a.dataUrl
-                })
-                hasVisualContent = true
-                continue
-              }
-              if (a?.type === 'file') {
-                attachments.push({
-                  type: 'file',
-                  path: a.path || '',
-                  name: a.name || (a.path ? String(a.path).split('/').pop() : 'File')
-                })
-                continue
-              }
-              if (a?.type === 'link') {
-                attachments.push({
-                  type: 'link',
-                  path: a.url || '',
-                  name: a.name || a.url || 'Link',
-                  url: a.url
-                })
-              }
-            }
-            
-            let content = ''
-            if (isInteractiveTool) {
-               const p = evt.parameters
-               if (p && typeof p === 'object') {
-                  content = p.content || p.question || p.message || ''
-               }
-               if (!content && evt.resultSummary) {
-                  content = String(evt.resultSummary)
-               }
-            } else if (attachments.length > 0 && !hasVisualContent) {
-               content = '生成了以下文件：'
-            }
-
-            if (content || attachments.length > 0) {
-                setMessages(prev => [...prev, {
-                  id: `step-success-${evt.timestamp}-${evt.stepId}`,
-                  role: 'assistant',
-                  content: content,
-                  timestamp: new Date(),
-                  attachments: attachments.length > 0 ? attachments : undefined
-                }])
-            }
-        }
         return
       }
 
       if (evt.type === 'step_error' && evt.stepId) {
-        const key = `${evt.iteration || 1}:${evt.stepId}`
-        setTaskSteps(prev => prev.map(s => s.key === key ? { ...s, status: evt.final ? 'error' : 'running', error: evt.error, durationMs: evt.durationMs } : s))
-        setTaskLogs(prev => [...prev, `[${time}] 步骤失败：${evt.stepId}${evt.error ? ` - ${evt.error}` : ''}`])
-        if (evt.final && !evt.error?.includes('Failed to parse plan')) {
-           const isTechnicalError = evt.error?.includes('Failed to parse') || evt.error?.includes('context length')
-           if (!isTechnicalError) {
-              const label = toolLabel(evt.tool)
-              const d = formatDuration(evt.durationMs)
-              setMessages(prev => [...prev, {
-                id: `step-error-${evt.timestamp}-${evt.stepId}`,
-                role: 'assistant',
-                content: `已失败 ${label}${evt.error ? `\n${evt.error}` : ''}${d ? `\n${d}` : ''}`,
-                timestamp: new Date(),
-                status: 'error'
-              }])
-           }
-        }
         return
       }
 
@@ -498,24 +607,7 @@ const Chat: React.FC = () => {
       if (evt.type === 'agent_message') {
         console.log('[Chat] 收到 agent_message:', evt.agentName, 'content length:', evt.content?.length)
         
-        // 获取智能体头像 - 与ChatDataService中的agent一致
-        const agentAvatarMap: Record<string, string> = {
-          'agent-pm': 'https://api.dicebear.com/7.x/avataaars/svg?seed=PM',
-          'agent-dev': 'https://api.dicebear.com/7.x/avataaars/svg?seed=Dev',
-          'agent-ui': 'https://api.dicebear.com/7.x/avataaars/svg?seed=UI',
-          'agent-solo-coder': 'https://api.dicebear.com/7.x/avataaars/svg?seed=SoloCoder',
-          'agent-test-generator': 'https://api.dicebear.com/7.x/avataaars/svg?seed=Test',
-          'agent-code-reviewer': 'https://api.dicebear.com/7.x/avataaars/svg?seed=Review',
-          'system': 'https://api.dicebear.com/7.x/bottts/svg?seed=System',
-          'document_generator': 'https://api.dicebear.com/7.x/avataaars/svg?seed=PM',
-          'ui_designer': 'https://api.dicebear.com/7.x/avataaars/svg?seed=UI',
-          'code_generator': 'https://api.dicebear.com/7.x/avataaars/svg?seed=Dev',
-          'test_generator': 'https://api.dicebear.com/7.x/avataaars/svg?seed=Test',
-          'code_reviewer': 'https://api.dicebear.com/7.x/avataaars/svg?seed=Review'
-        }
-        
         const agentId = evt.agentId || 'system'
-        const avatar = agentAvatarMap[agentId] || 'https://api.dicebear.com/7.x/bottts/svg?seed=Agent'
         
         // 获取智能体名称
         const agentName = evt.agentName || '智能体'
@@ -528,7 +620,7 @@ const Chat: React.FC = () => {
         setMessages(prev => [...prev, {
           id: `agent-${evt.timestamp}-${agentId}`,
           role: 'assistant',
-          content: `**${agentName}**${evt.role ? ` (${evt.role})` : ''}:\n\n${fullContent}`,
+          content: `**${agentName}**${evt.role ? ` (${evt.role})` : ''}:\n\n${fullContent || ''}`,
           timestamp: new Date(),
           status: 'completed'
         }])
@@ -553,12 +645,12 @@ const Chat: React.FC = () => {
 
       // 处理系统切换事件
       if (evt.type === 'system_switch') {
-        const switchLog = `[${time}] 🔄 ${evt.message}`
+        const switchLog = `[${time}] 🔄 ${evt.message || ''}`
         setTaskLogs(prev => [...prev, switchLog])
         setMessages(prev => [...prev, {
           id: `system-${evt.timestamp}`,
           role: 'assistant',
-          content: evt.message,
+          content: evt.message || '',
           timestamp: new Date(),
           status: 'completed'
         }])
@@ -649,9 +741,9 @@ const Chat: React.FC = () => {
       if (evt.type === 'progress') {
         const progress = evt.progress || 0
         const phase = evt.phase || ''
-        const agent = evt.agent || ''
+        const agent = evt.agentName || ''
         const message = evt.message || ''
-        const subTasks = evt.subTasks || []
+        const subTasks: any[] = []
         
         // 构建进度日志
         let progressLog = `[${time}] 📊 ${agent} - ${phase}: ${progress}%`
@@ -721,9 +813,8 @@ const Chat: React.FC = () => {
       }
 
       // 处理执行进度事件
-      if (evt.type === 'execution_progress') {
+      if (evt.type === 'step_start' || evt.type === 'step_success' || evt.type === 'step_error') {
         const stepId = evt.stepId || ''
-        const tool = evt.tool || ''
         const description = evt.description || ''
         const stepDuration = formatDuration(evt.durationMs)
         
@@ -907,7 +998,25 @@ const Chat: React.FC = () => {
       textareaRef.current.style.height = 'auto'
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`
     }
-  }, [input])
+  }, [])
+
+  // 选择项目路径
+  const handleSelectProjectPath = async () => {
+    try {
+      const result = await window.electron.dialog.openFile()
+      
+      if (result.canceled || result.filePaths.length === 0) {
+        return
+      }
+      
+      const selectedPath = result.filePaths[0]
+      setProjectPath(selectedPath)
+      
+      console.log('[Chat] 用户选择的项目路径:', selectedPath)
+    } catch (error) {
+      console.error('[Chat] 选择路径失败:', error)
+    }
+  }
 
   const handleSendMessage = async () => {
     if ((!input.trim() && attachments.length === 0) || loading) return
@@ -915,7 +1024,6 @@ const Chat: React.FC = () => {
     // 评估任务复杂度
     const complexity = assessTaskComplexity(input)
     console.log(`[Chat] 任务复杂度: ${complexity}, 内容: ${input.slice(0, 50)}...`)
-    setTaskComplexity(complexity)
 
     // 根据复杂度选择系统
     const targetSystem = complexity === 'low' ? 'system1' : 'system2'
@@ -979,9 +1087,7 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
     setAttachments([])
     setLoading(true)
     setShowTaskPreview(targetSystem === 'system2') // 系统2自动显示任务面板
-    setTaskTitle(input.trim() || '新任务')
     setTaskStatus('running')
-    setTaskSteps([])
     setTaskLogs([])
     currentTaskIdRef.current = null
     
@@ -994,12 +1100,9 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
 
       // 系统1快速响应模拟
       if (targetSystem === 'system1') {
-        setSystem1Response('正在快速分析...')
-        setShowSystem1Response(true)
-        
         // 模拟系统1快速响应
         setTimeout(() => {
-          setSystem1Response('已识别为简单任务，正在准备快速响应...')
+          console.log('[Chat] 已识别为简单任务，正在准备快速响应...')
         }, 300)
       }
 
@@ -1015,20 +1118,64 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
       const agentId = currentSession && currentSession.members.length > 0 ? currentSession.members[0] : undefined
       const sessionId = currentSession ? currentSession.id : undefined
       
+      // 生成默认的项目路径
+      const safeDirName = input.slice(0, 50).replace(/[^\w\u4e00-\u9fa5\s-]/g, '_').trim()
+      const defaultTaskDir = `/Users/wangchao/Desktop/${safeDirName}`
+      
+      // 如果是 System 2（复杂任务），需要让用户确认项目路径
+      let taskDir = projectPath
+      if (targetSystem === 'system2' && !projectPath) {
+        // 显示路径选择对话框
+        const confirmed = window.confirm(
+          `即将创建项目，请确认项目路径：\n\n${defaultTaskDir}\n\n点击"确定"使用此路径，点击"取消"选择其他路径。`
+        )
+        
+        if (!confirmed) {
+          // 用户点击了取消，打开路径选择器
+          try {
+            const result = await window.electron.dialog.openFile()
+            
+            if (result.canceled || result.filePaths.length === 0) {
+              // 用户取消了路径选择
+              setMessages(prev => prev.filter(msg => msg.id !== thinkingMessage.id))
+              setLoading(false)
+              return
+            }
+            
+            const selectedDir = result.filePaths[0]
+            const projectName = safeDirName
+            taskDir = `${selectedDir}/${projectName}`
+          } catch (error) {
+            console.error('[Chat] 选择路径失败:', error)
+            taskDir = defaultTaskDir
+          }
+        } else {
+          taskDir = defaultTaskDir
+        }
+      } else if (!taskDir) {
+        taskDir = defaultTaskDir
+      }
+      
       // 统一使用 task.execute，让后端认知引擎决定使用 System1 还是 System2
       // 这样可以实现 LLM 意图判断来决定处理方式
-      console.log(`[Chat] 使用 task.execute，后端将根据LLM意图判断决定处理方式`)
+      console.log(`[Chat] 使用 task.execute，后端将根据LLM意图判断决定处理方式，项目路径: ${taskDir}`)
+      
+      // 检查 window.electron.task 是否存在
+      if (!window.electron || !window.electron.task || typeof window.electron.task.execute !== 'function') {
+        console.error('[Chat] window.electron.task 未定义或不可用')
+        throw new Error('任务执行API不可用，请刷新页面重试')
+      }
+      
       const taskApi: any = window.electron.task
       const result = await taskApi.execute(contentToSend, { 
         agentId, 
         sessionId,
         system: targetSystem,
         complexity,
-        taskDir: `/Users/wangchao/Desktop/${input.slice(0, 15).replace(/[^\\w]/g, '_')}`
+        taskDir
       })
       
       setMessages(prev => prev.filter(msg => msg.id !== thinkingMessage.id))
-      setShowSystem1Response(false)
       
       if (result.success) {
         const aiResponse: Message = {
@@ -1097,7 +1244,6 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
     } catch (error: any) {
       console.error('Failed to send message:', error)
       setMessages(prev => prev.filter(msg => !msg.thinking))
-      setShowSystem1Response(false)
       setMessages(prev => prev.map(msg => 
         msg.id === userMessage.id ? { ...msg, status: 'error' } : msg
       ))
@@ -1192,27 +1338,6 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
       setTimeout(() => setShowSystemIndicator(false), 2000)
     }, 500)
   }
-
-  // 上下文共享展示
-  const [sharedContext, setSharedContext] = useState<any>({
-    projectFiles: [],
-    conversationHistory: [],
-    currentState: {}
-  })
-
-  // 知识蒸馏反馈
-  const [knowledgeDistillation, setKnowledgeDistillation] = useState({
-    lastDistillation: null as Date | null,
-    distilledItems: 0,
-    system1Accuracy: 85
-  })
-
-  // 协同进化状态
-  const [coevolutionState, setCoevolutionState] = useState({
-    system1Performance: 0.75,
-    system2Efficiency: 0.85,
-    collaborationScore: 0.8
-  })
 
   const handleScreenshot = async () => {
     try {
@@ -1339,28 +1464,6 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
           </div>
         )}
 
-        {/* 系统1快速响应区域 */}
-        {showSystem1Response && (
-          <div style={{
-            position: 'fixed',
-            bottom: '120px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            padding: '12px 20px',
-            borderRadius: '12px',
-            backgroundColor: 'rgba(76, 175, 80, 0.9)',
-            color: 'white',
-            fontSize: '14px',
-            fontWeight: '500',
-            zIndex: 999,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-            maxWidth: '400px',
-            textAlign: 'center'
-          }}>
-            ⚡️ {system1Response}
-          </div>
-        )}
-
         {/* Main Chat Area */}
         <div className="chat-container">
           {/* Header */}
@@ -1444,6 +1547,9 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
                         <span>⚡️</span> {message.thinking}
                       </div>
                     )}
+                    
+                    {/* Skills Display */}
+                    {message.skills && <SkillsDisplay skills={message.skills} />}
                     
                     {/* Attachments */}
                     {message.attachments && message.attachments.length > 0 && (
@@ -1629,6 +1735,21 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
                       <circle cx="12" cy="13" r="4"></circle>
                     </svg>
                   </button>
+                  <button 
+                    className="chat-tool-btn" 
+                    title="选择项目路径" 
+                    onClick={handleSelectProjectPath}
+                    style={{ color: projectPath ? '#007AFF' : 'currentColor' }}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                    </svg>
+                  </button>
+                  {projectPath && (
+                    <span style={{ fontSize: '11px', color: '#666', marginLeft: '8px', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {projectPath}
+                    </span>
+                  )}
                 </div>
                 <div className="chat-tools-right">
                    {loading ? (
@@ -1710,15 +1831,6 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
                     >
                       历史
                     </div>
-                    {systemState === 'system2' && (
-                      <div 
-                        className={`task-preview-tab ${activeTab === 'agents' ? 'active' : ''}`}
-                        onClick={() => setActiveTab('agents' as any)}
-                        style={{ padding: '4px 8px', fontSize: '12px' }}
-                      >
-                        智能体
-                      </div>
-                    )}
                  </div>
                  <button className="task-preview-close" onClick={() => setShowTaskPreview(false)}>×</button>
               </div>
@@ -1787,7 +1899,6 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
                           onClick={() => {
                             // 点击加载历史任务日志
                             setTaskLogs(task.logs || [])
-                            setTaskTitle(task.title)
                             setTaskStatus(task.status as any)
                             setActiveTab('progress')
                           }}
@@ -1958,18 +2069,18 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
       {/* === 新增：干预审批弹窗 === */}
       <InterventionModal
         request={interventionRequest}
-        onApprove={async (requestId: string, response?: string) => {
-          console.log('[Chat] 批准干预请求:', requestId)
+        onApprove={async (_requestId: string, _response?: string) => {
+          console.log('[Chat] 批准干预请求:', _requestId)
           setInterventionRequest(null)
           // 可以添加调用后端API来确认批准
         }}
-        onDeny={async (requestId: string, reason?: string) => {
-          console.log('[Chat] 拒绝干预请求:', requestId, reason)
+        onDeny={async (_requestId: string, _reason?: string) => {
+          console.log('[Chat] 拒绝干预请求:', _requestId, _reason)
           setInterventionRequest(null)
           // 可以添加调用后端API来确认拒绝
         }}
-        onModify={async (requestId: string, modifiedValue: any, response?: string) => {
-          console.log('[Chat] 修改干预请求:', requestId, modifiedValue)
+        onModify={async (_requestId: string, modifiedValue: any, _response?: string) => {
+          console.log('[Chat] 修改干预请求:', _requestId, modifiedValue)
           setInterventionRequest(null)
         }}
       />

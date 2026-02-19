@@ -4,7 +4,7 @@
   "description": "macOS本地化智能体编码工具",
   "main": "dist/main/index.js",
   "scripts": {
-    "dev": "electron-vite dev",
+    "dev": "bash scripts/copy-bridge.sh && electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "test": "jest",
@@ -78,6 +78,7 @@
     "react-router-dom": "^6.20.0",
     "redux": "^4.2.0",
     "redux-thunk": "^2.4.0",
+    "sharp": "^0.34.5",
     "systeminformation": "^5.20.0",
     "uuid": "^9.0.0",
     "vm2": "^3.10.5"

@@ -1,0 +1,55 @@
+{
+  "测试任务": [
+    {
+      "id": "exp_1771493395729",
+      "taskPattern": "测试任务",
+      "successfulActions": [
+        {
+          "tool": "read_file",
+          "parameters": {
+            "path": "/test/file.txt"
+          },
+          "outcome": "文件内容"
+        }
+      ],
+      "failedActions": [],
+      "successRate": 1,
+      "lastUsed": 1771493395729,
+      "usageCount": 1
+    },
+    {
+      "id": "exp_1771493474175",
+      "taskPattern": "测试任务",
+      "successfulActions": [
+        {
+          "tool": "read_file",
+          "parameters": {
+            "path": "/test/file.txt"
+          },
+          "outcome": "文件内容"
+        }
+      ],
+      "failedActions": [],
+      "successRate": 1,
+      "lastUsed": 1771493474175,
+      "usageCount": 1
+    },
+    {
+      "id": "exp_1771493481951",
+      "taskPattern": "测试任务",
+      "successfulActions": [
+        {
+          "tool": "read_file",
+          "parameters": {
+            "path": "/test/file.txt"
+          },
+          "outcome": "文件内容"
+        }
+      ],
+      "failedActions": [],
+      "successRate": 1,
+      "lastUsed": 1771493481951,
+      "usageCount": 1
+    }
+  ]
+}

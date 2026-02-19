@@ -510,13 +510,14 @@ export const PlanEditor: React.FC<PlanEditorProps> = ({
   }
 
   // 按状态分组（看板模式）
-  const stepsByStatus = plan?.steps.reduce((acc, step) => {
-    if (!acc[step.status]) {
-      acc[step.status] = []
+  const stepsByStatus = plan?.steps?.reduce((acc, step) => {
+    const status = step.status
+    if (!acc[status]) {
+      acc[status] = []
     }
-    acc[step.status].push(step)
+    acc[status]!.push(step)
     return acc
-  }, {} as Record<StepStatus, PlanStep[]>) || {}
+  }, {} as Partial<Record<StepStatus, PlanStep[]>>) || {} as Partial<Record<StepStatus, PlanStep[]>>
 
   if (!plan) {
     return (
@@ -871,6 +872,4 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
   )
 }
 
-// 导出组件和类型
-export { PlanEditor, StepCard }
-export type { PlanStep, ExecutionPlan, StepStatus }
+

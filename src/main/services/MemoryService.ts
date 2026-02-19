@@ -67,7 +67,6 @@ export class MemoryService extends EventEmitter {
   private memories: Map<string, MemoryEntry> = new Map()
   private storagePath: string
   private options: Required<MemoryServiceOptions>
-  private isInitialized: boolean = false
 
   constructor(options: MemoryServiceOptions = {}) {
     super()
@@ -105,22 +104,19 @@ export class MemoryService extends EventEmitter {
         const data = JSON.parse(fs.readFileSync(indexPath, 'utf8'))
         
         // 加载所有类型的记忆
-        for (const [type, entries] of Object.entries(data)) {
+        for (const [_type, entries] of Object.entries(data)) {
           for (const entry of entries as MemoryEntry[]) {
             this.memories.set(entry.id, entry)
           }
         }
 
         console.log(`[Memory] Loaded ${this.memories.size} memories`)
-        this.isInitialized = true
         this.emit('loaded', { count: this.memories.size })
       } else {
-        this.isInitialized = true
         console.log('[Memory] No existing memory found, starting fresh')
       }
     } catch (e) {
       console.error('[Memory] Failed to load:', e)
-      this.isInitialized = true // 仍然标记为已初始化
     }
   }
 
@@ -575,7 +571,7 @@ export class MemoryService extends EventEmitter {
   /**
    * 获取相关记忆用于上下文
    */
-  async getContextForQuery(query: string, maxTokens?: number): Promise<string> {
+  async getContextForQuery(query: string, _maxTokens?: number): Promise<string> {
     const results = await this.search(query, { limit: 5 })
     
     if (results.length === 0) {

@@ -9,7 +9,6 @@ interface ApiKey {
 
 const ApiManagement: React.FC = () => {
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([])
-  const [newKey, setNewKey] = useState<{ model: string; key: string }>({ model: 'openai', key: '' })
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -53,8 +52,8 @@ const ApiManagement: React.FC = () => {
   const handleTestApiKey = async (model: string, key: string) => {
     try {
       const result = await window.electron.api.testApiKey(model, key)
-      setApiKeys(prev => prev.map(k => k.model === model ? { ...k, isValid: result.success } : k))
-      alert(result.success ? 'Connection Successful' : 'Connection Failed')
+      setApiKeys(prev => prev.map(k => k.model === model ? { ...k, isValid: result } : k))
+      alert(result ? 'Connection Successful' : 'Connection Failed')
     } catch (error) {
       alert('Connection Failed')
     }

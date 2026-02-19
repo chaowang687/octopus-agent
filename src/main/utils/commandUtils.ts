@@ -31,9 +31,10 @@ export function buildSafeCommand(command: string, args: string[]): string {
 
 export function validateCommand(command: string): boolean {
   const allowedCommands = [
-    'ls', 'cat', 'grep', 'find', 'mkdir', 'rm', 'cp', 'mv',
-    'npm', 'yarn', 'pnpm', 'git', 'node', 'python3', 'ruby',
-    'code', 'open', 'pwd', 'echo', 'date', 'whoami', 'id'
+    'ls', 'cat', 'grep', 'find', 'mkdir', 'rm', 'cp', 'mv', 'cd', 'touch', 'chmod', 'chown',
+    'npm', 'yarn', 'pnpm', 'git', 'node', 'python3', 'ruby', 'python',
+    'code', 'open', 'pwd', 'echo', 'date', 'whoami', 'id',
+    'npx', 'bun', 'deno'
   ]
   
   const cmdName = command.split(' ')[0].trim()

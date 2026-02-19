@@ -41,8 +41,16 @@ export class ContextManager {
   }
 
   private ensureIndexDirectory() {
-    if (!fs.existsSync(this.indexPath)) {
-      fs.mkdirSync(this.indexPath, { recursive: true })
+    try {
+      if (!fs.existsSync(this.indexPath)) {
+        try {
+          fs.mkdirSync(this.indexPath, { recursive: true, mode: 0o755 })
+        } catch (error) {
+          console.warn('ContextManager: 无法创建索引目录，将使用内存存储', error)
+        }
+      }
+    } catch (error) {
+      console.warn('ContextManager: 初始化目录失败，将使用内存存储', error)
     }
   }
 
@@ -375,4 +383,13 @@ export class ContextManager {
   }
 }
 
-export const contextManager = new ContextManager()
+let contextManagerInstance: ContextManager | null = null
+
+export function getContextManager(): ContextManager {
+  if (!contextManagerInstance) {
+    contextManagerInstance = new ContextManager()
+  }
+  return contextManagerInstance
+}
+
+export const contextManager = getContextManager()

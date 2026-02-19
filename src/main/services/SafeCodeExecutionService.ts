@@ -1,4 +1,4 @@
-import { VM, VMScript } from 'vm2'
+import { VM } from 'vm2'
 
 export class SafeCodeExecutionService {
   private static instance: SafeCodeExecutionService
@@ -44,7 +44,7 @@ export class SafeCodeExecutionService {
     }
   }
   
-  async executeFunction(code: string, args: any[] = [], timeout: number = 5000): Promise<any> {
+  async executeFunction(code: string, _args: any[] = [], timeout: number = 5000): Promise<any> {
     const wrappedCode = `
       (function() {
         ${code}

@@ -6,7 +6,7 @@
 import { EventEmitter } from 'events'
 import * as fs from 'fs'
 import * as path from 'path'
-import { app, BrowserWindow } from 'electron'
+import { app } from 'electron'
 import axios from 'axios'
 import { getMainWindow } from '../index'
 
@@ -427,7 +427,7 @@ export class MultimodalService extends EventEmitter {
           {
             headers: {
               'Authorization': `Bearer ${openaiKey}`,
-              ...formData.getHeaders?.() || {}
+              'Content-Type': 'multipart/form-data'
             },
             timeout: 60000
           }

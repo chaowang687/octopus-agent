@@ -335,7 +335,6 @@ export const StateTimeline: React.FC<StateTimelineProps> = ({
   height = 180
 }) => {
   const containerRef = useRef<HTMLDivElement>(null)
-  const [activeStep, setActiveStep] = useState<string | null>(currentStepId || null)
 
   // 自动滚动到当前步骤
   useEffect(() => {
@@ -428,7 +427,6 @@ export const StateTimeline: React.FC<StateTimelineProps> = ({
             isFirst={index === 0}
             isLast={index === steps.length - 1}
             onClick={(s) => {
-              setActiveStep(s.id)
               onStepClick?.(s)
             }}
             showDetails={showDetails}
@@ -495,7 +493,7 @@ export const TransitionHistory: React.FC<TransitionHistoryProps> = ({
       overflow: 'auto',
       padding: '12px'
     }}>
-      {sortedTransitions.map((transition, index) => (
+      {sortedTransitions.map((transition, _) => (
         <div
           key={transition.id}
           style={{

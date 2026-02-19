@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState } from 'react'
 
 // ============================================
 // 类型定义
@@ -188,9 +188,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
   onApprove,
   onRetry,
   expanded = false,
-  onExpandChange,
-  showTimeline = false,
-  transitions = []
+  onExpandChange
 }) => {
   const [localExpanded, setLocalExpanded] = useState(expanded)
   const isExpanded = expanded !== undefined ? expanded : localExpanded
@@ -392,7 +390,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
               }}>
                 子任务 ({task.subtasks.length})
               </div>
-              {task.subtasks.map((subtask, idx) => (
+              {task.subtasks.map((subtask, _) => (
                 <div
                   key={subtask.id}
                   style={{
@@ -514,8 +512,7 @@ export const TaskFlow: React.FC<TaskFlowProps> = ({
   onApprove,
   onRetry,
   viewMode = 'list',
-  groupBy = 'none',
-  showImpactAnalysis = true
+  groupBy = 'none'
 }) => {
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
 
@@ -609,7 +606,6 @@ export const TaskFlow: React.FC<TaskFlowProps> = ({
                     onRetry={onRetry}
                     expanded={expandedTaskId === task.id}
                     onExpandChange={(expanded) => setExpandedTaskId(expanded ? task.id : null)}
-                    showImpactAnalysis={showImpactAnalysis}
                   />
                 ))}
               </div>
@@ -655,7 +651,6 @@ export const TaskFlow: React.FC<TaskFlowProps> = ({
               onRetry={onRetry}
               expanded={expandedTaskId === task.id}
               onExpandChange={(expanded) => setExpandedTaskId(expanded ? task.id : null)}
-              showImpactAnalysis={showImpactAnalysis}
             />
           ))}
         </div>

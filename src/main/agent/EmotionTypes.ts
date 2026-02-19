@@ -136,7 +136,7 @@ export interface EmotionRoutingDecision {
   matchedIntuition?: IntuitionRule
   /** 匹配的技能 */
   matchedSkills?: {
-    skill: CognitiveSkill
+    skill: any
     matchScore: number
   }[]
   /** 是否有冲突 */
@@ -166,13 +166,13 @@ export class EmotionProcessor {
     'rm -rf', 'drop database', 'truncate', '删除数据', '危险'
   ]
 
-  // 简单任务模式
-  private simpleTaskPatterns = [
-    /^(打开|关闭|播放|暂停|搜索|查询)/,
-    /^(帮?我)?打开.+网页/,
-    /^(帮?我)?播放.+视频/,
-    /^(今天|现在).+(天气|时间)/
-  ]
+  // 简单任务模式 - 暂时注释，需要时启用
+  // private simpleTaskPatterns = [
+  //   /^(打开|关闭|播放|暂停|搜索|查询)/,
+  //   /^(帮?我)?打开.+网页/,
+  //   /^(帮?我)?播放.+视频/,
+  //   /^(今天|现在).+(天气|时间)/
+  // ]
 
   constructor() {
     this.dataPath = path.join(app.getPath('userData'), 'cognitive', 'emotion')

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 
 // ============================================
 // 类型定义
@@ -317,7 +317,6 @@ export const ForceGraph:React.FC<ForceGraphProps> = ({
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null)
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 })
   const [dimensions, setDimensions] = useState({ width, height })
-  const simulationRef = useRef<any>(null)
 
   // 容器尺寸
   const containerRef = useRef<HTMLDivElement>(null)
@@ -334,7 +333,6 @@ export const ForceGraph:React.FC<ForceGraphProps> = ({
 
     // 简单的力导向模拟
     const alpha = 0.3
-    const alphaDecay = 0.02
     const velocityDecay = 0.4
 
     // 初始化位置（随机分布）
@@ -413,11 +411,9 @@ export const ForceGraph:React.FC<ForceGraphProps> = ({
       initializedNodes.forEach((node: any) => {
         if (node.fx === null) {
           const dx = dimensions.width / 2 - (node.x || 0)
-          const dy = dimensions.height / 2 - (node.y || 0)
           node.vx = (node.vx || 0) + dx * 0.01
         }
         if (node.fy === null) {
-          const dx = dimensions.width / 2 - (node.x || 0)
           const dy = dimensions.height / 2 - (node.y || 0)
           node.vy = (node.vy || 0) + dy * 0.01
         }

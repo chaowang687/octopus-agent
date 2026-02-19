@@ -12,7 +12,8 @@ contextBridge.exposeInMainWorld('electron', {
     getSystemInfo: () => ipcRenderer.invoke('system:getSystemInfo')
   },
   dialog: {
-    openFile: () => ipcRenderer.invoke('dialog:openFile')
+    openFile: () => ipcRenderer.invoke('dialog:openFile'),
+    showOpenDialog: (options: any) => ipcRenderer.invoke('dialog:showOpenDialog', options)
   },
   // 工具集成
   tools: {
@@ -34,7 +35,14 @@ contextBridge.exposeInMainWorld('electron', {
   api: {
     setApiKey: (model: string, key: string) => ipcRenderer.invoke('api:setKey', model, key),
     getApiKey: (model: string) => ipcRenderer.invoke('api:getKey', model),
-    testApiKey: (model: string, key: string) => ipcRenderer.invoke('api:testKey', model, key)
+    testApiKey: (model: string, key: string) => ipcRenderer.invoke('api:testKey', model, key),
+    readFile: (path: string) => ipcRenderer.invoke('api:readFile', path),
+    writeFile: (path: string, content: string) => ipcRenderer.invoke('api:writeFile', path, content),
+    getGitStatus: (projectPath: string) => ipcRenderer.invoke('api:getGitStatus', projectPath),
+    getPlanVersions: (projectPath: string) => ipcRenderer.invoke('api:getPlanVersions', projectPath),
+    commitPlan: (projectPath: string, message: string) => ipcRenderer.invoke('api:commitPlan', projectPath, message),
+    initGit: (projectPath: string) => ipcRenderer.invoke('api:initGit', projectPath),
+    restorePlanVersion: (projectPath: string, versionId: string) => ipcRenderer.invoke('api:restorePlanVersion', projectPath, versionId)
   },
   // 本地文件操作
   fs: {
@@ -140,6 +148,42 @@ contextBridge.exposeInMainWorld('electron', {
     setMode: (mode: string) => ipcRenderer.invoke('projectManager:setMode', mode),
     getMode: () => ipcRenderer.invoke('projectManager:getMode')
   },
+  // 文库系统
+  library: {
+    createDocument: (doc: any) => ipcRenderer.invoke('library:createDocument', doc),
+    getDocument: (id: string) => ipcRenderer.invoke('library:getDocument', id),
+    updateDocument: (id: string, updates: any) => ipcRenderer.invoke('library:updateDocument', id, updates),
+    deleteDocument: (id: string) => ipcRenderer.invoke('library:deleteDocument', id),
+    searchDocuments: (query: any) => ipcRenderer.invoke('library:searchDocuments', query),
+    getDocumentHistory: (id: string) => ipcRenderer.invoke('library:getDocumentHistory', id),
+    restoreVersion: (id: string, version: number) => ipcRenderer.invoke('library:restoreVersion', id, version),
+    createPlan: (requirementId: string, metadata?: any) => ipcRenderer.invoke('library:createPlan', requirementId, metadata),
+    getPlan: (planId: string) => ipcRenderer.invoke('library:getPlan', planId),
+    updatePlan: (planId: string, updates: any) => ipcRenderer.invoke('library:updatePlan', planId, updates),
+    getPlanProgress: (planId: string) => ipcRenderer.invoke('library:getPlanProgress', planId),
+    createDecision: (request: any) => ipcRenderer.invoke('library:createDecision', request),
+    getDecision: (decisionId: string) => ipcRenderer.invoke('library:getDecision', decisionId),
+    makeDecision: (decisionId: string, optionId: string, reason?: string) => ipcRenderer.invoke('library:makeDecision', decisionId, optionId, reason),
+    getPendingDecisions: (planId?: string) => ipcRenderer.invoke('library:getPendingDecisions', planId),
+    startCollaboration: (request: any) => ipcRenderer.invoke('library:startCollaboration', request),
+    getCollaborationSession: (sessionId: string) => ipcRenderer.invoke('library:getCollaborationSession', sessionId),
+    executePlan: (sessionId: string) => ipcRenderer.invoke('library:executePlan', sessionId),
+    makeSessionDecision: (sessionId: string, decisionId: string, optionId: string, reason?: string) => ipcRenderer.invoke('library:makeSessionDecision', sessionId, decisionId, optionId, reason),
+    cancelSession: (sessionId: string, reason?: string) => ipcRenderer.invoke('library:cancelSession', sessionId, reason),
+    getSessionProgress: (sessionId: string) => ipcRenderer.invoke('library:getSessionProgress', sessionId),
+    getSessionPendingDecisions: (sessionId: string) => ipcRenderer.invoke('library:getSessionPendingDecisions', sessionId)
+  },
+  // 协作事件
+  collaboration: {
+    onEvent: (callback: (event: any) => void) => {
+      const listener = (_: any, event: any) => callback(event)
+      ipcRenderer.on('collaboration:event', listener)
+      return () => ipcRenderer.removeListener('collaboration:event', listener)
+    },
+    offEvent: () => {
+      ipcRenderer.removeAllListeners('collaboration:event')
+    }
+  },
   events: {
     onWebviewNewWindow: (callback: (details: { url: string; frameName?: string }) => void) => {
       const listener = (_: any, payload: { url: string; frameName?: string }) => callback(payload)
@@ -208,6 +252,13 @@ declare global {
         setApiKey: (model: string, key: string) => Promise<void>
         getApiKey: (model: string) => Promise<string | null>
         testApiKey: (model: string, key: string) => Promise<boolean>
+        readFile: (path: string) => Promise<{ success: boolean; content?: string; error?: string }>
+        writeFile: (path: string, content: string) => Promise<{ success: boolean; error?: string }>
+        getGitStatus: (projectPath: string) => Promise<{ success: boolean; status?: any; error?: string }>
+        getPlanVersions: (projectPath: string) => Promise<{ success: boolean; versions?: any[]; error?: string }>
+        commitPlan: (projectPath: string, message: string) => Promise<{ success: boolean; error?: string }>
+        initGit: (projectPath: string) => Promise<{ success: boolean; error?: string }>
+        restorePlanVersion: (projectPath: string, versionId: string) => Promise<{ success: boolean; error?: string }>
       }
       fs: {
         readFile: (path: string) => Promise<string>
@@ -293,6 +344,34 @@ declare global {
         trackProgress: (projectId: string) => Promise<any>
         setMode: (mode: string) => Promise<any>
         getMode: () => Promise<any>
+      },
+      library: {
+        createDocument: (doc: any) => Promise<any>
+        getDocument: (id: string) => Promise<any>
+        updateDocument: (id: string, updates: any) => Promise<any>
+        deleteDocument: (id: string) => Promise<any>
+        searchDocuments: (query: any) => Promise<any>
+        getDocumentHistory: (id: string) => Promise<any>
+        restoreVersion: (id: string, version: number) => Promise<any>
+        createPlan: (requirementId: string, metadata?: any) => Promise<any>
+        getPlan: (planId: string) => Promise<any>
+        updatePlan: (planId: string, updates: any) => Promise<any>
+        getPlanProgress: (planId: string) => Promise<any>
+        createDecision: (request: any) => Promise<any>
+        getDecision: (decisionId: string) => Promise<any>
+        makeDecision: (decisionId: string, optionId: string, reason?: string) => Promise<any>
+        getPendingDecisions: (planId?: string) => Promise<any>
+        startCollaboration: (request: any) => Promise<any>
+        getCollaborationSession: (sessionId: string) => Promise<any>
+        executePlan: (sessionId: string) => Promise<any>
+        makeSessionDecision: (sessionId: string, decisionId: string, optionId: string, reason?: string) => Promise<any>
+        cancelSession: (sessionId: string, reason?: string) => Promise<any>
+        getSessionProgress: (sessionId: string) => Promise<any>
+        getSessionPendingDecisions: (sessionId: string) => Promise<any>
+      },
+      collaboration: {
+        onEvent: (callback: (event: any) => void) => () => void
+        offEvent: () => void
       },
       events?: {
         onWebviewNewWindow: (callback: (details: { url: string; frameName?: string }) => void) => () => void

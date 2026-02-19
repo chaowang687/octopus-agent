@@ -336,7 +336,7 @@ class LocalModelService implements ModelService {
     return { success: true, content: data.choices?.[0]?.message?.content || '' }
   }
 
-  private async callLlamaCpp(baseUrl: string, model: string, messages: LLMMessage[], options: any): Promise<LLMResponse> {
+  private async callLlamaCpp(baseUrl: string, _model: string, messages: LLMMessage[], options: any): Promise<LLMResponse> {
     const response = await fetch(`${baseUrl}/completion`, {
       method: 'POST',
       headers: {

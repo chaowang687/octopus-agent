@@ -7,15 +7,11 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import { app } from 'electron'
-import { llmService, LLMMessage } from '../services/LLMService'
+import { llmService } from '../services/LLMService'
 import { 
   EmotionVector, 
-  EmotionProcessor, 
   emotionProcessor,
-  IntuitionRule,
-  MemoryEntry,
-  EmotionRoutingDecision,
-  DEFAULT_EMOTION 
+  EmotionRoutingDecision
 } from './EmotionTypes'
 
 // ============================================
@@ -417,7 +413,7 @@ export class CognitiveEngine {
       selectedSystem,
       confidence,
       reason,
-      matchedSkills: matchedSkills?.length > 0 ? matchedSkills : undefined,
+      matchedSkills: matchedSkills && matchedSkills.length > 0 ? matchedSkills : undefined,
       durationMs: Date.now() - startTime
     }
 
@@ -470,9 +466,7 @@ export class CognitiveEngine {
           matchedSkills: undefined,
           hasConflict: false,
           conflictReason: undefined,
-          durationMs: Date.now() - startTime,
-          // 强制设置为medium复杂度，以便触发多智能体模式
-          complexity: 'medium' as any
+          durationMs: Date.now() - startTime
         }
         return decision
       }
@@ -503,8 +497,7 @@ export class CognitiveEngine {
         matchedSkills: undefined,
         hasConflict: false,
         conflictReason: undefined,
-        durationMs: Date.now() - startTime,
-        complexity: 'medium' as any
+        durationMs: Date.now() - startTime
       }
       return decision
     }
@@ -718,8 +711,7 @@ export class CognitiveEngine {
       confidence: 1.0,
       children: [],
       metadata: {
-        durationMs: 0,
-        timestamp: Date.now()
+        durationMs: 0
       },
       timestamp: Date.now()
     }

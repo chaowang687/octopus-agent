@@ -109,7 +109,7 @@ export class ToolCallCenter {
     }
   }
 
-  async autoSelectTool(task: string, context?: any): Promise<ToolType> {
+  async autoSelectTool(task: string): Promise<ToolType> {
     const taskLower = task.toLowerCase()
 
     if (taskLower.includes('vscode') || taskLower.includes('visual studio code') || taskLower.includes('code')) {

@@ -11,7 +11,7 @@ export function registerOpenTool() {
       { name: 'path', type: 'string', description: 'Optional path to open with the software', required: false },
       { name: 'options', type: 'object', description: 'Additional options for the tool', required: false }
     ],
-    handler: async (params: any, context: any) => {
+    handler: async (params: any) => {
       const { tool, path: filePath, options } = params
 
       try {
@@ -45,7 +45,7 @@ export function registerOpenTool() {
       { name: 'line', type: 'number', description: 'Line number to jump to', required: false },
       { name: 'column', type: 'number', description: 'Column number to jump to', required: false }
     ],
-    handler: async (params: any, context: any) => {
+    handler: async (params: any) => {
       const { path: filePath, line, column } = params
 
       try {
@@ -85,7 +85,7 @@ export function registerOpenTool() {
     parameters: [
       { name: 'tool', type: 'string', description: 'Specific tool to check (optional, returns all if not specified)', required: false }
     ],
-    handler: async (params: any, context: any) => {
+    handler: async (params: any) => {
       const { tool } = params
 
       try {
@@ -119,7 +119,7 @@ export function registerOpenTool() {
     name: 'list_available_tools',
     description: 'List all available development tools',
     parameters: [],
-    handler: async (params: any, context: any) => {
+    handler: async () => {
       try {
         const availableTools = toolCallCenter.listAvailableTools()
         const statuses = await toolCallCenter.getAllToolStatuses()

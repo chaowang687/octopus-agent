@@ -12,6 +12,7 @@ import { toolRegistry } from './agent/ToolRegistry'
 import { galleryService } from './services/GalleryService'
 import { safeCodeExecutionService } from './services/SafeCodeExecutionService'
 import * as commandUtils from './utils/commandUtils'
+import './agent/imageTools'
 
 const traeSandboxStoragePath = process.env.TRAE_SANDBOX_STORAGE_PATH
 if (traeSandboxStoragePath) {
