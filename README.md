@@ -1,4 +1,4 @@
-# 本地化 TRAE (Localized TRAE Agent)
+# Octopus Agent
 
 这是一个本地化的 AI Agent 桌面应用，集成了 AI 对话、开发工具管理、本地图库管理等功能。
 
@@ -29,7 +29,12 @@
 
 3. 构建应用:
    ```bash
-   npm run build:mac
+   npm run build
+   ```
+
+4. 打包应用:
+   ```bash
+   npm run dist
    ```
 
 ## 目录结构
@@ -42,3 +47,7 @@
 ## 注意事项
 
 - 本项目需要配置相应的 API Key 才能使用 AI 功能。
+
+## 发布
+
+详细的发布指南请参考 [GITHUB_SETUP.md](GITHUB_SETUP.md) 和 [RELEASE.md](RELEASE.md)。
