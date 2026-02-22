@@ -20,10 +20,8 @@ const ChatWorkflow: React.FC = () => {
 
   // Load settings on mount
   useEffect(() => {
-    // @ts-ignore
-    if (window.electron && window.electron.ipcRenderer) {
-      // @ts-ignore
-      window.electron.ipcRenderer.invoke('agent:getWorkflowSettings').then((settings: any) => {
+    if (window.electron && window.electron.agent) {
+      window.electron.agent.getWorkflowSettings().then((settings: any) => {
         if (settings) {
           if (settings.todoList) {
             setTodoListIDE(settings.todoList.ide)
@@ -95,10 +93,8 @@ const ChatWorkflow: React.FC = () => {
 
     // Debounce save to avoid too many IPC calls
     const timer = setTimeout(() => {
-      // @ts-ignore
-      if (window.electron && window.electron.ipcRenderer) {
-        // @ts-ignore
-        window.electron.ipcRenderer.invoke('agent:updateWorkflowSettings', settings)
+      if (window.electron && window.electron.agent) {
+        window.electron.agent.updateWorkflowSettings(settings)
           .catch((err: any) => console.error('Failed to save workflow settings:', err))
       }
     }, 500)

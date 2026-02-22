@@ -48,10 +48,8 @@ const MemoryPage: React.FC = () => {
     setIsLoading(true)
     try {
       // 尝试从主进程获取记忆数据
-      // @ts-ignore
-      if (window.electron?.ipcRenderer) {
-        // @ts-ignore
-        const result = await window.electron.ipcRenderer.invoke('memory:getAll')
+      if (window.electron?.memory) {
+        const result = await window.electron.memory.getAll()
         if (result.success) {
           setMemories(result.memories || [])
           setStats(result.stats || { totalEntries: 0, byType: {} })
@@ -84,10 +82,8 @@ const MemoryPage: React.FC = () => {
 
   const handleDelete = async (id: string) => {
     try {
-      // @ts-ignore
-      if (window.electron?.ipcRenderer) {
-        // @ts-ignore
-        await window.electron.ipcRenderer.invoke('memory:delete', id)
+      if (window.electron?.memory) {
+        await window.electron.memory.delete(id)
         setMemories(prev => prev.filter(m => m.id !== id))
       }
     } catch (error) {
@@ -100,10 +96,8 @@ const MemoryPage: React.FC = () => {
       return
     }
     try {
-      // @ts-ignore
-      if (window.electron?.ipcRenderer) {
-        // @ts-ignore
-        await window.electron.ipcRenderer.invoke('memory:clear', type)
+      if (window.electron?.memory) {
+        await window.electron.memory.clear(type)
         if (type) {
           setMemories(prev => prev.filter(m => m.type !== type))
         } else {

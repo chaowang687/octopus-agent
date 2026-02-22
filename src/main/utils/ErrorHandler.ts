@@ -184,28 +184,64 @@ export class ErrorHandler {
   static categorizeError(error: Error | { message?: string }): ErrorCategory {
     const message = error.message?.toLowerCase() || ''
     
-    if (message.includes('task') || message.includes('plan') || message.includes('step')) {
+    // 任务执行错误
+    if (message.includes('task') || message.includes('plan') || message.includes('step') || 
+        message.includes('execute') || message.includes('run')) {
       return ErrorCategory.TASK_EXECUTION
     }
-    if (message.includes('network') || message.includes('fetch') || message.includes('connection')) {
+    
+    // 网络错误
+    if (message.includes('network') || message.includes('fetch') || message.includes('connection') ||
+        message.includes('timeout') || message.includes('timed out') ||
+        message.includes('socket') || message.includes('connect') ||
+        message.includes('dns') || message.includes('http') ||
+        message.includes('request') || message.includes('response')) {
       return ErrorCategory.NETWORK
     }
-    if (message.includes('file') || message.includes('directory') || message.includes('path')) {
+    
+    // 文件系统错误
+    if (message.includes('file') || message.includes('directory') || message.includes('path') ||
+        message.includes('read') || message.includes('write') ||
+        message.includes('create') || message.includes('delete') ||
+        message.includes('rename') || message.includes('copy') ||
+        message.includes('enoent') || message.includes('eperm') ||
+        message.includes('eexist') || message.includes('eacces')) {
       return ErrorCategory.FILE_SYSTEM
     }
-    if (message.includes('api') || message.includes('http') || message.includes('status')) {
+    
+    // API错误
+    if (message.includes('api') || message.includes('http') || message.includes('status') ||
+        message.includes('response') || message.includes('request') ||
+        message.includes('token') || message.includes('auth') ||
+        message.includes('rate limit') || message.includes('quota')) {
       return ErrorCategory.API
     }
-    if (message.includes('tool') || message.includes('command') || message.includes('execution')) {
+    
+    // 工具执行错误
+    if (message.includes('tool') || message.includes('command') || message.includes('execution') ||
+        message.includes('execute') || message.includes('run') ||
+        message.includes('command not found') || message.includes('exit code')) {
       return ErrorCategory.TOOL_EXECUTION
     }
-    if (message.includes('validation') || message.includes('invalid') || message.includes('required')) {
+    
+    // 验证错误
+    if (message.includes('validation') || message.includes('invalid') || message.includes('required') ||
+        message.includes('missing') || message.includes('format') ||
+        message.includes('type') || message.includes('length') ||
+        message.includes('range') || message.includes('pattern')) {
       return ErrorCategory.VALIDATION
     }
-    if (message.includes('permission') || message.includes('access denied') || message.includes('eacces')) {
+    
+    // 权限错误
+    if (message.includes('permission') || message.includes('access denied') || message.includes('eacces') ||
+        message.includes('eperm') || message.includes('unauthorized') ||
+        message.includes('forbidden') || message.includes('403')) {
       return ErrorCategory.PERMISSION
     }
-    if (message.includes('timeout') || message.includes('timed out')) {
+    
+    // 超时错误
+    if (message.includes('timeout') || message.includes('timed out') ||
+        message.includes('etimedout') || message.includes('timeout exceeded')) {
       return ErrorCategory.TIMEOUT
     }
     
@@ -215,16 +251,35 @@ export class ErrorHandler {
   static determineSeverity(error: Error | { message?: string }): ErrorSeverity {
     const message = error.message?.toLowerCase() || ''
     
-    if (message.includes('critical') || message.includes('fatal') || message.includes('crash')) {
+    // 严重错误
+    if (message.includes('critical') || message.includes('fatal') || message.includes('crash') ||
+        message.includes('panic') || message.includes('abort') ||
+        message.includes('segmentation fault') || message.includes('out of memory') ||
+        message.includes('stack overflow') || message.includes('system error')) {
       return ErrorSeverity.CRITICAL
     }
-    if (message.includes('error') || message.includes('failed') || message.includes('exception')) {
+    
+    // 高严重度错误
+    if (message.includes('error') || message.includes('failed') || message.includes('exception') ||
+        message.includes('invalid') || message.includes('not found') ||
+        message.includes('permission denied') || message.includes('access denied') ||
+        message.includes('timeout') || message.includes('timed out') ||
+        message.includes('connection refused') || message.includes('network error') ||
+        message.includes('api error') || message.includes('http error') ||
+        message.includes('tool error') || message.includes('execution failed')) {
       return ErrorSeverity.HIGH
     }
-    if (message.includes('warning') || message.includes('deprecated')) {
+    
+    // 中等严重度错误
+    if (message.includes('warning') || message.includes('deprecated') ||
+        message.includes('info') || message.includes('notice') ||
+        message.includes('slow') || message.includes('delay') ||
+        message.includes('retry') || message.includes('fallback') ||
+        message.includes('minor') || message.includes('temporary')) {
       return ErrorSeverity.MEDIUM
     }
     
+    // 低严重度错误
     return ErrorSeverity.LOW
   }
 
@@ -351,39 +406,53 @@ export class ErrorHandler {
     if (error.context.operation) {
       details += `\n操作: ${error.context.operation}`
     }
+    if (error.context.tool) {
+      details += `\n工具: ${error.context.tool}`
+    }
+    if (error.context.taskId) {
+      details += `\n任务ID: ${error.context.taskId.slice(-8)}`
+    }
+    if (error.context.model) {
+      details += `\n模型: ${error.context.model}`
+    }
     
     let suggestion = ''
     switch (error.category) {
       case ErrorCategory.NETWORK:
-        suggestion = '\n建议: 检查网络连接，确保可以访问外部服务'
+        suggestion = '\n\n建议:\n1. 检查网络连接是否正常\n2. 尝试重启网络设备\n3. 确保可以访问外部服务\n4. 检查防火墙设置'
         break
       case ErrorCategory.FILE_SYSTEM:
-        suggestion = '\n建议: 检查文件路径和权限，确保文件可访问'
+        suggestion = '\n\n建议:\n1. 检查文件路径是否正确\n2. 确保文件或目录存在\n3. 检查文件权限设置\n4. 尝试使用绝对路径'
         break
       case ErrorCategory.API:
-        suggestion = '\n建议: 检查API密钥配置，确保密钥有效'
+        suggestion = '\n\n建议:\n1. 检查API密钥配置是否正确\n2. 确保API密钥有效且未过期\n3. 检查网络连接\n4. 查看API文档了解正确用法'
         break
       case ErrorCategory.TOOL_EXECUTION:
-        suggestion = '\n建议: 检查工具参数，确保输入正确'
+        suggestion = '\n\n建议:\n1. 检查工具参数是否正确\n2. 确保输入格式符合要求\n3. 检查工具依赖是否安装\n4. 查看工具文档了解正确用法'
         break
       case ErrorCategory.TASK_EXECUTION:
-        suggestion = '\n建议: 稍后重试，或检查任务配置'
+        suggestion = '\n\n建议:\n1. 稍后重试该任务\n2. 检查任务配置是否正确\n3. 确保所有依赖都已满足\n4. 尝试简化任务复杂度'
         break
       case ErrorCategory.VALIDATION:
-        suggestion = '\n建议: 检查输入参数，确保格式正确'
+        suggestion = '\n\n建议:\n1. 检查输入参数格式是否正确\n2. 确保所有必填参数都已提供\n3. 验证参数值是否在有效范围内\n4. 查看相关文档了解正确格式'
         break
       case ErrorCategory.PERMISSION:
-        suggestion = '\n建议: 检查文件或操作权限，确保有足够权限'
+        suggestion = '\n\n建议:\n1. 检查文件或目录权限设置\n2. 尝试使用管理员权限运行\n3. 确保目标位置可写\n4. 检查用户权限级别'
         break
       case ErrorCategory.TIMEOUT:
-        suggestion = '\n建议: 增加超时时间或检查网络连接'
+        suggestion = '\n\n建议:\n1. 增加操作超时时间\n2. 检查网络连接是否稳定\n3. 尝试简化操作复杂度\n4. 分批处理大任务'
         break
       case ErrorCategory.UNKNOWN:
-        suggestion = '\n建议: 联系技术支持，提供错误详情'
+        suggestion = '\n\n建议:\n1. 稍后重试操作\n2. 检查系统状态\n3. 重启应用程序\n4. 联系技术支持并提供错误详情'
         break
     }
     
-    return `${emoji} ${title}${details}${suggestion}`
+    let severityInfo = ''
+    if (error.severity === ErrorSeverity.HIGH || error.severity === ErrorSeverity.CRITICAL) {
+      severityInfo = '\n\n注意: 这是一个高优先级错误，可能需要立即处理。'
+    }
+    
+    return `${emoji} ${title}${details}${suggestion}${severityInfo}`
   }
 
   static formatErrorForDeveloper(error: AppError): string {

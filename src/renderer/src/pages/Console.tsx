@@ -81,8 +81,12 @@ Available commands:
           setOutput([])
           return
         case 'tools':
-          const tools = await window.electron.tools.listTools()
-          result = `Available Tools:\n${tools.map(t => `  - ${t}`).join('\n')}`
+          const toolsResult = await window.electron.tools.listTools()
+          if (toolsResult.success && toolsResult.tools) {
+            result = `Available Tools:\n${toolsResult.tools.map((t: any) => `  - ${t}`).join('\n')}`
+          } else {
+            result = 'Failed to list tools'
+          }
           break
         case 'api':
           if (args[1] === 'list') {

@@ -1,6 +1,7 @@
 import { llmService, LLMMessage } from '../services/LLMService'
 
 import { PATHS } from '../config/paths'
+import { toolRegistry } from './ToolRegistry'
 
 // ============================================
 // 执行步骤状态枚举
@@ -71,33 +72,108 @@ export interface Plan {
 }
 
 export class Planner {
+  private planCache: Map<string, { plan: Plan; timestamp: number }> = new Map()
+  private cacheMaxAge = 3600000 // 缓存1小时
+
+  private generateCacheKey(instruction: string, model: string): string {
+    return `${model}:${instruction.trim().toLowerCase().slice(0, 500)}`
+  }
+
+  private getCachedPlan(instruction: string, model: string): Plan | null {
+    const key = this.generateCacheKey(instruction, model)
+    const cached = this.planCache.get(key)
+    
+    if (cached && (Date.now() - cached.timestamp) < this.cacheMaxAge) {
+      console.log('[Planner] Using cached plan')
+      return cached.plan
+    }
+    
+    return null
+  }
+
+  private setCachedPlan(instruction: string, model: string, plan: Plan): void {
+    const key = this.generateCacheKey(instruction, model)
+    this.planCache.set(key, { plan, timestamp: Date.now() })
+    
+    // 限制缓存大小
+    if (this.planCache.size > 50) {
+      const oldestKey = Array.from(this.planCache.entries())
+        .sort((a, b) => a[1].timestamp - b[1].timestamp)[0]?.[0]
+      if (oldestKey) {
+        this.planCache.delete(oldestKey)
+      }
+    }
+  }
+
   async createPlan(instruction: string, history: LLMMessage[] = [], model: string = 'openai', options: any = {}): Promise<Plan> {
 
+    // 检查缓存
+    if (instruction) {
+      const cachedPlan = this.getCachedPlan(instruction, model)
+      if (cachedPlan) {
+        return cachedPlan
+      }
+    }
+    
+    // 获取任务目录
+    const taskDir = options?.taskDir || PATHS.DESKTOP
+    console.log('[Planner] 使用任务目录:', taskDir)
+    
+    const fullToolsDescription = toolRegistry.getToolsDescription()
+    const toolsDescription = fullToolsDescription.length > 5000
+      ? `${fullToolsDescription.slice(0, 5000)}\n... (tools list truncated for length)`
+      : fullToolsDescription
     
     const systemPrompt = `You are a task PLANNER. Your job is to create a detailed JSON plan with MULTIPLE steps.
 
-Environment: macOS, ${PATHS.DESKTOP}
+Environment: macOS, ${taskDir}
 
-Available tools: create_directory, create_file, write_file, execute_command, respond_to_user
+Available tools:
+${toolsDescription}
 
 CRITICAL REQUIREMENTS:
 1. ALWAYS create at least 3-5 steps for a typical development task
 2. Steps should be ordered logically (create directories first, then files, then install dependencies, then run)
 3. NEVER create only 1 step - that is too simplistic
 4. ALWAYS include: create project folder → create source files → install dependencies → verify with command
-5. ALWAYS end with a "respond_to_user" step to provide final result to the user
-6. The "respond_to_user" step should be the LAST step and include a summary message
+5. ALWAYS use write_file to create files (NOT create_file, which does not exist)
+6. ALWAYS end with an execute_command step to verify project was created successfully
+7. For web applications, ALWAYS create: HTML file, CSS file, JavaScript file
+8. For React/Vue projects, ALWAYS include: npm init, npm install, and build steps
+
+9. CRITICAL: When using execute_command, ensure proper shell syntax:
+   
+   WRONG: "find /path -name '*.js' head -20"
+   RIGHT: "find /path -name '*.js' | head -20"
+   REASON: Missing pipe operator | between commands
+   
+   WRONG: "cd /path npm install"
+   RIGHT: "cd /path && npm install"
+   REASON: Missing && to chain commands
+   
+   WRONG: "/path/with spaces"
+   RIGHT: "/path/with spaces"
+   REASON: Paths with spaces need quoting
+   
+   WRONG: "ls -la | grep .js head -10"
+   RIGHT: "ls -la | grep .js | head -10"
+   REASON: Each pipe needs proper spacing
+   
+   ALWAYS test your commands before including them in the plan!
+
+IMPORTANT: Use the task directory "${taskDir}" for all file operations. Do NOT use ${PATHS.getWorkspacePath('notepad')}.
 
 Output format (MUST follow this structure):
-{"reasoning": "I will create the project step by step", "steps": [
-  {"id": "step_1", "tool": "create_directory", "parameters": {"path": "${PATHS.getWorkspacePath('notepad')}"}, "description": "Create notepad project directory"},
-      {"id": "step_2", "tool": "write_file", "parameters": {"path": "${PATHS.getWorkspacePath('notepad')}/index.html", "content": "<!DOCTYPE html>..."}, "description": "Create main HTML file"},
-      {"id": "step_3", "tool": "execute_command", "parameters": {"command": "cd ${PATHS.getWorkspacePath('notepad')} && npm init -y"}, "description": "Initialize npm project"},
-      {"id": "step_4", "tool": "execute_command", "parameters": {"command": "cd ${PATHS.getWorkspacePath('notepad')} && npm install"}, "description": "Install project dependencies"},
-      {"id": "step_5", "tool": "respond_to_user", "parameters": {"message": "项目创建完成！已创建简易笔记本应用，包含以下功能：..."}, "description": "Report completion to user"}
+{"reasoning": "I will create a complete project with all necessary files", "steps": [
+  {"id": "step_1", "tool": "create_directory", "parameters": {"path": "${taskDir}"}, "description": "Create project directory"},
+  {"id": "step_2", "tool": "write_file", "parameters": {"path": "${taskDir}/index.html", "content": "<!DOCTYPE html>..."}, "description": "Create main HTML file"},
+  {"id": "step_3", "tool": "write_file", "parameters": {"path": "${taskDir}/style.css", "content": "body { ... }"}, "description": "Create CSS file"},
+  {"id": "step_4", "tool": "write_file", "parameters": {"path": "${taskDir}/app.js", "content": "document.addEventListener..."}, "description": "Create JavaScript file"},
+  {"id": "step_5", "tool": "execute_command", "parameters": {"command": "cd ${taskDir} && npm init -y"}, "description": "Initialize npm project"},
+  {"id": "step_6", "tool": "execute_command", "parameters": {"command": "cd ${taskDir} && ls -la"}, "description": "Verify project structure"}
 ]}
 
-IMPORTANT: Output ONLY valid JSON with at least 3 steps, MUST include respond_to_user as the final step, no other text!`
+IMPORTANT: Output ONLY valid JSON with at least 3 steps, no other text!`
 
     const messages: LLMMessage[] = [
       { role: 'system', content: systemPrompt },
@@ -383,7 +459,14 @@ IMPORTANT: Output ONLY valid JSON with at least 3 steps, MUST include respond_to
 
     try {
       const parsedPlan = maybeEnforceImageGrid(parsePlanOrThrow(response.content))
-      return enhancePlan(parsedPlan)
+      const finalPlan = enhancePlan(parsedPlan)
+      
+      // 缓存计划
+      if (instruction) {
+        this.setCachedPlan(instruction, model, finalPlan)
+      }
+      
+      return finalPlan
     } catch (error: any) {
       const repairMessages: LLMMessage[] = [
         {
@@ -409,7 +492,7 @@ IMPORTANT: Output ONLY valid JSON with at least 3 steps, MUST include respond_to
       const textResponse = response.content || repair.content
       if (textResponse) {
         const now = Date.now()
-        return {
+        const fallbackPlan = {
           planId: `plan_fallback_${now}`,
           originalGoal: instruction || '用户任务',
           reasoning: '由于模型返回格式问题，使用文本回复',
@@ -430,6 +513,13 @@ IMPORTANT: Output ONLY valid JSON with at least 3 steps, MUST include respond_to
             }
           ]
         } as Plan
+        
+        // 缓存fallback计划
+        if (instruction) {
+          this.setCachedPlan(instruction, model, fallbackPlan)
+        }
+        
+        return fallbackPlan
       }
 
       console.error('Failed to parse plan JSON:', response.content)

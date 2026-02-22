@@ -61,6 +61,7 @@ export interface ReActOptions {
   chainOfThoughtDepth?: number // Chain-of-Thought推理深度
   useSelfConsistency?: boolean // 是否使用Self-Consistency验证
   consistencySamples?: number // Self-Consistency样本数
+  timeout?: number           // 超时时间（毫秒）
 }
 
 // ReAct引擎类
@@ -113,6 +114,7 @@ export class ReActEngine extends EventEmitter {
   ): Promise<ReActTrace> {
     const opts = { ...this.defaultOptions, ...options }
     const startTime = Date.now()
+    const timeout = opts.timeout || 300000 // 默认5分钟超时
     
     const trace: ReActTrace = {
       id: `react_${Date.now()}`,
@@ -134,12 +136,85 @@ export class ReActEngine extends EventEmitter {
       { role: 'user', content: task }
     ]
 
+    // 创建超时Promise
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(`ReAct推理超时 (${timeout}ms)`))
+      }, timeout)
+    })
+
+    // 创建进度更新定时器
+    let lastActivity = Date.now()
+    const progressInterval = setInterval(() => {
+      const elapsed = Date.now() - startTime
+      const progress = Math.min((trace.currentStep / (opts.maxIterations || 10)) * 100, 95)
+      
+      this.emit('progress', { 
+        progress, 
+        currentStep: trace.currentStep,
+        maxSteps: opts.maxIterations || 10,
+        elapsedMs: elapsed,
+        message: `正在执行推理步骤 ${trace.currentStep}/${opts.maxIterations || 10}...`
+      })
+      
+      // 检查是否长时间无活动
+      const inactiveTime = Date.now() - lastActivity
+      if (inactiveTime > 30000) { // 30秒无活动
+        console.warn(`[ReActEngine] ${trace.id} 30秒无活动，可能卡住`)
+        this.emit('stuck', { 
+          traceId: trace.id,
+          inactiveTime,
+          message: `推理可能卡住，已 ${inactiveTime/1000} 秒无活动`
+        })
+      }
+    }, 5000) // 每5秒发送一次进度
+
     this.emit('start', { traceId: trace.id, task })
 
+    try {
+      // 使用Promise.race实现超时保护
+      const result = await Promise.race([
+        this.executeInternal(task, opts, trace, messages, () => { lastActivity = Date.now() }, onStep),
+        timeoutPromise
+      ])
+      
+      clearInterval(progressInterval)
+      return result
+    } catch (error: any) {
+      clearInterval(progressInterval)
+      
+      if (error.message.includes('超时')) {
+        console.warn(`[ReActEngine] 推理超时，返回部分结果`)
+        trace.success = false
+        trace.completedAt = Date.now()
+        trace.totalDurationMs = trace.completedAt - startTime
+        this.emit('timeout', { trace, timeout })
+        return trace
+      }
+      
+      throw error
+    }
+  }
+
+  /**
+   * 内部执行逻辑
+   */
+  private async executeInternal(
+    task: string,
+    options: ReActOptions,
+    trace: ReActTrace,
+    messages: LLMMessage[],
+    updateActivity: () => void,
+    onStep?: (step: ReActStep, trace: ReActTrace) => void | Promise<void>
+  ): Promise<ReActTrace> {
+    const startTime = Date.now()
+    const opts = { ...this.defaultOptions, ...options }
+    
     try {
       // ReAct循环
       for (let iteration = 0; iteration < (opts.maxIterations || 10); iteration++) {
         trace.currentStep = iteration + 1
+        updateActivity()
         
         // 发送进度事件
         this.emit('iteration', { 
@@ -150,8 +225,27 @@ export class ReActEngine extends EventEmitter {
 
         // 调用LLM获取下一步行动
         const stepStartTime = Date.now()
+        
+        // 自动选择可用的提供商
+        const availableProvider = llmService.getFirstAvailableProvider()
+        const model = availableProvider || opts.model || 'openai'
+        
+        if (!availableProvider) {
+          const errorStep: ReActStep = {
+            id: `step_${iteration}`,
+            type: ReActStepType.THINK,
+            thought: 'LLM调用失败',
+            error: '请先在 "API 管理" 页面配置至少一个API Key（支持OpenAI、Claude、DeepSeek、MiniMax、豆包）',
+            timestamp: stepStartTime,
+            durationMs: Date.now() - stepStartTime
+          }
+          trace.steps.push(errorStep)
+          this.emit('error', { step: errorStep, traceId: trace.id })
+          break
+        }
+        
         const llmResponse = await llmService.chat(
-          opts.model || 'openai',
+          model,
           messages,
           {
             temperature: opts.temperature,

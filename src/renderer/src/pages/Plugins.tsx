@@ -17,10 +17,16 @@ const Plugins: React.FC = () => {
     const fetchPlugins = async () => {
       try {
         setLoading(true)
-        const pluginList = await window.electron.plugins.listPlugins()
-        setPlugins(pluginList)
+        const result = await window.electron.plugins.listPlugins()
+        if (result.success && result.plugins) {
+          setPlugins(result.plugins)
+        } else {
+          throw new Error('Failed to get plugins')
+        }
       } catch (error) {
         console.error(error)
+        const defaultPlugins: Plugin[] = []
+        setPlugins(defaultPlugins)
       } finally {
         setLoading(false)
       }

@@ -20,6 +20,7 @@ export interface ChatSession {
   unread: number
   active?: boolean
   messages: any[] // Store messages per session
+  projectId?: string // Associate session with project
 }
 
 const DEFAULT_AGENTS: Agent[] = [

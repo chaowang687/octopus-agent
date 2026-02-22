@@ -6,6 +6,8 @@
 
 import { toolRegistry } from './ToolRegistry'
 import { llmService, LLMMessage } from '../services/LLMService'
+import { enhancedReActEngine } from './EnhancedReActEngine'
+import { ReActStep, ReActStepType, ReActTrace } from './ReActEngine'
 
 // 错误类型分类
 export enum ErrorType {
@@ -124,6 +126,61 @@ export class SelfCorrectionEngine {
   }
 
   /**
+   * 将错误上下文转换为ReActStep格式
+   */
+  private convertToReActStep(
+    error: any,
+    failedAction: string,
+    originalInput: any
+  ): ReActStep {
+    return {
+      id: `step_${Date.now()}`,
+      type: ReActStepType.ACT,
+      action: failedAction,
+      actionInput: originalInput,
+      thought: `尝试执行 ${failedAction} 操作`,
+      observation: error?.message || String(error),
+      error: error?.message || String(error),
+      timestamp: Date.now()
+    }
+  }
+
+  /**
+   * 执行深度反思
+   */
+  private async performDeepReflection(
+    error: any,
+    failedAction: string,
+    originalInput: any
+  ): Promise<any> {
+    try {
+      const step = this.convertToReActStep(error, failedAction, originalInput)
+      const trace: ReActTrace = {
+        id: `trace_${Date.now()}`,
+        task: failedAction,
+        steps: [step],
+        maxIterations: 1,
+        currentStep: 1,
+        success: false,
+        finalAnswer: '',
+        totalDurationMs: 0,
+        createdAt: Date.now()
+      }
+
+      const reflection = await enhancedReActEngine.performDeepReflection(
+        step,
+        trace
+      )
+
+      console.log(`[SelfCorrection] Deep reflection result:`, reflection)
+      return reflection
+    } catch (reflectionError) {
+      console.error('[SelfCorrection] Deep reflection failed:', reflectionError)
+      return null
+    }
+  }
+
+  /**
    * 尝试纠正错误
    */
   async correct(
@@ -140,8 +197,11 @@ export class SelfCorrectionEngine {
     console.log(`[SelfCorrection] Possible causes: ${analysis.possibleCauses.join(', ')}`)
     console.log(`[SelfCorrection] Suggested fixes: ${analysis.suggestedFixes.join(', ')}`)
 
-    // 根据错误类型选择纠正策略
-    let strategy = this.selectStrategy(analysis)
+    // 执行深度反思
+    const reflection = await this.performDeepReflection(error, failedAction, originalInput)
+
+    // 根据错误类型和反思结果选择纠正策略
+    let strategy = this.selectStrategy(analysis, reflection)
     let iterations = 0
     let lastError = error
 
@@ -167,7 +227,8 @@ export class SelfCorrectionEngine {
           const modification = await this.suggestModification(
             failedAction, 
             originalInput, 
-            analysis
+            analysis,
+            reflection
           )
           action = modification.action
           actionInput = modification.actionInput
@@ -487,8 +548,21 @@ export class SelfCorrectionEngine {
   /**
    * 选择纠正策略
    */
-  private selectStrategy(analysis: ErrorAnalysis): CorrectionStrategy {
+  private selectStrategy(analysis: ErrorAnalysis, reflection?: any): CorrectionStrategy {
     const { errorType, confidence } = analysis
+
+    // 如果有反思结果，优先使用反思建议
+    if (reflection && reflection.nextStepSuggestion) {
+      console.log(`[SelfCorrection] Using reflection-based strategy:`, reflection.nextStepSuggestion)
+      
+      if (reflection.nextStepSuggestion.action !== analysis.errorType) {
+        if (reflection.errorAnalysis?.alternativeTools && reflection.errorAnalysis.alternativeTools.length > 0) {
+          return CorrectionStrategy.USE_ALTERNATIVE_TOOL
+        } else if (reflection.learning?.insights && reflection.learning.insights.length > 0) {
+          return CorrectionStrategy.RETRY_WITH_MODIFICATION
+        }
+      }
+    }
 
     // 高置信度的可自动纠正错误
     if (confidence > 0.8) {
@@ -525,12 +599,22 @@ export class SelfCorrectionEngine {
   private async suggestModification(
     action: string,
     input: any,
-    analysis: ErrorAnalysis
+    analysis: ErrorAnalysis,
+    reflection?: any
   ): Promise<{ action: string; actionInput: any }> {
     // 首先尝试基于错误类型的自动修复
     const autoFixes = this.getAutoFixes(analysis, action, input)
     if (autoFixes) {
       return autoFixes
+    }
+
+    // 如果有反思结果，优先使用反思建议
+    if (reflection && reflection.nextStepSuggestion) {
+      console.log(`[SelfCorrection] Using reflection suggestion:`, reflection.nextStepSuggestion)
+      return {
+        action: reflection.nextStepSuggestion.action,
+        actionInput: input
+      }
     }
 
     // 使用LLM来生成修改建议

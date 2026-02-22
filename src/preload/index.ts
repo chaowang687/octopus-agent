@@ -1,7 +1,17 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
+// 直接在全局添加 ipcRenderer.invoke 以保持兼容
+;(window as any).ipcRendererInvoke = (channel: string, ...args: any[]) => {
+  return ipcRenderer.invoke(channel, ...args)
+}
+
 // 暴露API给渲染进程
 contextBridge.exposeInMainWorld('electron', {
+  // 兼容层：支持直接调用 ipcRenderer.invoke
+  ipcRenderer: {
+    invoke: (channel: string, ...args: any[]) => ipcRenderer.invoke(channel, ...args)
+  },
+  
   // 系统操作
   system: {
     openExternal: (url: string) => ipcRenderer.invoke('system:openExternal', url),
@@ -51,7 +61,11 @@ contextBridge.exposeInMainWorld('electron', {
     editFile: (path: string, oldContent: string, newContent: string) => ipcRenderer.invoke('fs:editFile', path, oldContent, newContent),
     compareFiles: (path1: string, path2: string) => ipcRenderer.invoke('fs:compareFiles', path1, path2),
     exists: (path: string) => ipcRenderer.invoke('fs:exists', path),
-    listFiles: (path: string) => ipcRenderer.invoke('fs:listFiles', path)
+    listFiles: (path: string) => ipcRenderer.invoke('fs:listFiles', path),
+    listDirectories: (dirPath: string) => ipcRenderer.invoke('fs:listDirectories', dirPath),
+    getProjectInfo: (projectPath: string) => ipcRenderer.invoke('fs:getProjectInfo', projectPath),
+    scanProjectsDirectory: (projectsDir: string) => ipcRenderer.invoke('fs:scanProjectsDirectory', projectsDir),
+    runNpmScript: (projectPath: string, scriptName: string) => ipcRenderer.invoke('fs:runNpmScript', projectPath, scriptName)
   },
   // 插件管理
   plugins: {
@@ -133,20 +147,25 @@ contextBridge.exposeInMainWorld('electron', {
   },
   // 项目经理模式
   projectManager: {
-    create: (name: string, type: string, options?: any) => ipcRenderer.invoke('projectManager:create', name, type, options),
-    list: () => ipcRenderer.invoke('projectManager:list'),
-    open: (projectId: string) => ipcRenderer.invoke('projectManager:open', projectId),
-    close: (projectId: string) => ipcRenderer.invoke('projectManager:close', projectId),
+    create: (data: any) => ipcRenderer.invoke('projectManager:create', data),
+    get: (projectId: string) => ipcRenderer.invoke('projectManager:get', projectId),
+    list: (filter?: any) => ipcRenderer.invoke('projectManager:list', filter),
+    update: (projectId: string, updates: any) => ipcRenderer.invoke('projectManager:update', projectId, updates),
     delete: (projectId: string) => ipcRenderer.invoke('projectManager:delete', projectId),
-    addTask: (projectId: string, task: any) => ipcRenderer.invoke('projectManager:addTask', projectId, task),
-    updateTask: (projectId: string, taskId: string, updates: any) => ipcRenderer.invoke('projectManager:updateTask', projectId, taskId, updates),
-    deleteTask: (projectId: string, taskId: string) => ipcRenderer.invoke('projectManager:deleteTask', projectId, taskId),
+    addTask: (data: any) => ipcRenderer.invoke('projectManager:addTask', data),
+    getTask: (taskId: string) => ipcRenderer.invoke('projectManager:getTask', taskId),
     getTasks: (projectId: string) => ipcRenderer.invoke('projectManager:getTasks', projectId),
-    generateReport: (projectId: string, reportType: string) => ipcRenderer.invoke('projectManager:generateReport', projectId, reportType),
+    updateTask: (taskId: string, updates: any) => ipcRenderer.invoke('projectManager:updateTask', taskId, updates),
+    deleteTask: (taskId: string) => ipcRenderer.invoke('projectManager:deleteTask', taskId),
+    addTaskComment: (taskId: string, author: string, content: string) => ipcRenderer.invoke('projectManager:addTaskComment', taskId, author, content),
+    generateReport: (projectId: string, type: string, title: string) => ipcRenderer.invoke('projectManager:generateReport', projectId, type, title),
+    getReports: (projectId: string) => ipcRenderer.invoke('projectManager:getReports', projectId),
+    getReport: (reportId: string) => ipcRenderer.invoke('projectManager:getReport', reportId),
     estimateTime: (projectId: string) => ipcRenderer.invoke('projectManager:estimateTime', projectId),
     trackProgress: (projectId: string) => ipcRenderer.invoke('projectManager:trackProgress', projectId),
-    setMode: (mode: string) => ipcRenderer.invoke('projectManager:setMode', mode),
-    getMode: () => ipcRenderer.invoke('projectManager:getMode')
+    setMode: (projectId: string, mode: string) => ipcRenderer.invoke('projectManager:setMode', projectId, mode),
+    getMode: (projectId: string) => ipcRenderer.invoke('projectManager:getMode', projectId),
+    getStatistics: () => ipcRenderer.invoke('projectManager:getStatistics')
   },
   // 文库系统
   library: {
@@ -215,6 +234,73 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.on('webview-action', listener)
       return () => ipcRenderer.removeListener('webview-action', listener)
     }
+  },
+  // 全能智能体管家
+  omni: {
+    executeTask: (instruction: string, options?: any) => ipcRenderer.invoke('omni:executeTask', instruction, options),
+    getTaskStatus: (taskId: string) => ipcRenderer.invoke('omni:getTaskStatus', taskId),
+    getTaskHistory: () => ipcRenderer.invoke('omni:getTaskHistory'),
+    clearTaskHistory: () => ipcRenderer.invoke('omni:clearTaskHistory'),
+    addProject: (project: any) => ipcRenderer.invoke('omni:addProject', project),
+    getProject: (projectId: string) => ipcRenderer.invoke('omni:getProject', projectId),
+    getAllProjects: () => ipcRenderer.invoke('omni:getAllProjects'),
+    switchProject: (projectId: string) => ipcRenderer.invoke('omni:switchProject', projectId),
+    removeProject: (projectId: string) => ipcRenderer.invoke('omni:removeProject', projectId),
+    setPermissionLevel: (level: string) => ipcRenderer.invoke('omni:setPermissionLevel', level),
+    getPermissionLevel: () => ipcRenderer.invoke('omni:getPermissionLevel'),
+    getPermissionLog: () => ipcRenderer.invoke('omni:getPermissionLog'),
+    healthCheck: () => ipcRenderer.invoke('omni:healthCheck')
+  },
+  butler: {
+    getAllProjects: () => ipcRenderer.invoke('butler:getAllProjects'),
+    getActiveProject: () => ipcRenderer.invoke('butler:getActiveProject'),
+    getProject: (projectId: string) => ipcRenderer.invoke('butler:getProject', projectId),
+    getProjectReport: (projectId: string) => ipcRenderer.invoke('butler:getProjectReport', projectId),
+    getAllProblems: () => ipcRenderer.invoke('butler:getAllProblems'),
+    getProblem: (problemId: string) => ipcRenderer.invoke('butler:getProblem', problemId),
+    getSolution: (problemId: string) => ipcRenderer.invoke('butler:getSolution', problemId),
+    fixProblem: (problemId: string) => ipcRenderer.invoke('butler:fixProblem', problemId),
+    getCapabilities: () => ipcRenderer.invoke('butler:getCapabilities'),
+    enableCapability: (name: string) => ipcRenderer.invoke('butler:enableCapability', name),
+    disableCapability: (name: string) => ipcRenderer.invoke('butler:disableCapability', name),
+    cleanup: () => ipcRenderer.invoke('butler:cleanup'),
+    registerProblem: (error: any, sourceAgent: string, sourcePhase: string, context?: any) => ipcRenderer.invoke('butler:registerProblem', error, sourceAgent, sourcePhase, context),
+    getProjectMemories: (projectId: string) => ipcRenderer.invoke('butler:getProjectMemories', projectId),
+    searchProjectMemories: (query: string, projectId?: string) => ipcRenderer.invoke('butler:searchProjectMemories', query, projectId),
+    addProjectMemory: (projectId: string, projectName: string, projectPath: string, type: 'issue' | 'solution' | 'preference' | 'pattern' | 'command', content: string, context?: any, importance?: number) => ipcRenderer.invoke('butler:addProjectMemory', projectId, projectName, projectPath, type, content, context, importance),
+    updateMemoryImportance: (projectId: string, memoryId: string, importance: number) => ipcRenderer.invoke('butler:updateMemoryImportance', projectId, memoryId, importance),
+    deleteMemory: (projectId: string, memoryId: string) => ipcRenderer.invoke('butler:deleteMemory', projectId, memoryId),
+    cleanupOldMemories: (maxAge?: number) => ipcRenderer.invoke('butler:cleanupOldMemories', maxAge),
+    getProjectTools: () => ipcRenderer.invoke('butler:getProjectTools'),
+    executeProjectTool: (toolName: string, projectPath: string, options?: any) => ipcRenderer.invoke('butler:executeProjectTool', toolName, projectPath, options),
+    solveProjectProblem: (projectId: string, projectName: string, projectPath: string, problemDescription: string) => ipcRenderer.invoke('butler:solveProjectProblem', projectId, projectName, projectPath, problemDescription)
+  },
+  // 记忆系统
+  memory: {
+    getAll: (type?: string) => ipcRenderer.invoke('memory:getAll', type),
+    get: (id: string) => ipcRenderer.invoke('memory:get', id),
+    add: (memory: any) => ipcRenderer.invoke('memory:add', memory),
+    update: (id: string, updates: any) => ipcRenderer.invoke('memory:update', id, updates),
+    delete: (id: string) => ipcRenderer.invoke('memory:delete', id),
+    clear: (type?: string) => ipcRenderer.invoke('memory:clear', type),
+    search: (query: string, options?: any) => ipcRenderer.invoke('memory:search', query, options)
+  },
+  // 智能体设置
+  agent: {
+    getWorkflowSettings: () => ipcRenderer.invoke('agent:getWorkflowSettings'),
+    updateWorkflowSettings: (settings: any) => ipcRenderer.invoke('agent:updateWorkflowSettings', settings),
+    getToolState: () => ipcRenderer.invoke('agent:getToolState'),
+    updateToolState: (enabledTools: string[]) => ipcRenderer.invoke('agent:updateToolState', enabledTools)
+  },
+  // IPC Renderer for event listening
+  ipcRenderer: {
+    on: (channel: string, callback: (event: any, ...args: any[]) => void) => {
+      const listener = (_: any, ...args: any[]) => callback(_, ...args)
+      ipcRenderer.on(channel, listener)
+    },
+    removeListener: (channel: string, callback: (event: any, ...args: any[]) => void) => {
+      ipcRenderer.removeListener(channel, callback)
+    }
   }
 })
 
@@ -232,10 +318,11 @@ declare global {
       }
       dialog: {
         openFile: () => Promise<any>
+        showOpenDialog: (options: any) => Promise<any>
       }
       tools: {
-        listTools: () => Promise<string[]>
-        detectTools: () => Promise<any[]>
+        listTools: () => Promise<{ success: boolean; tools?: string[]; error?: string }>
+        detectTools: () => Promise<{ success: boolean; tools?: any[]; error?: string }>
         findPath: (toolId: string) => Promise<any>
         configureTool: (toolId: string, customPath: string) => Promise<any>
         getToolConfig: (toolId: string) => Promise<any>
@@ -267,9 +354,13 @@ declare global {
         compareFiles: (path1: string, path2: string) => Promise<any>
         exists: (path: string) => Promise<boolean>
         listFiles: (path: string) => Promise<string[]>
+        listDirectories: (dirPath: string) => Promise<{ success: boolean; directories?: string[]; error?: string }>
+        getProjectInfo: (projectPath: string) => Promise<{ success: boolean; project?: any; error?: string }>
+        scanProjectsDirectory: (projectsDir: string) => Promise<{ success: boolean; projects?: any[]; error?: string }>
+        runNpmScript: (projectPath: string, scriptName: string) => Promise<{ success: boolean; message?: string; error?: string }>
       }
       plugins: {
-        listPlugins: () => Promise<any[]>
+        listPlugins: () => Promise<{ success: boolean; plugins?: any[]; error?: string }>
         installPlugin: (url: string) => Promise<any>
         uninstallPlugin: (name: string) => Promise<any>
         updatePlugin: (name: string) => Promise<any>
@@ -330,20 +421,25 @@ declare global {
         import: (filePath: string) => Promise<any>
       },
       projectManager: {
-        create: (name: string, type: string, options?: any) => Promise<any>
-        list: () => Promise<any>
-        open: (projectId: string) => Promise<any>
-        close: (projectId: string) => Promise<any>
+        create: (data: any) => Promise<any>
+        get: (projectId: string) => Promise<any>
+        list: (filter?: any) => Promise<any>
+        update: (projectId: string, updates: any) => Promise<any>
         delete: (projectId: string) => Promise<any>
-        addTask: (projectId: string, task: any) => Promise<any>
-        updateTask: (projectId: string, taskId: string, updates: any) => Promise<any>
-        deleteTask: (projectId: string, taskId: string) => Promise<any>
+        addTask: (data: any) => Promise<any>
+        getTask: (taskId: string) => Promise<any>
         getTasks: (projectId: string) => Promise<any>
-        generateReport: (projectId: string, reportType: string) => Promise<any>
+        updateTask: (taskId: string, updates: any) => Promise<any>
+        deleteTask: (taskId: string) => Promise<any>
+        addTaskComment: (taskId: string, author: string, content: string) => Promise<any>
+        generateReport: (projectId: string, type: string, title: string) => Promise<any>
+        getReports: (projectId: string) => Promise<any>
+        getReport: (reportId: string) => Promise<any>
         estimateTime: (projectId: string) => Promise<any>
         trackProgress: (projectId: string) => Promise<any>
-        setMode: (mode: string) => Promise<any>
-        getMode: () => Promise<any>
+        setMode: (projectId: string, mode: string) => Promise<any>
+        getMode: (projectId: string) => Promise<any>
+        getStatistics: () => Promise<any>
       },
       library: {
         createDocument: (doc: any) => Promise<any>
@@ -368,18 +464,9 @@ declare global {
         cancelSession: (sessionId: string, reason?: string) => Promise<any>
         getSessionProgress: (sessionId: string) => Promise<any>
         getSessionPendingDecisions: (sessionId: string) => Promise<any>
-      },
-      collaboration: {
-        onEvent: (callback: (event: any) => void) => () => void
-        offEvent: () => void
-      },
-      events?: {
-        onWebviewNewWindow: (callback: (details: { url: string; frameName?: string }) => void) => () => void
-        onAgentOpenPage: (callback: (url: string) => void) => () => void
-        onWebviewDownloadStart: (callback: (data: { filename: string; totalBytes: number; url: string }) => void) => () => void
-        onWebviewDownloadProgress: (callback: (data: { filename: string; receivedBytes: number; totalBytes: number; progress: number }) => void) => () => void
-        onWebviewDownloadComplete: (callback: (data: { filename: string; savePath?: string; success: boolean; error?: string }) => void) => () => void
       }
     }
   }
 }
+
+// 类型定义

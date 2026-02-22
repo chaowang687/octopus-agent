@@ -1,0 +1,15 @@
+[
+  {
+    "id": "8a7039cc-9a6c-44cb-80bc-96b717fdf08e",
+    "username": "admin",
+    "email": "admin@example.com",
+    "passwordHash": "YWRtaW4xMjM=",
+    "role": "admin",
+    "createdAt": 1771499286420,
+    "permissions": {
+      "projects": {},
+      "canCreateProjects": true,
+      "canManageUsers": true
+    }
+  }
+]

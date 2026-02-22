@@ -16,6 +16,8 @@ import Memory from './pages/Memory'
 import Multimodal from './pages/Multimodal'
 import ProjectManagement from './pages/ProjectManagement'
 import Library from './pages/Library'
+import ResourceAllocation from './pages/ResourceAllocation'
+import OmniAgent from './pages/OmniAgent'
 
 // 全局浏览器事件监听组件
 const GlobalBrowserHandler: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -108,6 +110,8 @@ function App() {
                 <Route path="/multimodal" element={<Multimodal />} />
                 <Route path="/projects" element={<ProjectManagement />} />
                 <Route path="/library" element={<Library />} />
+                <Route path="/resource-allocation" element={<ResourceAllocation />} />
+                <Route path="/omni-agent" element={<OmniAgent />} />
                 <Route path="*" element={<Navigate to="/" />} />
               </Routes>
             </div>

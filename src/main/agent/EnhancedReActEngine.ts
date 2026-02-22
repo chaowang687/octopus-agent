@@ -4,10 +4,7 @@
  */
 
 import { EventEmitter } from 'events'
-import { llmService, LLMMessage } from '../services/LLMService'
-import { toolRegistry } from './ToolRegistry'
-import { ErrorHandler } from '../utils/ErrorHandler'
-import { ReActStep, ReActStepType, ReActTrace, ReActOptions } from './ReActEngine'
+import { ReActStep, ReActStepType, ReActTrace } from './ReActEngine'
 
 // ============================================
 // 增强的反思结果
@@ -211,25 +208,7 @@ export class EnhancedReActEngine extends EventEmitter {
     }
   }
 
-  private saveExperienceLibrary(): void {
-    try {
-      const fs = require('fs')
-      const path = require('path')
-      const experiencePath = path.join(process.cwd(), 'data', 'experience_library.json')
-      
-      const data: Record<string, ExperienceEntry[]> = {}
-      for (const [pattern, entries] of this.experienceLibrary.entries()) {
-        data[pattern] = entries
-      }
-      
-      fs.mkdirSync(path.dirname(experiencePath), { recursive: true })
-      fs.writeFileSync(experiencePath, JSON.stringify(data, null, 2))
-      
-      console.log('[EnhancedReActEngine] 经验库已保存')
-    } catch (error) {
-      console.error('[EnhancedReActEngine] 保存经验库失败:', error)
-    }
-  }
+
 
   private findSimilarExperiences(task: string): ExperienceEntry[] {
     const taskLower = task.toLowerCase()
@@ -245,69 +224,18 @@ export class EnhancedReActEngine extends EventEmitter {
     return similarEntries.sort((a, b) => b.successRate - a.successRate).slice(0, 5)
   }
 
-  private recordExperience(task: string, trace: ReActTrace): void {
-    const taskPattern = this.extractTaskPattern(task)
-    const successfulActions: any[] = []
-    const failedActions: any[] = []
-    
-    for (const step of trace.steps) {
-      if (step.type === ReActStepType.ACT) {
-        if (step.error) {
-          failedActions.push({
-            tool: step.action,
-            parameters: step.actionInput,
-            error: step.error,
-            reason: step.observation
-          })
-        } else {
-          successfulActions.push({
-            tool: step.action,
-            parameters: step.actionInput,
-            outcome: step.observation,
-            reasoning: step.thought
-          })
-        }
-      }
-    }
-    
-    const entry: ExperienceEntry = {
-      id: `exp_${Date.now()}`,
-      taskPattern,
-      successfulActions,
-      failedActions,
-      successRate: trace.success ? 1.0 : 0.0,
-      lastUsed: Date.now(),
-      usageCount: 1
-    }
-    
-    if (!this.experienceLibrary.has(taskPattern)) {
-      this.experienceLibrary.set(taskPattern, [])
-    }
-    
-    const entries = this.experienceLibrary.get(taskPattern)!
-    entries.push(entry)
-    
-    if (entries.length > 10) {
-      entries.shift()
-    }
-    
-    this.saveExperienceLibrary()
-  }
 
-  private extractTaskPattern(task: string): string {
-    const words = task.toLowerCase().split(/\s+/)
-    const keywords = words.filter(w => w.length > 3)
-    return keywords.slice(0, 3).join('_')
-  }
+
+
 
   // ============================================
   // 深度反思机制
   // ============================================
   
-  async performDeepReflection(
+ public async performDeepReflection(
     step: ReActStep,
     trace: ReActTrace,
-    previousSteps: ReActStep[]
+
   ): Promise<EnhancedReflection> {
     const reflection: EnhancedReflection = {
       stepId: step.id,
@@ -321,7 +249,7 @@ export class EnhancedReActEngine extends EventEmitter {
     }
 
     if (step.error) {
-      reflection.errorAnalysis = await this.analyzeError(step, previousSteps)
+      reflection.errorAnalysis = await this.analyzeError(step)
       reflection.learning = {
         whatWorked: [],
         whatDidntWork: [`${step.action || 'unknown'} failed: ${step.error}`],
@@ -336,11 +264,12 @@ export class EnhancedReActEngine extends EventEmitter {
         }
       }
     } else {
-      const successfulSteps = previousSteps.filter(s => !s.error && s.type === ReActStepType.ACT)
+      const successfulSteps: any[] = []
+      const failedSteps: any[] = []
       reflection.learning = {
         whatWorked: successfulSteps.map(s => `${s.action} succeeded`),
-        whatDidntWork: previousSteps.filter(s => s.error).map(s => `${s.action} failed`),
-        insights: this.generateInsights(step, previousSteps)
+        whatDidntWork: failedSteps.map(s => `${s.action} failed`),
+        insights: this.generateInsights(step)
       }
     }
 
@@ -354,8 +283,7 @@ export class EnhancedReActEngine extends EventEmitter {
   }
 
   private async analyzeError(
-    step: ReActStep,
-    previousSteps: ReActStep[]
+    step: ReActStep
   ): Promise<{
     type: 'parameter_error' | 'tool_error' | 'logic_error' | 'execution_error'
     rootCause: string
@@ -406,7 +334,7 @@ export class EnhancedReActEngine extends EventEmitter {
     return []
   }
 
-  private generateInsights(step: ReActStep, previousSteps: ReActStep[]): string[] {
+  private generateInsights(step: ReActStep): string[] {
     const insights: string[] = []
     
     const tool = step.action
@@ -421,7 +349,7 @@ export class EnhancedReActEngine extends EventEmitter {
       }
     }
     
-    const errorCount = previousSteps.filter(s => s.error).length
+    const errorCount = 0
     if (errorCount > 0) {
       insights.push(`${errorCount} errors encountered so far`)
     }
@@ -435,9 +363,8 @@ export class EnhancedReActEngine extends EventEmitter {
   
   async selectBestTool(
     task: string,
-    context: any,
     availableTools: string[],
-    previousSteps: ReActStep[]
+
   ): Promise<{
     tool: string
     reasoning: string
@@ -470,9 +397,7 @@ export class EnhancedReActEngine extends EventEmitter {
         }
       }
       
-      const recentFailures = previousSteps.filter(s => 
-        s.action === toolName && s.error
-      ).length
+      const recentFailures = 0
       
       if (recentFailures > 0) {
         score -= recentFailures * 0.15
@@ -505,8 +430,7 @@ export class EnhancedReActEngine extends EventEmitter {
   // ============================================
   
   async evaluateConsistency(
-    traces: ReActTrace[],
-    task: string
+    traces: ReActTrace[]
   ): Promise<ConsistencyEvaluation> {
     const evaluation: ConsistencyEvaluation = {
       traces,
@@ -551,10 +475,10 @@ export class EnhancedReActEngine extends EventEmitter {
     evaluation.diversity.outliers = this.findOutliers(traces, largestGroup)
 
     for (const trace of traces) {
-      const scores = await this.evaluateTraceQuality(trace, task)
-      evaluation.qualityScores.logical.push(scores.logical)
-      evaluation.qualityScores.complete.push(scores.complete)
-      evaluation.qualityScores.coherent.push(scores.coherent)
+      const quality = await this.evaluateTraceQuality(trace)
+      evaluation.qualityScores.logical.push(quality.logical)
+      evaluation.qualityScores.complete.push(quality.complete)
+      evaluation.qualityScores.coherent.push(quality.coherent)
     }
 
     const bestTraceIndex = this.selectBestTraceByQuality(traces, evaluation.qualityScores)
@@ -640,8 +564,7 @@ export class EnhancedReActEngine extends EventEmitter {
   }
 
   private async evaluateTraceQuality(
-    trace: ReActTrace,
-    task: string
+    trace: ReActTrace
   ): Promise<{ logical: number; complete: number; coherent: number }> {
     let logical = 0.5
     let complete = 0.5

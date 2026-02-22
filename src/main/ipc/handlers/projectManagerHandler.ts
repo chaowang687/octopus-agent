@@ -1,55 +1,59 @@
 import { ipcMain } from 'electron'
+import { projectManager } from '../../services/ProjectManager'
 
-// 项目管理相关的 IPC 处理器
 export function registerProjectManagerHandlers() {
-  // 创建项目
-  ipcMain.handle('projectManager:create', () => {
+  ipcMain.handle('projectManager:create', async (_event, data: any) => {
     try {
-      // 这里可以添加项目创建逻辑
-      return { success: true, projectId: Date.now().toString() }
+      const project = projectManager.createProject(data)
+      return { success: true, project }
     } catch (error: any) {
       console.error('创建项目失败:', error)
       return { success: false, error: error.message }
     }
   })
 
-  // 列出项目
-  ipcMain.handle('projectManager:list', () => {
+  ipcMain.handle('projectManager:get', async (_event, projectId: string) => {
     try {
-      // 这里可以返回项目列表
-      return { success: true, projects: [] }
+      const project = projectManager.getProject(projectId)
+      if (!project) {
+        return { success: false, error: '项目不存在' }
+      }
+      return { success: true, project }
+    } catch (error: any) {
+      console.error('获取项目失败:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('projectManager:list', async (_event, filter?: any) => {
+    try {
+      const projects = projectManager.listProjects(filter)
+      return { success: true, projects }
     } catch (error: any) {
       console.error('列出项目失败:', error)
       return { success: false, error: error.message }
     }
   })
 
-  // 打开项目
-  ipcMain.handle('projectManager:open', () => {
+  ipcMain.handle('projectManager:update', async (_event, projectId: string, updates: any) => {
     try {
-      // 这里可以添加项目打开逻辑
-      return { success: true }
+      const project = projectManager.updateProject(projectId, updates)
+      if (!project) {
+        return { success: false, error: '项目不存在' }
+      }
+      return { success: true, project }
     } catch (error: any) {
-      console.error('打开项目失败:', error)
+      console.error('更新项目失败:', error)
       return { success: false, error: error.message }
     }
   })
 
-  // 关闭项目
-  ipcMain.handle('projectManager:close', () => {
+  ipcMain.handle('projectManager:delete', async (_event, projectId: string) => {
     try {
-      // 这里可以添加项目关闭逻辑
-      return { success: true }
-    } catch (error: any) {
-      console.error('关闭项目失败:', error)
-      return { success: false, error: error.message }
-    }
-  })
-
-  // 删除项目
-  ipcMain.handle('projectManager:delete', () => {
-    try {
-      // 这里可以添加项目删除逻辑
+      const success = projectManager.deleteProject(projectId)
+      if (!success) {
+        return { success: false, error: '项目不存在' }
+      }
       return { success: true }
     } catch (error: any) {
       console.error('删除项目失败:', error)
@@ -57,32 +61,58 @@ export function registerProjectManagerHandlers() {
     }
   })
 
-  // 添加任务
-  ipcMain.handle('projectManager:addTask', () => {
+  ipcMain.handle('projectManager:addTask', async (_event, data: any) => {
     try {
-      // 这里可以添加任务添加逻辑
-      return { success: true, taskId: Date.now().toString() }
+      const task = projectManager.addTask(data)
+      return { success: true, task }
     } catch (error: any) {
       console.error('添加任务失败:', error)
       return { success: false, error: error.message }
     }
   })
 
-  // 更新任务
-  ipcMain.handle('projectManager:updateTask', () => {
+  ipcMain.handle('projectManager:getTask', async (_event, taskId: string) => {
     try {
-      // 这里可以添加任务更新逻辑
-      return { success: true }
+      const task = projectManager.getTask(taskId)
+      if (!task) {
+        return { success: false, error: '任务不存在' }
+      }
+      return { success: true, task }
+    } catch (error: any) {
+      console.error('获取任务失败:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('projectManager:getTasks', async (_event, projectId: string) => {
+    try {
+      const tasks = projectManager.getProjectTasks(projectId)
+      return { success: true, tasks }
+    } catch (error: any) {
+      console.error('获取任务列表失败:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('projectManager:updateTask', async (_event, taskId: string, updates: any) => {
+    try {
+      const task = projectManager.updateTask(taskId, updates)
+      if (!task) {
+        return { success: false, error: '任务不存在' }
+      }
+      return { success: true, task }
     } catch (error: any) {
       console.error('更新任务失败:', error)
       return { success: false, error: error.message }
     }
   })
 
-  // 删除任务
-  ipcMain.handle('projectManager:deleteTask', () => {
+  ipcMain.handle('projectManager:deleteTask', async (_event, taskId: string) => {
     try {
-      // 这里可以添加任务删除逻辑
+      const success = projectManager.deleteTask(taskId)
+      if (!success) {
+        return { success: false, error: '任务不存在' }
+      }
       return { success: true }
     } catch (error: any) {
       console.error('删除任务失败:', error)
@@ -90,68 +120,104 @@ export function registerProjectManagerHandlers() {
     }
   })
 
-  // 获取任务
-  ipcMain.handle('projectManager:getTasks', () => {
+  ipcMain.handle('projectManager:addTaskComment', async (_event, taskId: string, author: string, content: string) => {
     try {
-      // 这里可以返回任务列表
-      return { success: true, tasks: [] }
+      const task = projectManager.addTaskComment(taskId, author, content)
+      if (!task) {
+        return { success: false, error: '任务不存在' }
+      }
+      return { success: true, task }
     } catch (error: any) {
-      console.error('获取任务失败:', error)
+      console.error('添加任务评论失败:', error)
       return { success: false, error: error.message }
     }
   })
 
-  // 生成报告
-  ipcMain.handle('projectManager:generateReport', () => {
+  ipcMain.handle('projectManager:generateReport', async (_event, projectId: string, type: string, title: string) => {
     try {
-      // 这里可以添加报告生成逻辑
-      return { success: true, report: {} }
+      const report = projectManager.generateReport(projectId, type as any, title)
+      return { success: true, report }
     } catch (error: any) {
       console.error('生成报告失败:', error)
       return { success: false, error: error.message }
     }
   })
 
-  // 估计时间
-  ipcMain.handle('projectManager:estimateTime', () => {
+  ipcMain.handle('projectManager:getReports', async (_event, projectId: string) => {
     try {
-      // 这里可以添加时间估计逻辑
-      return { success: true, estimatedTime: 0 }
+      const reports = projectManager.getProjectReports(projectId)
+      return { success: true, reports }
+    } catch (error: any) {
+      console.error('获取报告列表失败:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('projectManager:getReport', async (_event, reportId: string) => {
+    try {
+      const report = projectManager.getReport(reportId)
+      if (!report) {
+        return { success: false, error: '报告不存在' }
+      }
+      return { success: true, report }
+    } catch (error: any) {
+      console.error('获取报告失败:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('projectManager:estimateTime', async (_event, projectId: string) => {
+    try {
+      const estimate = projectManager.estimateProjectTime(projectId)
+      return { success: true, estimate }
     } catch (error: any) {
       console.error('估计时间失败:', error)
       return { success: false, error: error.message }
     }
   })
 
-  // 跟踪进度
-  ipcMain.handle('projectManager:trackProgress', () => {
+  ipcMain.handle('projectManager:trackProgress', async (_event, projectId: string) => {
     try {
-      // 这里可以返回进度信息
-      return { success: true, progress: 0 }
+      const progress = projectManager.trackProjectProgress(projectId)
+      return { success: true, progress }
     } catch (error: any) {
       console.error('跟踪进度失败:', error)
       return { success: false, error: error.message }
     }
   })
 
-  // 设置模式
-  ipcMain.handle('projectManager:setMode', () => {
+  ipcMain.handle('projectManager:setMode', async (_event, projectId: string, mode: string) => {
     try {
-      // 这里可以添加模式设置逻辑
-      return { success: true }
+      const project = projectManager.setProjectMode(projectId, mode as any)
+      if (!project) {
+        return { success: false, error: '项目不存在' }
+      }
+      return { success: true, project }
     } catch (error: any) {
       console.error('设置模式失败:', error)
       return { success: false, error: error.message }
     }
   })
 
-  // 获取模式
-  ipcMain.handle('projectManager:getMode', () => {
+  ipcMain.handle('projectManager:getMode', async (_event, projectId: string) => {
     try {
-      // 这里可以返回当前模式
-      return { success: true, mode: 'plan' }
+      const mode = projectManager.getProjectMode(projectId)
+      if (!mode) {
+        return { success: false, error: '项目不存在' }
+      }
+      return { success: true, mode }
     } catch (error: any) {
       console.error('获取模式失败:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('projectManager:getStatistics', async () => {
+    try {
+      const statistics = projectManager.getStatistics()
+      return { success: true, statistics }
+    } catch (error: any) {
+      console.error('获取统计信息失败:', error)
       return { success: false, error: error.message }
     }
   })

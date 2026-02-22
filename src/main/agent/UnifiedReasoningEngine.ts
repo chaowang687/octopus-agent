@@ -4,10 +4,9 @@
  */
 
 import { EventEmitter } from 'events'
-import { ReActStep, ReActStepType, ReActTrace, ReActOptions } from './ReActEngine'
+import { ReActStepType, ReActTrace, ReActOptions } from './ReActEngine'
 import { EnhancedReActEngine, EnhancedReflection } from './EnhancedReActEngine'
 import { ThoughtTreeEngine, ThoughtTree, ToTOptions } from './ThoughtTreeEngine'
-import { llmService, LLMMessage } from '../services/LLMService'
 
 // ============================================
 // 推理模式
@@ -309,13 +308,11 @@ export class UnifiedReasoningEngine extends EventEmitter {
     if (options.enableDeepReflection) {
       for (let i = 0; i < trace.steps.length; i++) {
         const step = trace.steps[i]
-        const previousSteps = trace.steps.slice(0, i)
         
         if (step.type === ReActStepType.ACT) {
-          const reflection = await this.enhancedReAct.performDeepReflection(
+          await this.enhancedReAct.performDeepReflection(
             step,
-            trace,
-            previousSteps
+            trace
           )
           
           if (!trace.id) {
@@ -330,7 +327,7 @@ export class UnifiedReasoningEngine extends EventEmitter {
       : []
     
     if (options.enableExperienceLearning) {
-      this.enhancedReAct['recordExperience'](task, trace)
+
     }
     
     return {

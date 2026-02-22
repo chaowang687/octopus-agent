@@ -1,5 +1,6 @@
 import * as fs from 'fs'
 import * as path from 'path'
+import * as os from 'os'
 import { app, BrowserWindow } from 'electron'
 import { execSync } from 'child_process'
 import axios from 'axios'
@@ -13,7 +14,66 @@ import { registerOpenTool } from '../integration/OpenTool'
 import { safeCodeExecutionService } from '../services/SafeCodeExecutionService'
 import * as commandUtils from '../utils/commandUtils'
 
+import './tools/packageManager'
+import './tools/projectInit'
+import './tools/buildTools'
+import './tools/codeQuality'
+import './tools/environmentTools'
+import './tools/configTools'
+import './tools/DocumentTools'
+
+/**
+ * 清理路径中的不安全字符
+ * @param input 输入字符串
+ * @returns 清理后的安全字符串
+ */
+function sanitizePath(input: string): string {
+  // 移除所有控制字符和不安全字符
+  return input.replace(/[\x00-\x1F\x7F\\/:*?"<>|]/g, '_').replace(/\s+/g, '_').trim()
+}
+
+/**
+ * 安全创建目录
+ * @param dirPath 目录路径
+ * @returns 成功创建的目录路径
+ */
+function safeMkdir(dirPath: string): string {
+  try {
+    // 尝试创建目录
+    fs.mkdirSync(dirPath, { recursive: true, mode: 0o755 })
+    return dirPath
+  } catch (error: any) {
+    console.error(`[Tools] 创建目录失败: ${error.message}`)
+    // 如果创建失败，使用临时目录
+    try {
+      const tempDir = path.join(os.tmpdir(), `temp_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`)
+      fs.mkdirSync(tempDir, { recursive: true, mode: 0o755 })
+      console.log(`[Tools] 使用临时目录: ${tempDir}`)
+      return tempDir
+    } catch (tempError) {
+      console.error(`[Tools] 创建临时目录也失败: ${tempError}`)
+      // 如果临时目录也失败，使用应用程序数据目录
+      try {
+        const appDataPath = app.getPath('userData')
+        const fallbackDir = path.join(appDataPath, 'temp_dirs', `dir_${Date.now()}`)
+        fs.mkdirSync(fallbackDir, { recursive: true, mode: 0o755 })
+        console.log(`[Tools] 使用应用程序数据目录: ${fallbackDir}`)
+        return fallbackDir
+      } catch (appDataError) {
+        console.error(`[Tools] 创建应用程序数据目录也失败: ${appDataError}`)
+        throw new Error('无法创建任何目录，请检查文件系统权限')
+      }
+    }
+  }
+}
+
 registerOpenTool()
+
+// 导入环境检查工具
+import './tools/environment'
+
+// 导入权限修复工具
+import './tools/permission-fixer'
 
 // 辅助函数：获取主窗口
 function getMainWin(): BrowserWindow | null {
@@ -55,7 +115,8 @@ toolRegistry.register({
       if (content === undefined) return { error: 'Missing parameter: content' }
       
       const dir = path.dirname(filePath)
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+      // 使用安全的目录创建函数
+      safeMkdir(dir)
       fs.writeFileSync(filePath, content)
       return { success: true }
     } catch (error: any) {
@@ -76,8 +137,9 @@ toolRegistry.register({
       if (!dirPath) return { error: 'Missing parameter: path' }
       
       if (!fs.existsSync(dirPath)) {
-        fs.mkdirSync(dirPath, { recursive: true })
-        return { success: true, message: `Directory created at ${dirPath}` }
+        // 使用安全的目录创建函数
+        const createdDir = safeMkdir(dirPath)
+        return { success: true, message: `Directory created at ${createdDir}` }
       }
       return { success: true, message: `Directory already exists at ${dirPath}` }
     } catch (error: any) {
@@ -241,9 +303,32 @@ toolRegistry.register({
     }
   }
 })
-
-// Command Execution Tool
-toolRegistry.register({
+  
+  // Command syntax validation helper
+  function validateCommandSyntax(command: string): { valid: boolean, error?: string, suggestion?: string } {
+    // Check for missing pipe operator in find commands
+    if (command.includes('find') && command.includes('head') && !command.includes('|')) {
+      return {
+        valid: false,
+        error: 'Missing pipe operator | between find and head commands',
+        suggestion: command.replace(/head\s+\d+/i, '| head $&')
+      }
+    }
+  
+    // Check for missing && operator in cd commands
+    if (command.includes('cd') && (command.includes('npm') || command.includes('yarn') || command.includes('pnpm')) && !command.includes('&&')) {
+      return {
+        valid: false,
+        error: 'Missing && operator to chain cd and npm commands',
+        suggestion: command.replace(/cd\s+\S+\s+(npm|yarn|pnpm)/i, 'cd $1 && $2')
+      }
+    }
+  
+    return { valid: true }
+  }
+  
+  // Command Execution Tool
+  toolRegistry.register({
   name: 'execute_command',
   description: 'Execute a shell command',
   parameters: [
@@ -282,6 +367,14 @@ toolRegistry.register({
 
       // Sanitize and validate command
       const safeCommand = commandUtils.sanitizeCommand(command)
+      
+      // Validate command syntax before execution
+      const syntaxValidation = validateCommandSyntax(safeCommand)
+      if (!syntaxValidation.valid) {
+        return { 
+          error: `Command syntax error: ${syntaxValidation.error}\n\nCorrect syntax: ${syntaxValidation.suggestion}\n\nYour command: ${safeCommand}` 
+        }
+      }
       
       // Validate command
       const cmdName = safeCommand.split(' ')[0].trim()
@@ -338,6 +431,30 @@ toolRegistry.register({
       } catch (axiosError: any) {
         return { error: `Browser fetch failed: ${error.message}. Axios fetch failed: ${axiosError.message}` }
       }
+    }
+  }
+})
+
+// Response Tool
+toolRegistry.register({
+  name: 'respond_to_user',
+  description: '直接回复用户消息',
+  parameters: [
+    { name: 'message', type: 'string', description: '回复消息内容', required: true }
+  ],
+  handler: async (params: any) => {
+    try {
+      const message = params?.message
+      if (!message) return { error: 'Missing parameter: message' }
+
+      console.log('[respond_to_user] 回复用户:', message)
+      return { 
+        success: true,
+        message: message,
+        artifacts: [{ type: 'text', content: message }]
+      }
+    } catch (error: any) {
+      return { error: error.message }
     }
   }
 })

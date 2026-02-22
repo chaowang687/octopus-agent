@@ -2,10 +2,13 @@ import { Plan, PlanStep } from './Planner'
 import { toolRegistry } from './ToolRegistry'
 import { llmService } from '../services/LLMService'
 import type { ToolContext } from './ToolRegistry'
+import { enhancedReActEngine } from './EnhancedReActEngine'
 import * as path from 'path'
 import { PATHS } from '../config/paths'
 import { config } from '../config/config'
 import { ErrorHandler, ErrorCategory } from '../utils/ErrorHandler'
+
+
 
 export interface ExecutionResult {
   success: boolean
@@ -31,6 +34,8 @@ export interface ExecutionProgressEvent {
 export class Executor {
   // 执行结果缓存
   private executionCache: Map<string, any> = new Map()
+  private cacheTimeout: Map<string, NodeJS.Timeout> = new Map()
+  private cacheTTL: number = 3600000 // 缓存1小时
   
   private fixPath(filePath: string, taskDir?: string): string {
     if (!filePath) return filePath
@@ -106,22 +111,43 @@ export class Executor {
         }
       }
       
+      // 处理参数
+      let currentParams = this.processParameters(step, step.parameters ?? {}, getLatestImagePath, ctx?.taskDir)
+      
+      // 智能工具选择
+      let selectedTool = tool
+      let selectedToolName = step.tool
+
+
+      
+      try {
+        const toolSelection = await this.selectBestTool(step, currentParams)
+        if (toolSelection && toolSelection.confidence > 0.6) {
+          const bestTool = toolRegistry.getTool(toolSelection.toolName)
+          if (bestTool) {
+            selectedTool = bestTool
+            selectedToolName = toolSelection.toolName
+            console.log(`[Executor] Switched to better tool for step ${step.id}: ${selectedToolName} (confidence: ${toolSelection.confidence})`)
+            console.log(`[Executor] Reasoning: ${toolSelection.reasoning}`)
+          }
+        }
+      } catch (selectionError) {
+        console.error('[Executor] Smart tool selection failed, using original tool:', selectionError)
+      }
+      
       console.log(`Executing step ${step.id}: ${step.description}`)
       onProgress?.({
         type: 'step_start',
         stepId: step.id,
-        tool: step.tool,
+        tool: selectedToolName,
         description: step.description,
-        parameters: step.parameters
+        parameters: currentParams
       })
 
-      // 处理参数
-      let currentParams = this.processParameters(step, step.parameters ?? {}, getLatestImagePath, ctx?.taskDir)
-      
       // 执行步骤
       const executionResult = await this.executeStep(
-        step,
-        tool,
+        { ...step, tool: selectedToolName },
+        selectedTool,
         currentParams,
         model,
         ctx,
@@ -169,6 +195,48 @@ export class Executor {
         tool
       }
     })
+  }
+
+  /**
+   * 智能工具选择
+   * @param step 执行步骤
+   * @param params 执行参数
+   * @param ctx 工具上下文
+   * @returns 最佳工具信息
+   */
+  private async selectBestTool(
+    step: PlanStep,
+    params: any
+  ): Promise<{ toolName: string; reasoning: string; confidence: number } | null> {
+    try {
+      // 获取所有可用工具
+      const availableTools = toolRegistry.getAllTools().map(t => t.name)
+      
+      // 如果没有可用工具，返回null
+      if (availableTools.length === 0) {
+        return null
+      }
+      
+      // 构建任务描述
+      const taskDescription = `${step.description}: ${JSON.stringify(params)}`
+      
+      // 使用EnhancedReActEngine的智能工具选择
+      const toolSelection = await enhancedReActEngine.selectBestTool(
+        taskDescription,
+        availableTools
+      )
+      
+      console.log(`[Executor] Smart tool selection for step ${step.id}:`, toolSelection)
+      
+      return {
+        toolName: toolSelection.tool,
+        reasoning: toolSelection.reasoning,
+        confidence: toolSelection.confidence
+      }
+    } catch (error) {
+      console.error('[Executor] Smart tool selection failed:', error)
+      return null
+    }
   }
 
   /**
@@ -724,11 +792,30 @@ export class Executor {
     
     const cacheKey = this.generateCacheKey(tool, params)
     this.executionCache.set(cacheKey, result)
+    
+    // 设置缓存过期
+    if (this.cacheTimeout.has(cacheKey)) {
+      clearTimeout(this.cacheTimeout.get(cacheKey))
+    }
+    
+    const timeout = setTimeout(() => {
+      this.executionCache.delete(cacheKey)
+      this.cacheTimeout.delete(cacheKey)
+      console.log(`[Executor] Cache expired for key: ${cacheKey}`)
+    }, this.cacheTTL)
+    
+    this.cacheTimeout.set(cacheKey, timeout)
   }
 
   // 清除缓存
   public clearCache(): void {
     this.executionCache.clear()
+    
+    // 清除所有缓存过期定时器
+    for (const timeout of this.cacheTimeout.values()) {
+      clearTimeout(timeout)
+    }
+    this.cacheTimeout.clear()
   }
 
   // 获取缓存大小

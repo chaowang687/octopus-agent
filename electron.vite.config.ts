@@ -38,7 +38,8 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'src/main/index.ts')
-        }
+        },
+        external: ['electron-updater']
       }
     },
     plugins: [copyBridgePlugin()]

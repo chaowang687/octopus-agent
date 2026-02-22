@@ -50,6 +50,7 @@ interface TaskProgressEvent {
   durationMs?: number
   iteration?: number
   maxIterations?: number
+  newMaxIterations?: number
   planSteps?: Array<{ id: string; tool: string; description: string }>
   stepId?: string
   tool?: string
@@ -62,6 +63,8 @@ interface TaskProgressEvent {
   retryCount?: number
   maxRetries?: number
   taskDir?: string
+  issues?: string[]
+  summary?: string
   // 思考过程内容
   thinkingReasoning?: string
   // plan_created事件字段
@@ -106,6 +109,19 @@ interface TaskProgressEvent {
   reasoningStep?: any
   // 干预请求相关
   intervention?: any
+  // 快速修复建议
+  quickFixes?: Array<{
+    description: string
+    action: string
+  }>
+  // 建议
+  suggestion?: string
+  // 选项
+  options?: Array<{
+    id: string
+    label: string
+    description: string
+  }>
 }
 
 const ImageAttachment: React.FC<{ filePath: string; alt: string }> = ({ filePath, alt }) => {
@@ -380,6 +396,8 @@ const Chat: React.FC = () => {
   }[]>([])
   const [currentDialogueIndex, setCurrentDialogueIndex] = useState(0)
 
+
+
   // 监听agent打开页面的事件
   useEffect(() => {
     const api = (window as any).electron
@@ -405,6 +423,32 @@ const Chat: React.FC = () => {
   
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const currentTaskDirRef = useRef<string | null>(null)
+
+  // Initialize chat session
+  useEffect(() => {
+    // Check if there's a project-specific session in sessionStorage
+    const currentSessionId = sessionStorage.getItem('currentChatSessionId')
+    const currentProjectId = sessionStorage.getItem('currentProjectId')
+    
+    if (currentSessionId) {
+      // Load the specified session
+      const session = chatDataService.getSession(currentSessionId)
+      if (session) {
+        setCurrentSession(session)
+      }
+    } else {
+      // Load default session if no specific session is set
+      const defaultSession = chatDataService.getSessions()[0]
+      if (defaultSession) {
+        setCurrentSession(defaultSession)
+      }
+    }
+    
+    // Clear sessionStorage after loading to avoid persistent state
+    sessionStorage.removeItem('currentChatSessionId')
+    sessionStorage.removeItem('currentProjectId')
+  }, [])
 
   // Load session messages when session changes
   useEffect(() => {
@@ -468,7 +512,9 @@ const Chat: React.FC = () => {
       }
       if (currentTaskIdRef.current !== taskId) return
 
-      const time = new Date(evt.timestamp).toLocaleTimeString()
+      // 使用当前时间作为默认值，避免evt.timestamp不存在时的错误
+      const eventTimestamp = evt.timestamp || Date.now()
+      const time = new Date(eventTimestamp).toLocaleTimeString()
       if (evt.type === 'task_start') {
         setTaskStatus('running')
         const modelInfo =
@@ -485,13 +531,17 @@ const Chat: React.FC = () => {
         }
         
         // 创建任务历史记录
+        const taskDir = evt.taskDir || currentTaskDirRef.current
         const newHistoryItem = {
           id: taskId,
-          title: evt.taskDir ? evt.taskDir.split('/').pop() || '新任务' : '新任务',
+          title: taskDir ? taskDir.split('/').pop() || '新任务' : '新任务',
           status: '进行中',
-          timestamp: evt.timestamp,
+          timestamp: eventTimestamp,
+          path: taskDir, // 存储项目路径
           logs: [startLog]
         }
+        // 清除任务目录 ref，避免影响下一个任务
+        currentTaskDirRef.current = null
         setTaskHistory(prev => {
           const updated = [newHistoryItem, ...prev].slice(0, 20) // 保留最近20条
           localStorage.setItem('trae_task_history', JSON.stringify(updated))
@@ -510,7 +560,7 @@ const Chat: React.FC = () => {
           // 同时添加到消息和日志
           const thinkingMsg = `深度思考中 ${d ? `(${d})` : ''}：${thinkingPreview}`
           setMessages(prev => [...prev, {
-            id: `thinking-${evt.timestamp}`,
+            id: `thinking-${eventTimestamp}`,
             role: 'assistant',
             content: thinkingMsg,
             timestamp: new Date(),
@@ -533,7 +583,7 @@ const Chat: React.FC = () => {
         
         // 添加技能检索消息
         const skillsMessage: Message = {
-          id: `skills-${evt.timestamp}`,
+          id: `skills-${eventTimestamp}`,
           role: 'assistant',
           content: `🎯 **技能检索完成**\n\n智能体类型: ${skillsData.agentType}\n检索到 ${skillsCount} 个相关技能 (耗时: ${retrievalTime}ms)`,
           timestamp: new Date(),
@@ -617,8 +667,11 @@ const Chat: React.FC = () => {
         
         console.log('[Chat] agentName:', agentName, 'content:', fullContent.slice(0, 100))
         
+        // 使用当前时间作为时间戳，避免undefined错误
+        const currentTimestamp = Date.now()
+        
         setMessages(prev => [...prev, {
-          id: `agent-${evt.timestamp}-${agentId}`,
+          id: `agent-${currentTimestamp}-${agentId}`,
           role: 'assistant',
           content: `**${agentName}**${evt.role ? ` (${evt.role})` : ''}:\n\n${fullContent || ''}`,
           timestamp: new Date(),
@@ -648,7 +701,7 @@ const Chat: React.FC = () => {
         const switchLog = `[${time}] 🔄 ${evt.message || ''}`
         setTaskLogs(prev => [...prev, switchLog])
         setMessages(prev => [...prev, {
-          id: `system-${evt.timestamp}`,
+          id: `system-${eventTimestamp}`,
           role: 'assistant',
           content: evt.message || '',
           timestamp: new Date(),
@@ -773,8 +826,9 @@ const Chat: React.FC = () => {
         })
         
         // 在聊天界面也显示进度消息
+        const currentTimestamp = Date.now()
         const progressMessage: Message = {
-          id: `progress-${evt.timestamp}`,
+          id: `progress-${currentTimestamp}`,
           role: 'assistant',
           content: `📊 **${agent}** - ${phase}\n\n进度: ${progress}%\n\n${message}\n\n${subTasks.map((t: any) => {
             const statusIcon = t.status === 'completed' ? '✅' : t.status === 'in_progress' ? '🔄' : t.status === 'failed' ? '❌' : '⬜'
@@ -803,7 +857,7 @@ const Chat: React.FC = () => {
         
         // 在聊天界面显示思考过程
         setMessages(prev => [...prev, {
-          id: `plan-${evt.timestamp}`,
+          id: `plan-${eventTimestamp}`,
           role: 'assistant',
           content: `💭 **深度思考 (第${round}轮)**\n\n${reasoning}\n\n📋 **执行计划**: ${stepCount} 个步骤`,
           timestamp: new Date(),
@@ -826,6 +880,97 @@ const Chat: React.FC = () => {
           const errorLog = `[${time}] ❌ 失败: ${description || stepId} - ${evt.error || ''}`
           setTaskLogs(prev => [...prev, errorLog])
         }
+        return
+      }
+
+      // 处理迭代次数增加事件
+      if (evt.type === 'iteration_increased') {
+        const iterationLog = `[${time}] 🔄 迭代次数增加: 新的最大迭代次数为 ${evt.newMaxIterations}`
+        setTaskLogs(prev => [...prev, iterationLog])
+        
+        // 在聊天界面显示迭代次数增加的信息
+        const iterationMessage: Message = {
+          id: `iteration-${eventTimestamp}`,
+          role: 'assistant',
+          content: `🔄 **迭代次数增加**\n\n已达到原始最大迭代次数(${evt.round}轮)，用户同意增加迭代次数继续修复问题。\n\n**新的最大迭代次数**: ${evt.newMaxIterations}\n\n**问题详情**: ${evt.issues?.join('、') || ''}\n\n${evt.summary || ''}`,
+          timestamp: new Date(),
+          status: 'completed'
+        }
+        setMessages(prev => [...prev, iterationMessage])
+        return
+      }
+
+      // 处理最大迭代次数达到事件
+      if (evt.type === 'max_iterations') {
+        const maxIterationLog = `[${time}] ⚠️ 达到最大迭代次数: ${evt.round}轮`
+        setTaskLogs(prev => [...prev, maxIterationLog])
+        
+        // 在聊天界面显示最大迭代次数达到的信息
+        const maxIterationMessage: Message = {
+          id: `max-iteration-${eventTimestamp}`,
+          role: 'assistant',
+          content: `⚠️ **达到最大迭代次数**\n\n已达到最大迭代次数(${evt.round}轮)，用户选择强制交付。\n\n**问题详情**: ${evt.issues?.join('、') || ''}\n\n${evt.summary || ''}`,
+          timestamp: new Date(),
+          status: 'completed'
+        }
+        setMessages(prev => [...prev, maxIterationMessage])
+        return
+      }
+
+      // 处理严重错误事件
+      if (evt.type === 'critical_error') {
+        const criticalLog = `[${time}] 🚨 严重错误: ${evt.error || ''}`
+        setTaskLogs(prev => [...prev, criticalLog])
+        
+        // 在聊天界面显示严重错误信息
+        const criticalMessage: Message = {
+          id: `critical-error-${eventTimestamp}`,
+          role: 'assistant',
+          content: `🚨 **严重错误**\n\n**阶段**: ${evt.phase || '未知'}\n**轮次**: ${evt.round || 1}\n\n**错误信息**:\n${evt.error || '未知错误'}\n\n**系统提示**:\n${evt.message || '系统遇到严重错误，需要手动干预'}\n\n**快速修复建议**:\n${evt.quickFixes?.map((fix: { description: string; action: string }) => `- ${fix.description}: ${fix.action}`).join('\n') || '请检查系统配置'}\n\n**注意**: 此错误需要手动干预才能继续执行。`,
+          timestamp: new Date(),
+          status: 'error'
+        }
+        setMessages(prev => [...prev, criticalMessage])
+        
+        // 显示错误面板
+        setShowTaskPreview(true)
+        return
+      }
+
+      // 处理重复错误事件
+      if (evt.type === 'repeating_error') {
+        const repeatingLog = `[${time}] 🔄 重复错误: ${evt.error || ''}`
+        setTaskLogs(prev => [...prev, repeatingLog])
+        
+        // 在聊天界面显示重复错误信息
+        const repeatingMessage: Message = {
+          id: `repeating-error-${eventTimestamp}`,
+          role: 'assistant',
+          content: `🔄 **重复错误**\n\n**智能体**: ${evt.agentId || '未知'}\n**轮次**: ${evt.round || 1}\n\n**错误信息**:\n${evt.error || '未知错误'}\n\n**系统提示**:\n${evt.message || '检测到重复错误模式'}\n\n**建议**:\n${evt.suggestion || '建议手动干预以解决此问题'}\n\n**注意**: 系统已检测到重复的错误模式，继续自动执行可能会继续失败。`,
+          timestamp: new Date(),
+          status: 'error'
+        }
+        setMessages(prev => [...prev, repeatingMessage])
+        
+        // 显示错误面板
+        setShowTaskPreview(true)
+        return
+      }
+
+      // 处理用户干预请求事件
+      if (evt.type === 'user_intervention_required') {
+        const interventionLog = `[${time}] ⚡ 用户干预请求: ${evt.error || ''}`
+        setTaskLogs(prev => [...prev, interventionLog])
+        
+        // 显示干预模态框
+        setInterventionRequest({
+          id: `intervention-${eventTimestamp}`,
+          agentId: evt.agentId,
+          error: evt.error,
+          round: evt.round,
+          options: evt.options || []
+        })
+        
         return
       }
 
@@ -881,7 +1026,7 @@ const Chat: React.FC = () => {
         
         // 在聊天界面显示推理步骤
         const reasoningMessage: Message = {
-          id: `reasoning-${evt.timestamp}-${step.id}`,
+          id: `reasoning-${eventTimestamp}-${step.id}`,
           role: 'assistant',
           content: `${stepIcon} **${stepLabel}**\n\n${step.thought || ''}\n\n${step.action ? `🔧 动作: ${step.action}` : ''}\n\n${step.observation ? `👁️ 观察: ${step.observation}` : ''}`,
           timestamp: new Date(),
@@ -906,7 +1051,7 @@ const Chat: React.FC = () => {
         
         // 在聊天界面显示干预请求
         const interventionMessage: Message = {
-          id: `intervention-${evt.timestamp}`,
+          id: `intervention-${eventTimestamp}`,
           role: 'assistant',
           content: `${riskEmoji} **需要审批**\n\n**${intervention.title}**\n\n${intervention.description}\n\n风险等级: ${intervention.riskLevel}\n\n请在弹窗中确认是否允许执行。`,
           timestamp: new Date(),
@@ -926,7 +1071,7 @@ const Chat: React.FC = () => {
         setTaskLogs(prev => [...prev, responseLog])
         
         const responseMessage: Message = {
-          id: `intervention-response-${evt.timestamp}`,
+          id: `intervention-response-${eventTimestamp}`,
           role: 'assistant',
           content: evt.type === 'intervention_approved' 
             ? '✅ **用户已批准** - 继续执行...'
@@ -978,7 +1123,7 @@ const Chat: React.FC = () => {
         
         // 在聊天界面显示纠正过程
         const correctionMessage: Message = {
-          id: `correction-${evt.timestamp}`,
+          id: `correction-${eventTimestamp}`,
           role: 'assistant',
           content: `${strategyIcon} **${strategyLabel}**\n\n${explanation}`,
           timestamp: new Date(),
@@ -990,6 +1135,65 @@ const Chat: React.FC = () => {
     })
 
     return unsubscribe
+  }, [])
+
+  // 监听流式响应事件
+  useEffect(() => {
+    if (!window.electron || !window.electron.ipcRenderer) {
+      console.warn('[Chat] IPC Renderer not available');
+      return;
+    }
+
+    const handleStream = (data: any) => {
+      console.log('[Chat] 收到流式响应:', data)
+      
+      const { agentId, agentName, agentType, delta, done, phase } = data
+      
+      // 查找当前正在进行的消息
+      setMessages(prev => {
+        const lastMessage = prev[prev.length - 1]
+        
+        // 如果最后一条消息是来自同一个智能体的，则追加内容
+        if (lastMessage && 
+            lastMessage.role === 'assistant' && 
+            lastMessage.status === 'sending' &&
+            lastMessage.id.startsWith(`stream-${agentId}`)) {
+          // 更新现有消息
+          return prev.map(msg => {
+            if (msg.id === lastMessage.id) {
+              return {
+                ...msg,
+                content: msg.content + delta,
+                status: done ? 'completed' : 'sending'
+              }
+            }
+            return msg
+          })
+        } else if (!done) {
+          // 创建新的流式消息
+          const newMessage: Message = {
+            id: `stream-${agentId}-${Date.now()}`,
+            role: 'assistant',
+            content: delta,
+            timestamp: new Date(),
+            status: 'sending'
+          }
+          return [...prev, newMessage]
+        }
+        
+        return prev
+      })
+    }
+
+    // 监听来自主进程的流式事件
+    window.electron.ipcRenderer.on('chat:stream', handleStream)
+
+    return () => {
+      // 确保ipcRenderer仍然存在
+      if (window.electron && window.electron.ipcRenderer) {
+        window.electron.ipcRenderer.removeListener('chat:stream', handleStream)
+      }
+    }
   }, [])
 
   // Auto-resize textarea
@@ -1020,6 +1224,14 @@ const Chat: React.FC = () => {
 
   const handleSendMessage = async () => {
     if ((!input.trim() && attachments.length === 0) || loading) return
+
+    // 检测是否@全能智能管家
+    const trimmedInput = input.trim()
+    if (trimmedInput.startsWith('@全能智能管家') || trimmedInput.startsWith('@全能管家') || trimmedInput.startsWith('@智能管家')) {
+      // 作为智能体处理对话信息
+      await handleOmniAgentMessage(trimmedInput)
+      return
+    }
 
     // 评估任务复杂度
     const complexity = assessTaskComplexity(input)
@@ -1118,40 +1330,207 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
       const agentId = currentSession && currentSession.members.length > 0 ? currentSession.members[0] : undefined
       const sessionId = currentSession ? currentSession.id : undefined
       
-      // 生成默认的项目路径
-      const safeDirName = input.slice(0, 50).replace(/[^\w\u4e00-\u9fa5\s-]/g, '_').trim()
+      // 智能提取项目名称 - 从用户输入中提取核心项目名称
+      const extractProjectName = (userInput: string): string => {
+        // 移除常见的开头用语
+        let name = userInput
+          .replace(/^(帮我|请|我想|我要|帮我创建|帮我制作|创建一个|制作一个)\s*/i, '')
+          .replace(/的应用|的项目|的网站|的app|的软件|的程序/i, '')
+        
+        // 移除详细需求描述，保留核心名称
+        // 常见分隔符：数字编号、顿号、逗号等
+        const separators = [
+          /\s*_\d+_/g,           // _1_ _2_
+          /[,\，]\s*\d+[,\，]/g,  // ,1, 2,
+          /[、]\s*\d+[、]/g,     // 、1、
+          /\s*要求\s*\d+/gi,     // 要求1 要求2
+          /\s*需求\s*\d+/gi,     // 需求1 需求2
+          /[，。；]\s*/g,        // 中英文句号逗号分号
+        ]
+        
+        for (const sep of separators) {
+          const parts = name.split(sep)
+          if (parts.length > 1) {
+            // 取第一部分作为项目名
+            name = parts[0].trim()
+            break
+          }
+        }
+        
+        // 限制长度并清理特殊字符
+        name = name.slice(0, 30).replace(/[^\w\u4e00-\u9fa5\s-]/g, '').trim()
+        
+        // 如果为空，使用默认名称
+        return name || '新建项目'
+      }
+      
+      const projectName = extractProjectName(input)
+      // 将中文字符转换为ASCII字符，避免文件系统EPERM错误
+      const safeDirName = projectName.replace(/[^\x00-\x7F]/g, '_').replace(/[^a-zA-Z0-9_-]/g, '_').trim()
       const defaultTaskDir = `/Users/wangchao/Desktop/${safeDirName}`
       
-      // 如果是 System 2（复杂任务），需要让用户确认项目路径
+      // 如果是 System 2（复杂任务），需要让用户选择路径并手动创建文件夹
       let taskDir = projectPath
       if (targetSystem === 'system2' && !projectPath) {
-        // 显示路径选择对话框
-        const confirmed = window.confirm(
-          `即将创建项目，请确认项目路径：\n\n${defaultTaskDir}\n\n点击"确定"使用此路径，点击"取消"选择其他路径。`
-        )
-        
-        if (!confirmed) {
-          // 用户点击了取消，打开路径选择器
-          try {
-            const result = await window.electron.dialog.openFile()
+        // 使用自定义弹窗让用户选择路径并手动创建文件夹
+        const showPathDialog = (): Promise<{ confirmed: boolean; path: string }> => {
+          return new Promise((resolve) => {
+            // 创建自定义弹窗
+            const overlay = document.createElement('div')
+            overlay.style.cssText = `
+              position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+              background: rgba(0,0,0,0.5); display: flex; align-items: center;
+              justify-content: center; z-index: 9999;
+            `
             
-            if (result.canceled || result.filePaths.length === 0) {
-              // 用户取消了路径选择
-              setMessages(prev => prev.filter(msg => msg.id !== thinkingMessage.id))
-              setLoading(false)
-              return
+            const dialog = document.createElement('div')
+            dialog.style.cssText = `
+              background: white; border-radius: 12px; padding: 24px;
+              width: 600px; max-width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            `
+            
+            const title = document.createElement('h3')
+            title.textContent = '📁 选择项目路径'
+            title.style.cssText = 'margin: 0 0 8px 0; font-size: 18px; color: #1a1a1a;'
+            
+            const desc = document.createElement('div')
+            desc.innerHTML = `
+              <p style="font-size: 13px; color: #888; margin-bottom: 16px; line-height: 1.6;">
+                为了避免权限问题，请按照以下步骤操作：<br>
+                1. 点击"选择文件夹"按钮选择一个已存在的文件夹<br>
+                2. 或者手动在文件系统中创建一个新文件夹<br>
+                3. 确认该文件夹路径作为项目文件存储路径<br>
+                4. 智能体将在该路径下工作，不会自动创建文件夹
+              </p>
+            `
+            
+            const label = document.createElement('div')
+            label.textContent = '项目路径：'
+            label.style.cssText = 'font-size: 14px; color: #666; margin-bottom: 8px;'
+            
+            const pathContainer = document.createElement('div')
+            pathContainer.style.cssText = 'display: flex; gap: 8px; margin-bottom: 20px;'
+            
+            const pathInput = document.createElement('input')
+            pathInput.type = 'text'
+            pathInput.value = defaultTaskDir
+            pathInput.placeholder = '请输入或选择项目路径'
+            pathInput.style.cssText = `
+              flex: 1; padding: 10px 12px; border: 1px solid #ddd;
+              border-radius: 6px; font-size: 14px; font-family: monospace;
+            `
+            
+            const selectFolderBtn = document.createElement('button')
+            selectFolderBtn.textContent = '📂 选择文件夹'
+            selectFolderBtn.title = '选择一个已存在的文件夹'
+            selectFolderBtn.style.cssText = `
+              padding: 10px 16px; background: #007AFF; border: none;
+              border-radius: 6px; cursor: pointer; font-size: 14px; color: white; font-weight: 500;
+            `
+            selectFolderBtn.onclick = async () => {
+              try {
+                const result = await window.electron.dialog.showOpenDialog({
+                  properties: ['openDirectory']
+                })
+                if (!result.canceled && result.filePaths.length > 0) {
+                  pathInput.value = result.filePaths[0]
+                }
+              } catch (error) {
+                alert('选择文件夹失败: ' + error)
+              }
             }
             
-            const selectedDir = result.filePaths[0]
-            const projectName = safeDirName
-            taskDir = `${selectedDir}/${projectName}`
-          } catch (error) {
-            console.error('[Chat] 选择路径失败:', error)
-            taskDir = defaultTaskDir
-          }
-        } else {
-          taskDir = defaultTaskDir
+            pathContainer.appendChild(pathInput)
+            pathContainer.appendChild(selectFolderBtn)
+            
+            const warningBox = document.createElement('div')
+            warningBox.style.cssText = `
+              background: #FFF3E0; border-left: 4px solid #FF9800;
+              padding: 12px; margin-bottom: 20px; border-radius: 4px;
+            `
+            warningBox.innerHTML = `
+              <p style="margin: 0; font-size: 12px; color: #E65100;">
+                ⚠️ <strong>重要提示：</strong>请确保选择的文件夹存在且您有写入权限。
+                智能体不会自动创建文件夹，只会使用您指定的路径。
+              </p>
+            `
+            
+            const buttonContainer = document.createElement('div')
+            buttonContainer.style.cssText = 'display: flex; justify-content: flex-end; gap: 12px;'
+            
+            const cancelBtn = document.createElement('button')
+            cancelBtn.textContent = '取消'
+            cancelBtn.style.cssText = `
+              padding: 10px 20px; background: white; border: 1px solid #ddd;
+              border-radius: 6px; cursor: pointer; font-size: 14px;
+            `
+            
+            const confirmBtn = document.createElement('button')
+            confirmBtn.textContent = '✓ 确认并开始'
+            confirmBtn.style.cssText = `
+              padding: 10px 20px; background: #34c759; border: none;
+              border-radius: 6px; cursor: pointer; font-size: 14px; color: white; font-weight: 500;
+            `
+            
+            cancelBtn.onclick = () => {
+              overlay.remove()
+              resolve({ confirmed: false, path: '' })
+            }
+            
+            confirmBtn.onclick = () => {
+              const targetPath = pathInput.value.trim()
+              if (!targetPath) {
+                alert('请先输入或选择项目路径')
+                return
+              }
+              overlay.remove()
+              resolve({ confirmed: true, path: targetPath })
+            }
+            
+            buttonContainer.appendChild(cancelBtn)
+            buttonContainer.appendChild(confirmBtn)
+            
+            dialog.appendChild(title)
+            dialog.appendChild(desc)
+            dialog.appendChild(label)
+            dialog.appendChild(pathContainer)
+            dialog.appendChild(warningBox)
+            dialog.appendChild(buttonContainer)
+            
+            overlay.appendChild(dialog)
+            document.body.appendChild(overlay)
+            
+            pathInput.focus()
+          })
         }
+        
+        const dialogResult = await showPathDialog()
+        
+        if (!dialogResult.confirmed) {
+          // 用户点击取消
+          setMessages(prev => prev.filter(msg => msg.id !== thinkingMessage.id))
+          setLoading(false)
+          return
+        }
+        
+        taskDir = dialogResult.path || defaultTaskDir
+        
+        // 添加确认消息
+        const pathConfirmMessage: Message = {
+          id: `path-confirm-${Date.now()}`,
+          role: 'assistant',
+          content: `📁 **项目路径确认**
+
+项目将在以下路径进行：
+\`${taskDir}\`
+
+智能体将使用该路径作为项目文件存储路径，不会自动创建文件夹。
+
+开始执行任务...`,
+          timestamp: new Date(),
+          status: 'completed'
+        }
+        setMessages(prev => [...prev, pathConfirmMessage])
       } else if (!taskDir) {
         taskDir = defaultTaskDir
       }
@@ -1160,13 +1539,41 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
       // 这样可以实现 LLM 意图判断来决定处理方式
       console.log(`[Chat] 使用 task.execute，后端将根据LLM意图判断决定处理方式，项目路径: ${taskDir}`)
       
-      // 检查 window.electron.task 是否存在
-      if (!window.electron || !window.electron.task || typeof window.electron.task.execute !== 'function') {
-        console.error('[Chat] window.electron.task 未定义或不可用')
+      // 存储任务目录到 ref，用于后续创建任务历史时使用
+      currentTaskDirRef.current = taskDir
+      
+      // 检查 window.electron.task 是否存在，增加重试机制
+      let taskApi: any = null
+      let retries = 0
+      const maxRetries = 10
+      
+      console.log('[Chat] 开始检查 window.electron.task 是否可用...')
+      console.log('[Chat] window.electron:', window.electron)
+      console.log('[Chat] window.electron.task:', window.electron?.task)
+      
+      while (!taskApi && retries < maxRetries) {
+        if (window.electron && window.electron.task && typeof window.electron.task.execute === 'function') {
+          taskApi = window.electron.task
+          console.log(`[Chat] ✅ window.electron.task 可用 (重试 ${retries}/${maxRetries})`)
+          break
+        }
+        
+        retries++
+        console.warn(`[Chat] window.electron.task 未定义或不可用，重试 ${retries}/${maxRetries}`)
+        
+        if (retries < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 200))
+        }
+      }
+      
+      if (!taskApi) {
+        console.error('[Chat] ❌ window.electron.task 未定义或不可用，重试失败')
+        console.error('[Chat] window.electron:', window.electron)
+        console.error('[Chat] window.electron.task:', window.electron?.task)
+        console.error('[Chat] typeof window.electron?.task?.execute:', typeof window.electron?.task?.execute)
         throw new Error('任务执行API不可用，请刷新页面重试')
       }
       
-      const taskApi: any = window.electron.task
       const result = await taskApi.execute(contentToSend, { 
         agentId, 
         sessionId,
@@ -1422,12 +1829,144 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
     }
   }
 
+  // 处理@全能智能管家的消息
+  const handleOmniAgentMessage = async (input: string) => {
+    // 提取消息内容（移除@前缀）
+    const messageContent = input.replace(/^@(全能智能管家|全能管家|智能管家)\s*/, '').trim()
+    if (!messageContent) return
+
+    const userMessage: Message = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: input, 
+      timestamp: new Date(),
+      status: 'sending'
+    }
+    
+    setMessages(prev => [...prev, userMessage])
+    setInput('')
+    setLoading(true)
+
+    try {
+      setMessages(prev => prev.map(msg => 
+        msg.id === userMessage.id ? { ...msg, status: 'sent' } : msg
+      ))
+
+      // 显示分析计划消息
+      const planMessage: Message = {
+        id: `plan-${Date.now()}`,
+        role: 'assistant',
+        content: '🤖 **全能智能管家**\n\n💭 **分析计划**\n\n我将按照以下步骤分析您的问题：\n\n1. 理解对话上下文和您的具体需求\n2. 分析问题的核心要点和技术细节\n3. 制定解决方案和优化建议\n4. 提供详细的分析结果和代码建议\n\n现在开始分析...',
+        timestamp: new Date(),
+        status: 'completed'
+      }
+      setMessages(prev => [...prev, planMessage])
+
+      // 构建完整的对话上下文
+      const contextMessages = messages
+        .filter(msg => msg.role === 'user' || msg.role === 'assistant')
+        .map(msg => ({
+          role: msg.role,
+          content: msg.content
+        }))
+
+      // 显示正在分析的消息
+      const analyzingMessage: Message = {
+        id: `analyzing-${Date.now()}`,
+        role: 'assistant',
+        content: '🔍 **正在分析对话内容**\n\n我正在仔细阅读和理解整个对话历史，提取关键信息和技术要点...',
+        timestamp: new Date(),
+        status: 'completed'
+      }
+      setMessages(prev => [...prev, analyzingMessage])
+
+      // 调用全能智能管家处理消息，包含完整上下文
+      const response = await window.electron.omni.executeTask(messageContent, {
+        enableMultimodal: true,
+        enableDeepReasoning: true,
+        enableSelfCorrection: true,
+        context: contextMessages,
+        returnReasoningSteps: true // 请求返回详细的推理步骤
+      })
+
+      if (response.success) {
+        // 显示分析完成消息
+        const analysisCompleteMessage: Message = {
+          id: `analysis-complete-${Date.now()}`,
+          role: 'assistant',
+          content: '✅ **分析完成**\n\n我已经完成了对对话内容的分析，现在将为您提供详细的分析结果和建议...',
+          timestamp: new Date(),
+          status: 'completed'
+        }
+        setMessages(prev => [...prev, analysisCompleteMessage])
+
+        // 处理返回结果，确保输出友好易读
+        let responseContent = response.result.answer || response.result.content || '已处理您的请求'
+        let responseReasoning = response.result.reasoning
+
+        // 清理超代码或其他不友好的输出格式
+        responseContent = responseContent
+          .replace(/```[\s\S]*?```/g, (match: string) => {
+            // 保留代码块，但确保格式正确
+            return match
+          })
+          .replace(/超代码|超级代码/gi, '优化代码')
+
+        // 显示详细的分析结果
+        const omniMessage: Message = {
+          id: `omni-${Date.now()}`,
+          role: 'assistant',
+          content: `📊 **详细分析结果**\n\n${responseContent}\n\n${responseReasoning ? `🧠 **推理过程**\n\n${responseReasoning}` : ''}`,
+          timestamp: new Date(),
+          status: 'completed'
+        }
+        setMessages(prev => [...prev, omniMessage])
+
+        // 显示总结消息
+        const summaryMessage: Message = {
+          id: `summary-${Date.now()}`,
+          role: 'assistant',
+          content: '🎯 **总结**\n\n我已经完成了对您问题的全面分析，并提供了详细的解决方案。如果您有任何疑问或需要进一步的帮助，请随时告诉我。\n\n您可以继续@我提出新的问题或需求。',
+          timestamp: new Date(),
+          status: 'completed'
+        }
+        setMessages(prev => [...prev, summaryMessage])
+      } else {
+        // 显示错误消息
+        const errorMessage: Message = {
+          id: `omni-error-${Date.now()}`,
+          role: 'assistant',
+          content: `🤖 **全能智能管家**\n\n❌ **分析失败**\n\n出错了：${response.error}`,
+          timestamp: new Date(),
+          status: 'error'
+        }
+        setMessages(prev => [...prev, errorMessage])
+      }
+    } catch (error: any) {
+      // 显示错误消息
+      const errorMessage: Message = {
+        id: `omni-error-${Date.now()}`,
+        role: 'assistant',
+        content: `🤖 **全能智能管家**\n\n❌ **分析失败**\n\n出错了：${error.message}`,
+        timestamp: new Date(),
+        status: 'error'
+      }
+      setMessages(prev => [...prev, errorMessage])
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div 
       className="chat-page" 
       onDragOver={handleDragOver} 
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
+      style={{
+        position: 'relative',
+        minHeight: '100vh'
+      }}
     >
       <ChatSidebar 
         currentSessionId={currentSession?.id} 

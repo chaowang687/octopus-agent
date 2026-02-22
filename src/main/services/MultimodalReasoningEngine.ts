@@ -4,8 +4,8 @@
  */
 
 import { EventEmitter } from 'events'
-import { enhancedImageProcessor, ImageOperation, ImageProcessingOptions, ImageAnalysisResult } from './EnhancedImageProcessor'
-import { enhancedImageGenerator, ImageGenerationModel, ImageGenerationOptions, PromptEnhancementResult } from './EnhancedImageGenerator'
+import { enhancedImageProcessor, ImageAnalysisResult } from './EnhancedImageProcessor'
+import { enhancedImageGenerator, ImageGenerationOptions } from './EnhancedImageGenerator'
 import { multimodalService, MultimodalCapability } from './MultimodalService'
 
 // ============================================
@@ -139,7 +139,6 @@ export class MultimodalReasoningEngine extends EventEmitter {
   private generator: typeof enhancedImageGenerator
   private multimodal: typeof multimodalService
   private reasoningHistory: MultimodalReasoningResult[] = []
-  private promptCache: Map<string, PromptEnhancementResult> = new Map()
 
   constructor() {
     super()

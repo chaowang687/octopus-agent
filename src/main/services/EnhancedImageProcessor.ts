@@ -204,7 +204,6 @@ export class EnhancedImageProcessor extends EventEmitter {
 
     try {
       let image = sharp(inputPath)
-      const metadata = await image.metadata()
 
       let outputPath = this.generateOutputPath(inputPath, operation)
 
@@ -234,7 +233,7 @@ export class EnhancedImageProcessor extends EventEmitter {
           break
 
         case ImageOperation.WATERMARK:
-          image = await this.applyWatermark(image, inputPath, options.watermark)
+          image = await this.applyWatermark(image, options.watermark)
           break
 
         case ImageOperation.BLUR:
@@ -262,7 +261,7 @@ export class EnhancedImageProcessor extends EventEmitter {
         case ImageOperation.DETECT_OBJECTS:
         case ImageOperation.EXTRACT_TEXT:
         case ImageOperation.GENERATE_CAPTION:
-          return await this.processWithAI(inputPath, operation, options.ai)
+          return await this.processWithAI(inputPath, operation)
 
         default:
           throw new Error(`Unsupported operation: ${operation}`)
@@ -390,7 +389,6 @@ export class EnhancedImageProcessor extends EventEmitter {
 
   private async applyWatermark(
     image: sharp.Sharp,
-    inputPath: string,
     options?: ImageProcessingOptions['watermark']
   ): Promise<sharp.Sharp> {
     if (!options) return image
@@ -519,8 +517,7 @@ export class EnhancedImageProcessor extends EventEmitter {
 
   private async processWithAI(
     inputPath: string,
-    operation: ImageOperation,
-    options?: any
+    operation: ImageOperation
   ): Promise<ImageProcessingResult> {
     const startTime = Date.now()
 

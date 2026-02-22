@@ -1,5 +1,6 @@
-import { ipcMain } from 'electron'
+import { ipcMain, BrowserWindow } from 'electron'
 import { taskEngine } from '../../agent/TaskEngine'
+import { multiAgentCoordinator } from '../../agent/MultiAgentCoordinator'
 
 // 检查处理器是否已注册
 function isHandlerRegistered(channel: string): boolean {
@@ -10,6 +11,12 @@ function isHandlerRegistered(channel: string): boolean {
   } catch {
     return false
   }
+}
+
+// 获取主窗口
+function getMainWindow(): BrowserWindow | null {
+  const windows = BrowserWindow.getAllWindows()
+  return windows.length > 0 ? windows[0] : null
 }
 
 // 聊天相关的 IPC 处理器
@@ -40,4 +47,12 @@ export function registerChatHandlers() {
       }
     })
   }
+
+  // 监听多智能体协调器的流式事件
+  multiAgentCoordinator.on('stream', (data) => {
+    const mainWindow = getMainWindow()
+    if (mainWindow) {
+      mainWindow.webContents.send('chat:stream', data)
+    }
+  })
 }

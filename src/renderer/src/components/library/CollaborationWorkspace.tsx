@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { PlanViewer } from './PlanViewer'
 import { DecisionDialog, DecisionOption } from './DecisionDialog'
+import { ProjectManagement } from './ProjectManagement'
 
 interface PlanStep {
   id: string
@@ -55,6 +56,7 @@ export const CollaborationWorkspace: React.FC<CollaborationWorkspaceProps> = ({
     description: '',
     options: []
   })
+  const [showProjectManagement, setShowProjectManagement] = useState(false)
 
   useEffect(() => {
     loadSession()
@@ -189,11 +191,25 @@ export const CollaborationWorkspace: React.FC<CollaborationWorkspaceProps> = ({
     console.log('[CollaborationWorkspace] 编辑计划')
   }
 
+  const handleLinkToProject = async () => {
+    if (!session) return
+
+    setShowProjectManagement(true)
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
       </div>
+    )
+  }
+
+  if (showProjectManagement) {
+    return (
+      <ProjectManagement
+        onBack={() => setShowProjectManagement(false)}
+      />
     )
   }
 
@@ -214,13 +230,26 @@ export const CollaborationWorkspace: React.FC<CollaborationWorkspaceProps> = ({
             <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm">
               {session.status}
             </span>
+            {session.projectId && (
+              <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm">
+                已关联项目
+              </span>
+            )}
           </div>
-          <button
-            onClick={onClose}
-            className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-          >
-            关闭
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleLinkToProject}
+              className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
+            >
+              {session.projectId ? '管理项目' : '关联项目'}
+            </button>
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+            >
+              关闭
+            </button>
+          </div>
         </div>
       </header>
 

@@ -14,6 +14,8 @@ import { registerProjectManagerHandlers } from './handlers/projectManagerHandler
 import { registerVisualizationHandlers } from './handlers/vizHandler'
 import { registerCodeHandlers } from './handlers/codeHandler'
 import { registerLibraryHandlers } from './handlers/libraryHandler'
+import { registerOmniAgentHandlers } from './handlers/omniAgentHandler'
+import { registerButlerHandlers } from './handlers/butlerHandler'
 
 // 注册所有 IPC 处理器
 export function registerAllHandlers() {
@@ -36,6 +38,8 @@ export function registerAllHandlers() {
   registerVisualizationHandlers()
   registerCodeHandlers()
   registerLibraryHandlers()
+  registerOmniAgentHandlers()
+  registerButlerHandlers()
   
   console.log('All IPC handlers registered successfully!')
 }

@@ -16,10 +16,8 @@ const SoloHub: React.FC = () => {
   const navigate = useNavigate()
 
   useEffect(() => {
-    // @ts-ignore
-    if (window.electron && window.electron.ipcRenderer) {
-      // @ts-ignore
-      window.electron.ipcRenderer.invoke('agent:getToolState').then((state: any) => {
+    if (window.electron && window.electron.agent) {
+      window.electron.agent.getToolState().then((state: any) => {
         if (state) {
           setEnabledTools(state)
         }
@@ -36,10 +34,8 @@ const SoloHub: React.FC = () => {
 
   const handleSave = async () => {
     try {
-      // @ts-ignore
-      if (window.electron && window.electron.ipcRenderer) {
-        // @ts-ignore
-        window.electron.ipcRenderer.invoke('agent:updateToolState', enabledTools)
+      if (window.electron && window.electron.agent) {
+        window.electron.agent.updateToolState(enabledTools)
         alert('配置已保存，智能体能力已更新')
       }
     } catch (e) {
@@ -50,10 +46,8 @@ const SoloHub: React.FC = () => {
 
   const handleCancel = () => {
     // Reload state
-    // @ts-ignore
-    if (window.electron && window.electron.ipcRenderer) {
-        // @ts-ignore
-        window.electron.ipcRenderer.invoke('agent:getToolState').then((state: any) => {
+    if (window.electron && window.electron.agent) {
+        window.electron.agent.getToolState().then((state: any) => {
           if (state) {
             setEnabledTools(state)
           }

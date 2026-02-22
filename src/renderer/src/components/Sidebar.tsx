@@ -5,10 +5,8 @@ const Sidebar: React.FC = () => {
   const [currentMode, setCurrentMode] = useState<'ide' | 'solo'>('ide')
 
   useEffect(() => {
-    // @ts-ignore
-    if (window.electron && window.electron.ipcRenderer) {
-      // @ts-ignore
-      window.electron.ipcRenderer.invoke('projectManager:getMode').then((res: any) => {
+    if (window.electron && window.electron.projectManager) {
+      window.electron.projectManager.getMode().then((res: any) => {
         if (res.success && res.mode) {
           setCurrentMode(res.mode)
         }
@@ -19,10 +17,8 @@ const Sidebar: React.FC = () => {
   const toggleMode = () => {
     const newMode = currentMode === 'ide' ? 'solo' : 'ide'
     setCurrentMode(newMode)
-    // @ts-ignore
-    if (window.electron && window.electron.ipcRenderer) {
-      // @ts-ignore
-      window.electron.ipcRenderer.invoke('projectManager:setMode', newMode)
+    if (window.electron && window.electron.projectManager) {
+      window.electron.projectManager.setMode(newMode)
     }
   }
 
@@ -62,6 +58,14 @@ const Sidebar: React.FC = () => {
             <NavLink to="/projects" className="sidebar-nav-link" title="项目管理">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              </svg>
+            </NavLink>
+          </li>
+          <li>
+            <NavLink to="/resource-allocation" className="sidebar-nav-link" title="资源分配优化">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M12 6v6l4 2"></path>
               </svg>
             </NavLink>
           </li>
@@ -131,6 +135,15 @@ const Sidebar: React.FC = () => {
             <NavLink to="/memory" className="sidebar-nav-link" title="记忆管理">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
+              </svg>
+            </NavLink>
+          </li>
+          <li>
+            <NavLink to="/omni-agent" className="sidebar-nav-link" title="全能智能管家">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2a10 10 0 1 0 10 10H12V2z"></path>
+                <path d="M12 12L2.3 12a10 10 0 0 0 9.7 10v-10z"></path>
+                <path d="M12 12l9.7 0a10 10 0 0 1-9.7 10v-10z"></path>
               </svg>
             </NavLink>
           </li>

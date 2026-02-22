@@ -4,9 +4,9 @@
  */
 
 import { EventEmitter } from 'events'
-import { llmService, LLMMessage } from '../services/LLMService'
+import { llmService } from '../services/LLMService'
 import { ErrorHandler } from '../utils/ErrorHandler'
-import { ReActStep, ReActStepType, ReActTrace, ReActOptions } from './ReActEngine'
+import { ReActOptions } from './ReActEngine'
 
 // ============================================
 // 思维树节点
@@ -268,7 +268,7 @@ export class ThoughtTreeEngine extends EventEmitter {
       if (options.enableBacktracking) {
         const backtrackDecision = this.shouldBacktrack(tree, currentNode, options)
         if (backtrackDecision) {
-          await this.performBacktrack(tree, backtrackDecision, options)
+          await this.performBacktrack(tree, backtrackDecision)
         }
       }
     }
@@ -339,7 +339,7 @@ export class ThoughtTreeEngine extends EventEmitter {
           if (node.status === 'completed' && node.depth > 0) {
             const backtrackDecision = this.shouldBacktrack(tree, node, options)
             if (backtrackDecision) {
-              await this.performBacktrack(tree, backtrackDecision, options)
+              await this.performBacktrack(tree, backtrackDecision)
               break
             }
           }
@@ -365,7 +365,7 @@ export class ThoughtTreeEngine extends EventEmitter {
     const response = await llmService.chat(
       options.model || 'openai',
       [
-        { role: 'system', content: this.getSystemPrompt(options) },
+        { role: 'system', content: this.getSystemPrompt() },
         { role: 'user', content: prompt }
       ],
       {
@@ -432,7 +432,7 @@ Reasoning: <explanation>
 Be diverse in your approaches. Consider different perspectives and strategies.`
   }
 
-  private getSystemPrompt(options: ToTOptions): string {
+  private getSystemPrompt(): string {
     return `You are an expert at Tree-of-Thought reasoning. Your task is to generate diverse, high-quality reasoning branches.
 
 Key principles:
@@ -577,8 +577,7 @@ Available tools: read_file, write_file, execute_command, list_dir, grep_search, 
 
   private async performBacktrack(
     tree: ThoughtTree,
-    decision: BacktrackDecision,
-    options: ToTOptions
+    decision: BacktrackDecision
   ): Promise<void> {
     const node = tree.nodes.get(decision.nodeId)
     if (!node) return

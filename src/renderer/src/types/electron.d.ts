@@ -47,8 +47,9 @@ export interface ElectronAPI {
   }
   task: {
     execute: (instruction: string, options?: any) => Promise<any>
-    cancel: (taskId: string) => Promise<void>
+    cancel: (taskId?: string) => Promise<void>
     getStatus: (taskId: string) => Promise<any>
+    onProgress: (callback: (evt: any) => void) => () => void
   }
   chat: {
     sendMessage: (message: string, sessionId: string) => Promise<any>
@@ -87,6 +88,30 @@ export interface ElectronAPI {
   collaboration: {
     onEvent: (callback: (event: any) => void) => void
     offEvent: () => void
+  }
+  omni: {
+    executeTask: (instruction: string, options?: any) => Promise<any>
+    getTaskStatus: (taskId: string) => Promise<any>
+    getTaskHistory: () => Promise<any>
+    clearTaskHistory: () => Promise<any>
+    addProject: (project: any) => Promise<any>
+    getProject: (projectId: string) => Promise<any>
+    getAllProjects: () => Promise<any>
+    switchProject: (projectId: string) => Promise<any>
+    removeProject: (projectId: string) => Promise<any>
+    setPermissionLevel: (level: string) => Promise<any>
+    getPermissionLevel: () => Promise<any>
+    hasPermission: (requiredLevel: string) => Promise<any>
+    getPermissionLog: () => Promise<any>
+    isBusy: () => Promise<any>
+    getCurrentTaskId: () => Promise<any>
+    getAgentType: () => Promise<any>
+    healthCheck: () => Promise<any>
+    subscribe: (eventType: string) => void
+  }
+  ipcRenderer: {
+    on: (channel: string, callback: (event: any, ...args: any[]) => void) => void
+    removeListener: (channel: string, callback: (event: any, ...args: any[]) => void) => void
   }
 }
 

@@ -26,10 +26,13 @@ const Tools: React.FC = () => {
 
   const fetchTools = async () => {
     try {
-      const toolsList = await window.electron.tools.detectTools()
-      setTools(toolsList)
+      const result = await window.electron.tools.detectTools()
+      if (result.success && result.tools) {
+        setTools(result.tools)
+      } else {
+        throw new Error('Failed to get tools')
+      }
     } catch (error) {
-      // Fallback for demo / error handling
       console.error('Failed to detect tools:', error)
       const defaultTools = [
         {
@@ -49,13 +52,13 @@ const Tools: React.FC = () => {
           path: ''
         },
         {
-      id: 'sourcetree',
-      name: 'SourceTree',
-      description: 'Git GUI 客户端',
-      available: false,
-      version: '',
-      path: ''
-    }
+          id: 'sourcetree',
+          name: 'SourceTree',
+          description: 'Git GUI 客户端',
+          available: false,
+          version: '',
+          path: ''
+        }
       ]
       setTools(defaultTools)
     } finally {

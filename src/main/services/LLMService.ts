@@ -8,6 +8,11 @@ export interface LLMResponse {
   error?: string
 }
 
+export interface LLMStreamChunk {
+  delta: string
+  done: boolean
+}
+
 export interface LLMMessage {
   role: 'system' | 'user' | 'assistant'
   content: string
@@ -36,7 +41,6 @@ type ChatCompletionMessage = {
 }
 
 export class LLMService {
-  private apiKeysPath: string
   private modelToProvider: Record<string, string> = {
     'gpt-4o': 'openai', 'gpt-4o-mini': 'openai', 'gpt-3.5-turbo': 'openai',
     'claude-3-opus': 'claude', 'claude-3-sonnet': 'claude', 'claude-3-haiku': 'claude',
@@ -57,7 +61,11 @@ export class LLMService {
   private cacheTTL = 5 * 60 * 1000 // 5分钟
 
   constructor() {
-    this.apiKeysPath = path.join(app.getPath('userData'), 'apiKeys.json')
+  }
+
+  // 动态获取API密钥文件路径
+  private get apiKeysPath(): string {
+    return path.join(app.getPath('userData'), 'apiKeys.json')
   }
 
   public getApiKey(model: string): string | null {
@@ -91,6 +99,33 @@ export class LLMService {
       console.error('Failed to read API keys:', error)
     }
     return null
+  }
+
+  public getAvailableProviders(): string[] {
+    try {
+      if (fs.existsSync(this.apiKeysPath)) {
+        const apiKeys = JSON.parse(fs.readFileSync(this.apiKeysPath, 'utf8'))
+        const providers: string[] = []
+        
+        // 检查所有提供商
+        const providerList: string[] = ['openai', 'claude', 'deepseek', 'minimax', 'doubao']
+        for (const provider of providerList) {
+          if (apiKeys[provider] && apiKeys[provider].trim()) {
+            providers.push(provider)
+          }
+        }
+        
+        return providers
+      }
+    } catch (error) {
+      console.error('Failed to get available providers:', error)
+    }
+    return []
+  }
+
+  public getFirstAvailableProvider(): string | null {
+    const providers = this.getAvailableProviders()
+    return providers.length > 0 ? providers[0] : null
   }
 
   private getCachedApiKey(model: string): string | null {
@@ -160,14 +195,37 @@ export class LLMService {
 
   private decryptApiKey(encryptedKey: string): string {
     try {
-      if (safeStorage.isEncryptionAvailable() && encryptedKey.length > 32) {
-        const buffer = Buffer.from(encryptedKey, 'base64')
-        return safeStorage.decryptString(buffer)
+      // 先检查是否是有效的base64编码
+      const isValidBase64 = (str: string): boolean => {
+        try {
+          Buffer.from(str, 'base64')
+          return true
+        } catch {
+          return false
+        }
       }
-      // 如果解密失败或不是加密的密钥，返回原始值
+      
+      // 如果不是有效的base64或者长度不够，直接返回原始值
+      if (!isValidBase64(encryptedKey) || encryptedKey.length < 32) {
+        return encryptedKey
+      }
+      
+      // 尝试解密
+      if (safeStorage.isEncryptionAvailable()) {
+        try {
+          const buffer = Buffer.from(encryptedKey, 'base64')
+          return safeStorage.decryptString(buffer)
+        } catch (decryptError: any) {
+          // 解密失败，可能是未加密的密钥，返回原始值
+          console.warn('解密API密钥失败，使用原始值:', decryptError.message)
+          return encryptedKey
+        }
+      }
+      
+      // 安全存储不可用，返回原始值
       return encryptedKey
-    } catch (error) {
-      console.error('Failed to decrypt API key:', error)
+    } catch (error: any) {
+      console.error('解密API密钥时出错:', error)
       return encryptedKey
     }
   }
@@ -304,6 +362,37 @@ export class LLMService {
     }
   }
 
+  // 流式聊天方法 - 支持逐字输出
+  async chatStream(
+    model: string, 
+    messages: LLMMessage[], 
+    options: any = {},
+    onChunk: (chunk: LLMStreamChunk) => void
+  ): Promise<LLMResponse> {
+    const apiKey = this.getApiKey(model)
+    
+    if (!apiKey) {
+      return { success: false, error: `请先配置 ${model} 的 API Key` }
+    }
+
+    try {
+      const provider = this.modelToProvider[model] || model
+      
+      if (provider === 'deepseek' || model === 'deepseek') {
+        return await this.callDeepSeekStream(apiKey, messages, options, onChunk)
+      } else if (provider === 'openai' || model === 'openai') {
+        return await this.callOpenAIStream(apiKey, messages, options, onChunk)
+      } else if (provider === 'claude' || model === 'claude') {
+        return await this.callClaudeStream(apiKey, messages, options, onChunk)
+      } else {
+        return { success: false, error: `流式响应暂不支持模型: ${model}` }
+      }
+    } catch (error: any) {
+      console.error(`流式LLM调用失败 for ${model}:`, error)
+      return { success: false, error: error?.message || String(error) }
+    }
+  }
+
   private normalizeMessagesForDeepSeek(messages: LLMMessage[]): ChatCompletionMessage[] {
     const systemMessages: string[] = []
     const out: ChatCompletionMessage[] = []
@@ -416,12 +505,26 @@ export class LLMService {
       return { success: true, content: data.choices?.[0]?.message?.content || '' }
     }
 
+    // 检查是否为402错误（余额不足）
+    if (response1.status === 402) {
+      const body1 = await response1.text().catch(() => '')
+      console.warn(`DeepSeek API 402 Payment Required: ${body1}`)
+      return { success: false, error: `DeepSeek API error: 402 Payment Required - ${body1}` }
+    }
+
     const body1 = await response1.text().catch(() => '')
     const normalizedMessages = this.normalizeMessagesForDeepSeek(messages)
     const response2 = await send(normalizedMessages as any[])
     if (response2.ok) {
       const data = await response2.json()
       return { success: true, content: data.choices?.[0]?.message?.content || '' }
+    }
+
+    // 检查是否为402错误（余额不足）
+    if (response2.status === 402) {
+      const body2 = await response2.text().catch(() => '')
+      console.warn(`DeepSeek API 402 Payment Required: ${body2}`)
+      return { success: false, error: `DeepSeek API error: 402 Payment Required - ${body2}` }
     }
 
     const body2 = await response2.text().catch(() => '')
@@ -531,6 +634,227 @@ export class LLMService {
 
     const data = await response.json()
     return { success: true, content: data.choices?.[0]?.message?.content || '' }
+  }
+
+  // 流式响应实现
+  private async callOpenAIStream(
+    apiKey: string, 
+    messages: LLMMessage[], 
+    options: any,
+    onChunk: (chunk: LLMStreamChunk) => void
+  ): Promise<LLMResponse> {
+    const response = await this.fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      signal: options?.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: options.model || 'gpt-4o-mini',
+        messages,
+        max_tokens: options?.max_tokens ?? 1000,
+        temperature: options?.temperature ?? 0.7,
+        stream: true
+      })
+    })
+
+    if (!response.ok) {
+      throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`)
+    }
+
+    const reader = response.body?.getReader()
+    if (!reader) {
+      throw new Error('No response body')
+    }
+
+    const decoder = new TextDecoder()
+    let fullContent = ''
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value, { stream: true })
+        const lines = chunk.split('\n')
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6)
+            if (data === '[DONE]') {
+              onChunk({ delta: '', done: true })
+              break
+            }
+
+            try {
+              const parsed = JSON.parse(data)
+              const delta = parsed.choices?.[0]?.delta?.content
+              if (delta) {
+                fullContent += delta
+                onChunk({ delta, done: false })
+              }
+            } catch (e) {
+              // 忽略解析错误
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock()
+    }
+
+    return { success: true, content: fullContent }
+  }
+
+  private async callDeepSeekStream(
+    apiKey: string, 
+    messages: LLMMessage[], 
+    options: any,
+    onChunk: (chunk: LLMStreamChunk) => void
+  ): Promise<LLMResponse> {
+    const url = 'https://api.deepseek.com/v1/chat/completions'
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`
+    }
+    const model = options.model || 'deepseek-chat'
+    const maxTokens = options?.max_tokens ?? 1000
+    const temperature = options?.temperature ?? 0.7
+
+    const normalizedMessages = this.normalizeMessagesForDeepSeek(messages)
+
+    const response = await this.fetchWithTimeout(url, {
+      method: 'POST',
+      signal: options?.signal,
+      headers,
+      body: JSON.stringify({
+        model,
+        messages: normalizedMessages,
+        max_tokens: maxTokens,
+        temperature,
+        stream: true
+      })
+    })
+
+    if (!response.ok) {
+      throw new Error(`DeepSeek API error: ${response.status} ${response.statusText}`)
+    }
+
+    const reader = response.body?.getReader()
+    if (!reader) {
+      throw new Error('No response body')
+    }
+
+    const decoder = new TextDecoder()
+    let fullContent = ''
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value, { stream: true })
+        const lines = chunk.split('\n')
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6)
+            if (data === '[DONE]') {
+              onChunk({ delta: '', done: true })
+              break
+            }
+
+            try {
+              const parsed = JSON.parse(data)
+              const delta = parsed.choices?.[0]?.delta?.content
+              if (delta) {
+                fullContent += delta
+                onChunk({ delta, done: false })
+              }
+            } catch (e) {
+              // 忽略解析错误
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock()
+    }
+
+    return { success: true, content: fullContent }
+  }
+
+  private async callClaudeStream(
+    apiKey: string, 
+    messages: LLMMessage[], 
+    options: any,
+    onChunk: (chunk: LLMStreamChunk) => void
+  ): Promise<LLMResponse> {
+    const response = await this.fetchWithTimeout('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      signal: options?.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: options.model || 'claude-3-haiku-20240307',
+        max_tokens: options?.max_tokens ?? 1000,
+        messages: messages.filter(m => m.role !== 'system'),
+        system: messages.find(m => m.role === 'system')?.content,
+        stream: true
+      })
+    })
+
+    if (!response.ok) {
+      throw new Error(`Claude API error: ${response.status} ${response.statusText}`)
+    }
+
+    const reader = response.body?.getReader()
+    if (!reader) {
+      throw new Error('No response body')
+    }
+
+    const decoder = new TextDecoder()
+    let fullContent = ''
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value, { stream: true })
+        const lines = chunk.split('\n')
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6)
+
+            try {
+              const parsed = JSON.parse(data)
+              const delta = parsed.delta?.text || parsed.content_block?.text || ''
+              if (delta) {
+                fullContent += delta
+                onChunk({ delta, done: false })
+              }
+
+              if (parsed.type === 'message_stop') {
+                onChunk({ delta: '', done: true })
+                break
+              }
+            } catch (e) {
+              // 忽略解析错误
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock()
+    }
+
+    return { success: true, content: fullContent }
   }
 }
 

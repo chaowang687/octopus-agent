@@ -270,6 +270,31 @@ export class TaskEngine extends EventEmitter {
     let emotion: any = null
     
     try {
+      console.log(`[TaskEngine] 收到任务指令: ${instruction.slice(0, 100)}...`)
+      console.log(`[TaskEngine] 智能体选项: ${JSON.stringify(agentOptions)}`)
+      
+      // 检测是否包含智能体指令
+      const omniAgentRegex = /@全能智能管家\s+/g
+      if (omniAgentRegex.test(instruction)) {
+        // 处理全能智能管家指令
+        console.log(`[TaskEngine] 检测到全能智能管家指令，转发给 omniAgent 处理`)
+        
+        // 清理指令，移除 @全能智能管家 前缀
+        const cleanInstruction = instruction.replace(omniAgentRegex, '').trim()
+        
+        // 导入 omniAgent
+        const { omniAgent } = await import('./OmniAgent')
+        
+        // 使用全能智能管家执行任务
+        const result = await omniAgent.executeTask(cleanInstruction, {
+          projectId: agentOptions?.projectId,
+          taskDir: agentOptions?.taskDir,
+          timeoutMs: agentOptions?.timeoutMs || 300000 // 5分钟超时
+        })
+        
+        console.log(`[TaskEngine] 全能智能管家执行完成:`, result)
+        return result
+      }
       
       let complexity: 'low' | 'medium' | 'high' = 'medium'
       if (agentOptions?.system) {
@@ -335,23 +360,18 @@ export class TaskEngine extends EventEmitter {
         const { contextManager } = await import('./ContextManager')
         
         if (contextManager) {
-          // 聚合上下文
-          const aggregatedContext = await contextManager.aggregateContext(
+          // 聚合上下文但不注入到指令中，避免干扰智能体理解用户需求
+          // 上下文信息可以通过其他方式提供给智能体
+          await contextManager.aggregateContext(
             taskId || 'default',
             instruction
           )
           
-          // 注入上下文到指令中
-          enhancedInstruction = await contextManager.injectContext(
-            instruction,
-            aggregatedContext
-          )
-          
-          console.log(`[TaskEngine] 上下文聚合和注入完成，增强指令长度: ${enhancedInstruction.length}`)
+          console.log(`[TaskEngine] 上下文聚合完成，保持原始指令不变`)
         }
       } catch (contextError: any) {
         console.error('ContextManager 操作失败:', contextError)
-        // 上下文管理失败时，使用原始指令
+        // 上下文管理失败时继续使用原始指令
         console.log(`[TaskEngine] 上下文管理失败，使用原始指令`)
       }
       
@@ -466,20 +486,9 @@ export class TaskEngine extends EventEmitter {
                 }
               } satisfies TaskProgressEvent)
               
-              // 将技能注入到指令中
-              enhancedInstruction = skillManager.injectSkillsIntoTask(
-                enhancedInstruction,
-                retrievalResult,
-                {
-                  maxSkills: 5,
-                  minRelevance: 'medium',
-                  includeReasoning: true,
-                  includeExamples: true,
-                  format: 'markdown'
-                }
-              )
-              
-              console.log(`[TaskEngine] 技能注入完成，指令长度: ${enhancedInstruction.length}`)
+              // 不再将技能注入到指令中，避免干扰项目经理理解用户需求
+              // 技能信息已经通过事件发送给前端，可以在UI中显示给用户
+              console.log(`[TaskEngine] 技能检索完成，找到 ${retrievalResult.matchedSkills.length} 个相关技能`)
             } else {
               console.log(`[TaskEngine] 未检索到相关技能`)
             }
@@ -631,17 +640,69 @@ export class TaskEngine extends EventEmitter {
       this.currentTaskId = taskId
       
       // 使用用户指定的taskDir，如果没有则使用默认路径
-      const taskDir = agentOptions?.taskDir || path.join(app.getPath('userData'), 'tasks', taskId)
+      let taskDir: string
+      const defaultTaskDir = path.join(app.getPath('userData'), 'tasks', taskId)
       
       try {
-        fs.mkdirSync(taskDir, { recursive: true, mode: 0o755 })
-        console.log(`[TaskEngine] 使用任务目录: ${taskDir}`)
+        if (agentOptions?.taskDir) {
+          // 尝试使用用户指定的目录
+          taskDir = agentOptions.taskDir
+          fs.mkdirSync(taskDir, { recursive: true, mode: 0o755 })
+          console.log(`[TaskEngine] 使用用户指定的任务目录: ${taskDir}`)
+        } else {
+          // 使用默认目录
+          taskDir = defaultTaskDir
+          fs.mkdirSync(taskDir, { recursive: true, mode: 0o755 })
+          console.log(`[TaskEngine] 使用默认任务目录: ${taskDir}`)
+        }
       } catch (error: any) {
         console.error(`[TaskEngine] 创建任务目录失败: ${error.message}`)
-        // 如果创建失败，使用 userData 目录
-        const fallbackDir = path.join(app.getPath('userData'), 'tasks', taskId)
-        fs.mkdirSync(fallbackDir, { recursive: true, mode: 0o755 })
-        console.log(`[TaskEngine] 使用备用任务目录: ${fallbackDir}`)
+        
+        // 检查是否是权限错误
+        if (error.code === 'EPERM' || error.code === 'EACCES') {
+          console.log(`[TaskEngine] 权限错误，尝试获取用户选择的目录权限`)
+          
+          try {
+            // 导入 dialog 模块
+            const { dialog } = await import('electron')
+            
+            // 打开目录选择对话框，让用户选择一个有权限的目录
+            const result = await dialog.showOpenDialog({
+              properties: ['openDirectory', 'createDirectory'],
+              title: '选择任务目录',
+              message: '无法在指定位置创建目录，请选择一个有写入权限的目录',
+              defaultPath: app.getPath('desktop')
+            })
+            
+            if (!result.canceled && result.filePaths.length > 0) {
+              // 用户选择了目录
+              taskDir = result.filePaths[0]
+              console.log(`[TaskEngine] 用户选择了任务目录: ${taskDir}`)
+            } else {
+              // 用户取消了选择，使用默认目录
+              taskDir = defaultTaskDir
+              console.log(`[TaskEngine] 用户取消选择，使用默认任务目录: ${taskDir}`)
+            }
+          } catch (dialogError: any) {
+            console.error(`[TaskEngine] 打开目录选择对话框失败: ${dialogError.message}`)
+            // 对话框失败，使用默认目录
+            taskDir = defaultTaskDir
+          }
+        } else {
+          // 其他错误，使用默认目录
+          taskDir = defaultTaskDir
+        }
+        
+        // 尝试创建最终选择的目录
+        try {
+          fs.mkdirSync(taskDir, { recursive: true, mode: 0o755 })
+          console.log(`[TaskEngine] 使用任务目录: ${taskDir}`)
+        } catch (fallbackError: any) {
+          console.error(`[TaskEngine] 创建最终任务目录也失败: ${fallbackError.message}`)
+          // 如果最终目录也创建失败，使用当前工作目录
+          taskDir = process.cwd()
+          console.log(`[TaskEngine] 使用当前工作目录作为任务目录: ${taskDir}`)
+        }
       }
 
       const requestedModel = model
@@ -1023,10 +1084,19 @@ export class TaskEngine extends EventEmitter {
       } satisfies TaskProgressEvent)
 
       // 提取项目名称
-      const projectName = instruction.slice(0, 20).replace(/[^\w\u4e00-\u9fa5]/g, '_').trim()
+      // 使用更合理的项目名称生成逻辑
+      let projectName = instruction
+        .slice(0, 50)
+        .replace(/[\s\/\\:*?"<>|]/g, '_')  // 替换文件系统不允许的字符
+        .trim()
+      
+      // 确保项目名称有效
+      if (!projectName || projectName === '_' || /^_+$/.test(projectName)) {
+        projectName = `project_${Date.now()}`
+      }
 
       // 初始化多智能体对话协调器
-      const initResult = await multiDialogueCoordinator.initializeProject(projectName, instruction)
+      const initResult = await multiDialogueCoordinator.initializeProject(projectName, instruction, agentOptions?.taskDir)
       
       // 发送初始化消息，显示所有对话框
       this.emit('progress', {
