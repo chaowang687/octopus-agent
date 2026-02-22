@@ -18,6 +18,34 @@ import ProjectManagement from './pages/ProjectManagement'
 import Library from './pages/Library'
 import ResourceAllocation from './pages/ResourceAllocation'
 import OmniAgent from './pages/OmniAgent'
+import { Login } from './pages/Login'
+import { UserManagement } from './pages/UserManagement'
+
+interface User {
+  id: string
+  username: string
+  email: string
+  role: 'admin' | 'user' | 'guest'
+  createdAt: number
+  lastLoginAt?: number
+  permissions: {
+    projects: { [projectId: string]: 'owner' | 'editor' | 'viewer' }
+    canCreateProjects: boolean
+    canManageUsers: boolean
+  }
+}
+
+// 认证保护组件
+const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const token = localStorage.getItem('authToken')
+  const currentUser = localStorage.getItem('currentUser')
+
+  if (!token || !currentUser) {
+    return <Navigate to="/login" replace />
+  }
+
+  return <>{children}</>
+}
 
 // 全局浏览器事件监听组件
 const GlobalBrowserHandler: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -61,10 +89,28 @@ const GlobalBrowserHandler: React.FC<{ children: React.ReactNode }> = ({ childre
 
 function App() {
   const [isLoading, setIsLoading] = useState(true)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [currentUser, setCurrentUser] = useState<User | null>(null)
 
   useEffect(() => {
     const initApp = async () => {
       try {
+        const token = localStorage.getItem('authToken')
+        const currentUserStr = localStorage.getItem('currentUser')
+
+        if (token && currentUserStr) {
+          const user = JSON.parse(currentUserStr)
+          
+          const result = await window.electron.auth.verify(token)
+          if (result.success) {
+            setIsAuthenticated(true)
+            setCurrentUser(user)
+          } else {
+            localStorage.removeItem('authToken')
+            localStorage.removeItem('currentUser')
+          }
+        }
+
         const api = (window as any).electron?.system
         if (api?.getSystemInfo) {
           await api.getSystemInfo()
@@ -79,6 +125,27 @@ function App() {
     initApp()
   }, [])
 
+  const handleLoginSuccess = (token: string, user: User) => {
+    setIsAuthenticated(true)
+    setCurrentUser(user)
+  }
+
+  const handleLogout = async () => {
+    const token = localStorage.getItem('authToken')
+    if (token) {
+      try {
+        await window.electron.auth.logout(token)
+      } catch (error) {
+        console.error('注销失败:', error)
+      }
+    }
+    
+    localStorage.removeItem('authToken')
+    localStorage.removeItem('currentUser')
+    setIsAuthenticated(false)
+    setCurrentUser(null)
+  }
+
   if (isLoading) {
     return (
       <div className="loading">
@@ -90,33 +157,64 @@ function App() {
   return (
     <Router>
       <GlobalBrowserHandler>
-        <div className="app">
-          <Sidebar />
-          <div className="main-wrapper">
-            <Header />
-            <div className="page-content">
-              <Routes>
-                <Route path="/" element={<MainContent />} />
-                <Route path="/tools" element={<Tools />} />
-                <Route path="/api" element={<ApiManagement />} />
-                <Route path="/console" element={<Console />} />
-                <Route path="/system" element={<SystemControl />} />
-                <Route path="/plugins" element={<Plugins />} />
-                <Route path="/chat" element={<Chat />} />
-                <Route path="/gallery" element={<Gallery />} />
-                <Route path="/solocoder" element={<SoloCoder />} />
-                <Route path="/chat-workflow" element={<ChatWorkflow />} />
-                <Route path="/memory" element={<Memory />} />
-                <Route path="/multimodal" element={<Multimodal />} />
-                <Route path="/projects" element={<ProjectManagement />} />
-                <Route path="/library" element={<Library />} />
-                <Route path="/resource-allocation" element={<ResourceAllocation />} />
-                <Route path="/omni-agent" element={<OmniAgent />} />
-                <Route path="*" element={<Navigate to="/" />} />
-              </Routes>
-            </div>
-          </div>
-        </div>
+        <Routes>
+          <Route 
+            path="/login" 
+            element={
+              isAuthenticated ? (
+                <Navigate to="/" replace />
+              ) : (
+                <Login onLoginSuccess={handleLoginSuccess} />
+              )
+            } 
+          />
+          <Route
+            path="/*"
+            element={
+              isAuthenticated ? (
+                <div className="app">
+                  <Sidebar />
+                  <div className="main-wrapper">
+                    <Header currentUser={currentUser} onLogout={handleLogout} />
+                    <div className="page-content">
+                      <Routes>
+                        <Route path="/" element={<MainContent />} />
+                        <Route path="/tools" element={<Tools />} />
+                        <Route path="/api" element={<ApiManagement />} />
+                        <Route path="/console" element={<Console />} />
+                        <Route path="/system" element={<SystemControl />} />
+                        <Route path="/plugins" element={<Plugins />} />
+                        <Route path="/chat" element={<Chat />} />
+                        <Route path="/gallery" element={<Gallery />} />
+                        <Route path="/solocoder" element={<SoloCoder />} />
+                        <Route path="/chat-workflow" element={<ChatWorkflow />} />
+                        <Route path="/memory" element={<Memory />} />
+                        <Route path="/multimodal" element={<Multimodal />} />
+                        <Route path="/projects" element={<ProjectManagement />} />
+                        <Route path="/library" element={<Library />} />
+                        <Route path="/resource-allocation" element={<ResourceAllocation />} />
+                        <Route path="/omni-agent" element={<OmniAgent />} />
+                        <Route 
+                          path="/user-management" 
+                          element={
+                            currentUser?.role === 'admin' ? (
+                              <UserManagement token={localStorage.getItem('authToken')!} currentUser={currentUser} />
+                            ) : (
+                              <Navigate to="/" replace />
+                            )
+                          } 
+                        />
+                        <Route path="*" element={<Navigate to="/" />} />
+                      </Routes>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <Navigate to="/login" replace />
+              )
+            }
+          />
+        </Routes>
       </GlobalBrowserHandler>
     </Router>
   )

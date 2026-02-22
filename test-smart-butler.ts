@@ -50,7 +50,7 @@ async function testSmartButler() {
   const project = butler.startTrackingProject(
     projectId,
     '测试项目',
-    '/Users/wangchao/Desktop/本地化TRAE/test_workspace',
+    '/Users/wangchao/Desktop/Octopus Agent/test_workspace',
     'test'
   )
 
@@ -132,7 +132,7 @@ async function testIntegration() {
   const project = butler.startTrackingProject(
     projectId,
     '集成测试项目',
-    '/Users/wangchao/Desktop/本地化TRAE/integration_test',
+    '/Users/wangchao/Desktop/Octopus Agent/integration_test',
     'multi-agent'
   )
   console.log('✅ 开始追踪项目:', project.name)

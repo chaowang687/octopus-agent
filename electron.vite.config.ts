@@ -63,6 +63,11 @@ export default defineConfig({
           index: resolve(__dirname, 'src/renderer/index.html')
         }
       }
+    },
+    server: {
+      port: 5173,
+      strictPort: true,
+      host: 'localhost'
     }
   }
 })

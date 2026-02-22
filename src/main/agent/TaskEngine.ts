@@ -568,6 +568,7 @@ export class TaskEngine extends EventEmitter {
   ): Promise<any> {
     try {
       const taskId = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+      this.currentTaskId = taskId
       
       this.emit('progress', {
         taskId,
@@ -577,8 +578,28 @@ export class TaskEngine extends EventEmitter {
         modelUsed: model
       } satisfies TaskProgressEvent)
 
-      // 使用系统服务处理快系统任务
-      const response = await systemService.processSystem1(instruction, model)
+      // 使用优化后的快系统处理（流式）
+      let fullResponse = ''
+      const response = await systemService.processSystem1Optimized(instruction, model, (chunk) => {
+        fullResponse += chunk
+        // 发送流式事件到前端
+        this.emit('progress', {
+          taskId,
+          type: 'stream',
+          timestamp: Date.now(),
+          content: chunk,
+          done: false
+        } satisfies TaskProgressEvent)
+      })
+      
+      // 发送流式完成事件
+      this.emit('progress', {
+        taskId,
+        type: 'stream',
+        timestamp: Date.now(),
+        content: '',
+        done: true
+      } satisfies TaskProgressEvent)
       
       this.emit('progress', {
         taskId,
@@ -587,7 +608,7 @@ export class TaskEngine extends EventEmitter {
       } satisfies TaskProgressEvent)
 
       this.history.push({ role: 'user', content: instruction })
-      this.history.push({ role: 'assistant', content: response })
+      this.history.push({ role: 'assistant', content: fullResponse || response })
       if (this.history.length > 20) {
         this.history = this.history.slice(this.history.length - 20)
       }
@@ -605,7 +626,7 @@ export class TaskEngine extends EventEmitter {
         plan: { steps: [], reasoning: '快系统快速处理' },
         result: {
           response: {
-            message: response
+            message: fullResponse || response
           }
         }
       }
@@ -616,6 +637,40 @@ export class TaskEngine extends EventEmitter {
         instruction: instruction?.slice(0, 100),
         model: model
       })
+      
+      // 如果任务太复杂，升级到系统二
+      if (error.message === 'TASK_TOO_COMPLEX' || 
+          error.message === 'TASK_APP_DEVELOPMENT' || 
+          error.message === 'TASK_TOOL_DEVELOPMENT') {
+        let upgradeReason = '任务复杂度超过系统一处理能力'
+        
+        if (error.message === 'TASK_APP_DEVELOPMENT') {
+          upgradeReason = '检测到应用开发意图，升级到应用开发团队（系统二）'
+          console.log('[TaskEngine] 检测到应用开发意图，升级到系统二')
+        } else if (error.message === 'TASK_TOOL_DEVELOPMENT') {
+          upgradeReason = '检测到工具开发意图，升级到应用开发团队（系统二）'
+          console.log('[TaskEngine] 检测到工具开发意图，升级到系统二')
+        } else {
+          console.log('[TaskEngine] 任务太复杂，升级到系统二')
+        }
+        
+        this.emit('progress', {
+          type: 'task_start',
+          timestamp: Date.now(),
+          requestedModel: model,
+          modelUsed: model
+        } satisfies TaskProgressEvent)
+        
+        // 升级到系统二
+        const system2Result = await this.executeSystem2Task(instruction, model, {}, routingDecision)
+        
+        return {
+          ...system2Result,
+          upgradedFromSystem1: true,
+          upgradeReason: upgradeReason
+        }
+      }
+      
       console.error('快系统任务处理失败:', error)
       return {
         success: false,

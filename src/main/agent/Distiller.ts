@@ -130,7 +130,12 @@ export class Distiller {
   private autoDistillThreshold = 5
 
   constructor() {
-    this.dataPath = path.join(app.getPath('userData'), 'cognitive', 'distiller')
+    try {
+      this.dataPath = path.join(app.getPath('userData'), 'cognitive', 'distiller')
+    } catch (error) {
+      console.warn('Failed to get userData path for Distiller, using current directory:', error)
+      this.dataPath = path.join(process.cwd(), 'cognitive', 'distiller')
+    }
     this.recordsPath = path.join(this.dataPath, 'records.json')
     this.suggestionsPath = path.join(this.dataPath, 'suggestions.json')
     

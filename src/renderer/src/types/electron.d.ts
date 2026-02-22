@@ -27,8 +27,9 @@ export interface ElectronAPI {
     }
   }
   api: {
-    setApiKey: (model: string, key: string) => Promise<void>
-    getApiKey: (model: string) => Promise<string>
+    setApiKey: (model: string, key: string, userId?: string) => Promise<void>
+    getApiKey: (model: string, userId?: string) => Promise<string>
+    deleteApiKey: (model: string, userId?: string) => Promise<void>
     testApiKey: (model: string, key: string) => Promise<any>
     readFile: (path: string) => Promise<string>
     writeFile: (path: string, content: string) => Promise<void>
@@ -108,6 +109,79 @@ export interface ElectronAPI {
     getAgentType: () => Promise<any>
     healthCheck: () => Promise<any>
     subscribe: (eventType: string) => void
+  }
+  auth: {
+    login: (username: string, password: string) => Promise<any>
+    logout: (token: string) => Promise<any>
+    verify: (token: string) => Promise<any>
+    getCurrentUser: (token: string) => Promise<any>
+    changePassword: (token: string, oldPassword: string, newPassword: string) => Promise<any>
+  }
+  user: {
+    getAll: (token: string) => Promise<any>
+    create: (token: string, username: string, email: string, password: string, role: 'admin' | 'user' | 'guest') => Promise<any>
+    update: (token: string, userId: string, updates: any) => Promise<any>
+    delete: (token: string, userId: string) => Promise<any>
+    setProjectPermission: (token: string, userId: string, projectId: string, role: 'owner' | 'editor' | 'viewer') => Promise<any>
+    checkProjectPermission: (token: string, projectId: string, requiredRole: 'owner' | 'editor' | 'viewer') => Promise<any>
+  }
+  update: {
+    check: () => Promise<any>
+    download: () => Promise<any>
+    install: () => Promise<any>
+    getInfo: () => Promise<any>
+    onChecking: (callback: () => void) => () => void
+    onAvailable: (callback: (info: any) => void) => () => void
+    onNotAvailable: (callback: (info: any) => void) => () => void
+    onError: (callback: (error: any) => void) => () => void
+    onProgress: (callback: (progress: any) => void) => () => void
+    onDownloaded: (callback: (info: any) => void) => () => void
+  }
+  backup: {
+    create: (description?: string, userId?: string) => Promise<any>
+    restore: (backupId: string) => Promise<any>
+    delete: (backupId: string) => Promise<any>
+    list: () => Promise<any>
+    info: (backupId: string) => Promise<any>
+    export: (backupId: string, exportPath: string) => Promise<any>
+    import: (importPath: string) => Promise<any>
+    getConfig: () => Promise<any>
+    updateConfig: (newConfig: any) => Promise<any>
+    autoBackup: () => Promise<any>
+  }
+  analytics: {
+    trackUsage: (action: string, category: string, details?: any, duration?: number, userId?: string) => Promise<any>
+    trackPerformance: (name: string, value: number, unit?: string, details?: any, userId?: string) => Promise<any>
+    trackError: (message: string, category: string, severity: 'low' | 'medium' | 'high' | 'critical', stack?: string, context?: any, userId?: string) => Promise<any>
+    trackBehavior: (type: 'click' | 'scroll' | 'input' | 'navigation' | 'focus', element?: string, page?: string, details?: any, userId?: string) => Promise<any>
+    markErrorResolved: (errorId: string) => Promise<any>
+    report: () => Promise<any>
+    generateReport: (startDate?: number, endDate?: number) => Promise<any>
+    getUsageEvents: (userId?: string, limit?: number) => Promise<any>
+    getPerformanceMetrics: (limit?: number) => Promise<any>
+    getErrorEvents: (resolved?: boolean, limit?: number) => Promise<any>
+    getBehaviorEvents: (userId?: string, limit?: number) => Promise<any>
+    getSessionInfo: () => Promise<any>
+    cleanup: () => Promise<any>
+    getConfig: () => Promise<any>
+    updateConfig: (newConfig: any) => Promise<any>
+    export: (format: 'json' | 'csv') => Promise<any>
+  }
+  license: {
+    activate: (licenseKey: string, userId?: string, organization?: string) => Promise<any>
+    validate: () => Promise<any>
+    getCurrent: () => Promise<any>
+    getInfo: () => Promise<any>
+    hasFeature: (feature: string) => Promise<any>
+    canCreateProject: (currentProjects: number) => Promise<any>
+    canAddUser: (currentUsers: number) => Promise<any>
+    assignSeat: (userId: string, username: string, email: string) => Promise<any>
+    releaseSeat: (userId: string) => Promise<any>
+    getSeatAssignments: (licenseId?: string) => Promise<any>
+    deactivate: () => Promise<any>
+    getConfig: () => Promise<any>
+    updateConfig: (newConfig: any) => Promise<any>
+    checkFeatures: (features: string[]) => Promise<any>
   }
   ipcRenderer: {
     on: (channel: string, callback: (event: any, ...args: any[]) => void) => void

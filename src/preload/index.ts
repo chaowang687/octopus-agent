@@ -7,11 +7,6 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 // 暴露API给渲染进程
 contextBridge.exposeInMainWorld('electron', {
-  // 兼容层：支持直接调用 ipcRenderer.invoke
-  ipcRenderer: {
-    invoke: (channel: string, ...args: any[]) => ipcRenderer.invoke(channel, ...args)
-  },
-  
   // 系统操作
   system: {
     openExternal: (url: string) => ipcRenderer.invoke('system:openExternal', url),
@@ -43,8 +38,9 @@ contextBridge.exposeInMainWorld('electron', {
   },
   // API管理
   api: {
-    setApiKey: (model: string, key: string) => ipcRenderer.invoke('api:setKey', model, key),
-    getApiKey: (model: string) => ipcRenderer.invoke('api:getKey', model),
+    setApiKey: (model: string, key: string, userId?: string) => ipcRenderer.invoke('api:setKey', model, key, userId),
+    getApiKey: (model: string, userId?: string) => ipcRenderer.invoke('api:getKey', model, userId),
+    deleteApiKey: (model: string, userId?: string) => ipcRenderer.invoke('api:deleteKey', model, userId),
     testApiKey: (model: string, key: string) => ipcRenderer.invoke('api:testKey', model, key),
     readFile: (path: string) => ipcRenderer.invoke('api:readFile', path),
     writeFile: (path: string, content: string) => ipcRenderer.invoke('api:writeFile', path, content),
@@ -288,12 +284,146 @@ contextBridge.exposeInMainWorld('electron', {
   // 智能体设置
   agent: {
     getWorkflowSettings: () => ipcRenderer.invoke('agent:getWorkflowSettings'),
-    updateWorkflowSettings: (settings: any) => ipcRenderer.invoke('agent:updateWorkflowSettings', settings),
-    getToolState: () => ipcRenderer.invoke('agent:getToolState'),
-    updateToolState: (enabledTools: string[]) => ipcRenderer.invoke('agent:updateToolState', enabledTools)
+    setWorkflowSettings: (settings: any) => ipcRenderer.invoke('agent:setWorkflowSettings', settings),
+    getAvailableAgents: () => ipcRenderer.invoke('agent:getAvailableAgents'),
+    getAgentConfig: (agentId: string) => ipcRenderer.invoke('agent:getAgentConfig', agentId),
+    setAgentConfig: (agentId: string, config: any) => ipcRenderer.invoke('agent:setAgentConfig', agentId, config)
+  },
+  // 用户认证
+  auth: {
+    login: (username: string, password: string) => ipcRenderer.invoke('auth:login', username, password),
+    register: (username: string, email: string, password: string) => ipcRenderer.invoke('auth:register', username, email, password),
+    checkUsername: (username: string) => ipcRenderer.invoke('auth:checkUsername', username),
+    logout: (token: string) => ipcRenderer.invoke('auth:logout', token),
+    verify: (token: string) => ipcRenderer.invoke('auth:verify', token),
+    getCurrentUser: (token: string) => ipcRenderer.invoke('auth:getCurrentUser', token),
+    changePassword: (token: string, oldPassword: string, newPassword: string) => ipcRenderer.invoke('auth:changePassword', token, oldPassword, newPassword),
+    forgotPassword: (email: string) => ipcRenderer.invoke('auth:forgotPassword', email)
+  },
+  // 用户管理
+  user: {
+    getAll: (token: string) => ipcRenderer.invoke('user:getAll', token),
+    create: (token: string, username: string, email: string, password: string, role: 'admin' | 'user' | 'guest') => ipcRenderer.invoke('user:create', token, username, email, password, role),
+    update: (token: string, userId: string, updates: any) => ipcRenderer.invoke('user:update', token, userId, updates),
+    delete: (token: string, userId: string) => ipcRenderer.invoke('user:delete', token, userId),
+    setProjectPermission: (token: string, userId: string, projectId: string, role: 'owner' | 'editor' | 'viewer') => ipcRenderer.invoke('user:setProjectPermission', token, userId, projectId, role),
+    checkProjectPermission: (token: string, projectId: string, requiredRole: 'owner' | 'editor' | 'viewer') => ipcRenderer.invoke('user:checkProjectPermission', token, projectId, requiredRole)
+  },
+  // 应用更新
+  update: {
+    check: () => ipcRenderer.invoke('update:check'),
+    download: () => ipcRenderer.invoke('update:download'),
+    install: () => ipcRenderer.invoke('update:install'),
+    getInfo: () => ipcRenderer.invoke('update:getInfo'),
+    onChecking: (callback: () => void) => {
+      const listener = (_: any) => callback()
+      ipcRenderer.on('update:checking', listener)
+      return () => ipcRenderer.removeListener('update:checking', listener)
+    },
+    onAvailable: (callback: (info: any) => void) => {
+      const listener = (_: any, info: any) => callback(info)
+      ipcRenderer.on('update:available', listener)
+      return () => ipcRenderer.removeListener('update:available', listener)
+    },
+    onNotAvailable: (callback: (info: any) => void) => {
+      const listener = (_: any, info: any) => callback(info)
+      ipcRenderer.on('update:not-available', listener)
+      return () => ipcRenderer.removeListener('update:not-available', listener)
+    },
+    onError: (callback: (error: any) => void) => {
+      const listener = (_: any, error: any) => callback(error)
+      ipcRenderer.on('update:error', listener)
+      return () => ipcRenderer.removeListener('update:error', listener)
+    },
+    onProgress: (callback: (progress: any) => void) => {
+      const listener = (_: any, progress: any) => callback(progress)
+      ipcRenderer.on('update:progress', listener)
+      return () => ipcRenderer.removeListener('update:progress', listener)
+    },
+    onDownloaded: (callback: (info: any) => void) => {
+      const listener = (_: any, info: any) => callback(info)
+      ipcRenderer.on('update:downloaded', listener)
+      return () => ipcRenderer.removeListener('update:downloaded', listener)
+    }
+  },
+  // 数据备份
+  backup: {
+    create: (description?: string, userId?: string) => ipcRenderer.invoke('backup:create', description, userId),
+    restore: (backupId: string) => ipcRenderer.invoke('backup:restore', backupId),
+    delete: (backupId: string) => ipcRenderer.invoke('backup:delete', backupId),
+    list: () => ipcRenderer.invoke('backup:list'),
+    info: (backupId: string) => ipcRenderer.invoke('backup:info', backupId),
+    export: (backupId: string, exportPath: string) => ipcRenderer.invoke('backup:export', backupId, exportPath),
+    import: (importPath: string) => ipcRenderer.invoke('backup:import', importPath),
+    getConfig: () => ipcRenderer.invoke('backup:get-config'),
+    updateConfig: (newConfig: any) => ipcRenderer.invoke('backup:update-config', newConfig),
+    autoBackup: () => ipcRenderer.invoke('backup:auto-backup')
+  },
+  // 监控和分析
+  analytics: {
+    trackUsage: (action: string, category: string, details?: any, duration?: number, userId?: string) => ipcRenderer.invoke('analytics:track-usage', action, category, details, duration, userId),
+    trackPerformance: (name: string, value: number, unit?: string, details?: any, userId?: string) => ipcRenderer.invoke('analytics:track-performance', name, value, unit, details, userId),
+    trackError: (message: string, category: string, severity: 'low' | 'medium' | 'high' | 'critical', stack?: string, context?: any, userId?: string) => ipcRenderer.invoke('analytics:track-error', message, category, severity, stack, context, userId),
+    trackBehavior: (type: 'click' | 'scroll' | 'input' | 'navigation' | 'focus', element?: string, page?: string, details?: any, userId?: string) => ipcRenderer.invoke('analytics:track-behavior', type, element, page, details, userId),
+    markErrorResolved: (errorId: string) => ipcRenderer.invoke('analytics:mark-error-resolved', errorId),
+    report: () => ipcRenderer.invoke('analytics:report'),
+    generateReport: (startDate?: number, endDate?: number) => ipcRenderer.invoke('analytics:generate-report', startDate, endDate),
+    getUsageEvents: (userId?: string, limit?: number) => ipcRenderer.invoke('analytics:get-usage-events', userId, limit),
+    getPerformanceMetrics: (limit?: number) => ipcRenderer.invoke('analytics:get-performance-metrics', limit),
+    getErrorEvents: (resolved?: boolean, limit?: number) => ipcRenderer.invoke('analytics:get-error-events', resolved, limit),
+    getBehaviorEvents: (userId?: string, limit?: number) => ipcRenderer.invoke('analytics:get-behavior-events', userId, limit),
+    getSessionInfo: () => ipcRenderer.invoke('analytics:get-session-info'),
+    cleanup: () => ipcRenderer.invoke('analytics:cleanup'),
+    getConfig: () => ipcRenderer.invoke('analytics:get-config'),
+    updateConfig: (newConfig: any) => ipcRenderer.invoke('analytics:update-config', newConfig),
+    export: (format: 'json' | 'csv') => ipcRenderer.invoke('analytics:export', format)
+  },
+  // 许可证管理
+  license: {
+    activate: (licenseKey: string, userId?: string, organization?: string) => ipcRenderer.invoke('license:activate', licenseKey, userId, organization),
+    validate: () => ipcRenderer.invoke('license:validate'),
+    getCurrent: () => ipcRenderer.invoke('license:get-current'),
+    getInfo: () => ipcRenderer.invoke('license:get-info'),
+    hasFeature: (feature: string) => ipcRenderer.invoke('license:has-feature', feature),
+    canCreateProject: (currentProjects: number) => ipcRenderer.invoke('license:can-create-project', currentProjects),
+    canAddUser: (currentUsers: number) => ipcRenderer.invoke('license:can-add-user', currentUsers),
+    assignSeat: (userId: string, username: string, email: string) => ipcRenderer.invoke('license:assign-seat', userId, username, email),
+    releaseSeat: (userId: string) => ipcRenderer.invoke('license:release-seat', userId),
+    getSeatAssignments: (licenseId?: string) => ipcRenderer.invoke('license:get-seat-assignments', licenseId),
+    deactivate: () => ipcRenderer.invoke('license:deactivate'),
+    getConfig: () => ipcRenderer.invoke('license:get-config'),
+    updateConfig: (newConfig: any) => ipcRenderer.invoke('license:update-config', newConfig),
+    checkFeatures: (features: string[]) => ipcRenderer.invoke('license:check-features', features)
+  },
+  // 人机协作
+  collab: {
+    request: (data: {
+      taskId: string
+      phase: string
+      title: string
+      description: string
+      content: any
+      alternatives?: string[]
+      editableParams?: string[]
+    }) => ipcRenderer.invoke('collaboration:request', data),
+    approve: (requestId: string, response?: string) => ipcRenderer.invoke('collaboration:approve', requestId, response),
+    reject: (requestId: string, reason?: string) => ipcRenderer.invoke('collaboration:reject', requestId, reason),
+    modify: (requestId: string, modifiedParams: any, response?: string) => ipcRenderer.invoke('collaboration:modify', requestId, modifiedParams, response),
+    getPending: (taskId?: string) => ipcRenderer.invoke('collaboration:getPending', taskId),
+    onRequest: (callback: (request: any) => void) => {
+      const listener = (_: any, request: any) => callback(request)
+      ipcRenderer.on('collaboration:request', listener)
+      return () => ipcRenderer.removeListener('collaboration:request', listener)
+    },
+    onResponse: (callback: (request: any) => void) => {
+      const listener = (_: any, request: any) => callback(request)
+      ipcRenderer.on('collaboration:response', listener)
+      return () => ipcRenderer.removeListener('collaboration:response', listener)
+    }
   },
   // IPC Renderer for event listening
   ipcRenderer: {
+    invoke: (channel: string, ...args: any[]) => ipcRenderer.invoke(channel, ...args),
     on: (channel: string, callback: (event: any, ...args: any[]) => void) => {
       const listener = (_: any, ...args: any[]) => callback(_, ...args)
       ipcRenderer.on(channel, listener)
@@ -464,6 +594,16 @@ declare global {
         cancelSession: (sessionId: string, reason?: string) => Promise<any>
         getSessionProgress: (sessionId: string) => Promise<any>
         getSessionPendingDecisions: (sessionId: string) => Promise<any>
+      },
+      auth: {
+        login: (username: string, password: string) => Promise<any>
+        register: (username: string, email: string, password: string) => Promise<any>
+        checkUsername: (username: string) => Promise<{ success: boolean; available?: boolean; error?: string }>
+        logout: (token: string) => Promise<any>
+        verify: (token: string) => Promise<any>
+        getCurrentUser: (token: string) => Promise<any>
+        changePassword: (token: string, oldPassword: string, newPassword: string) => Promise<any>
+        forgotPassword: (email: string) => Promise<any>
       }
     }
   }

@@ -1,0 +1,85 @@
+{
+  "skills": [
+    {
+      "id": "skill_browse_simple",
+      "name": "简单浏览",
+      "description": "用户要求打开网页、播放视频、搜索等简单操作",
+      "triggerPatterns": [
+        "打开.*网页",
+        "播放.*视频",
+        "搜索.*",
+        "访问.*网站",
+        "帮.*打开"
+      ],
+      "complexityThreshold": 0.3,
+      "confidenceThreshold": 0.7,
+      "expectedBehavior": {
+        "recommendedSystem": "system1",
+        "requiresMultiStep": false
+      },
+      "statistics": {
+        "usageCount": 0,
+        "successCount": 0,
+        "avgDurationMs": 0,
+        "createdAt": 1771746512095,
+        "updateCount": 0
+      },
+      "trainingSamples": 0,
+      "version": 1
+    },
+    {
+      "id": "skill_code_explain",
+      "name": "代码解释",
+      "description": "用户要求解释代码、讲解概念",
+      "triggerPatterns": [
+        "解释.*代码",
+        "这是什么.*代码",
+        "这段代码.*",
+        "讲讲.*",
+        "说明.*"
+      ],
+      "complexityThreshold": 0.4,
+      "confidenceThreshold": 0.6,
+      "expectedBehavior": {
+        "recommendedSystem": "system1",
+        "requiresMultiStep": false
+      },
+      "statistics": {
+        "usageCount": 0,
+        "successCount": 0,
+        "avgDurationMs": 0,
+        "createdAt": 1771746512095,
+        "updateCount": 0
+      },
+      "trainingSamples": 0,
+      "version": 1
+    },
+    {
+      "id": "skill_complex_task",
+      "name": "复杂任务",
+      "description": "需要多步骤执行的复杂任务",
+      "triggerPatterns": [
+        ".*并且.*然后.*",
+        "先.*再.*",
+        "完成.*任务",
+        "帮我.*一下"
+      ],
+      "complexityThreshold": 0.7,
+      "confidenceThreshold": 0.5,
+      "expectedBehavior": {
+        "recommendedSystem": "system2",
+        "requiresMultiStep": true
+      },
+      "statistics": {
+        "usageCount": 0,
+        "successCount": 0,
+        "avgDurationMs": 0,
+        "createdAt": 1771746512095,
+        "updateCount": 0
+      },
+      "trainingSamples": 0,
+      "version": 1
+    }
+  ],
+  "updatedAt": 1771746512095
+}

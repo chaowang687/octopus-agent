@@ -19,7 +19,7 @@ export interface PathsConfig {
 
 export const PATHS: PathsConfig = {
   USER_HOME: process.env.HOME || os.homedir(),
-  PROJECT_ROOT: process.env.PROJECT_ROOT || path.join(os.homedir(), 'Desktop', '本地化TRAE'),
+  PROJECT_ROOT: process.env.PROJECT_ROOT || path.join(os.homedir(), 'Desktop', 'Octopus Agent'),
   DESKTOP: path.join(os.homedir(), 'Desktop'),
   DOCUMENTS: path.join(os.homedir(), 'Documents'),
   DOWNLOADS: path.join(os.homedir(), 'Downloads'),

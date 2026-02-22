@@ -277,13 +277,18 @@ export class ModelRouter {
   private config: ModelConfig
   
   constructor() {
-    this.configPath = path.join(app.getPath('userData'), 'model_router_config.json')
+    try {
+      this.configPath = path.join(app.getPath('userData'), 'model_router_config.json')
+    } catch (error) {
+      console.warn('Failed to get userData path for ModelRouter, using current directory:', error)
+      this.configPath = path.join(process.cwd(), 'model_router_config.json')
+    }
     this.config = this.loadConfig()
   }
 
   private loadConfig(): ModelConfig {
     try {
-if (fs.existsSync(this.configPath)) {
+      if (fs.existsSync(this.configPath)) {
         const data = JSON.parse(fs.readFileSync(this.configPath, 'utf8'))
         return { ...DEFAULT_CONFIG, ...data }
       }

@@ -3,6 +3,7 @@ import { toolRegistry } from './ToolRegistry'
 import { llmService } from '../services/LLMService'
 import type { ToolContext } from './ToolRegistry'
 import { enhancedReActEngine } from './EnhancedReActEngine'
+import { VerificationEngine, type VerificationResult, type TaskVerificationContext } from './VerificationEngine'
 import * as path from 'path'
 import { PATHS } from '../config/paths'
 import { config } from '../config/config'
@@ -32,10 +33,16 @@ export interface ExecutionProgressEvent {
 }
 
 export class Executor {
+  // 验证引擎实例
+  private verificationEngine: VerificationEngine
   // 执行结果缓存
   private executionCache: Map<string, any> = new Map()
   private cacheTimeout: Map<string, NodeJS.Timeout> = new Map()
   private cacheTTL: number = 3600000 // 缓存1小时
+  
+  constructor() {
+    this.verificationEngine = new VerificationEngine()
+  }
   
   private fixPath(filePath: string, taskDir?: string): string {
     if (!filePath) return filePath
@@ -174,6 +181,46 @@ export class Executor {
       }
       
       stepResults[step.id] = executionResult.result
+      
+      // ========== 步骤执行后验证 ==========
+      // 如果步骤有验收标准，执行验证
+      if (step.acceptanceCriteria && step.acceptanceCriteria.length > 0) {
+        console.log(`[Executor] Verifying step ${step.id} with ${step.acceptanceCriteria.length} acceptance criteria`)
+        
+        // 获取项目路径
+        const projectPath = ctx?.taskDir || PATHS.PROJECT_ROOT
+        
+        // 构建验证上下文
+        const verificationContext: TaskVerificationContext = {
+          taskId: step.id,
+          taskDescription: step.description,
+          acceptanceCriteria: step.acceptanceCriteria,
+          createdFiles: step.expectedFiles || this.extractFilesFromResult(executionResult.result),
+          projectPath
+        }
+        
+        // 执行验证
+        const verificationResult = await this.verificationEngine.verifyTask(verificationContext)
+        
+        // 更新步骤验证状态
+        step.verified = verificationResult.success
+        step.verificationMessage = verificationResult.message
+        
+        // 触发验证进度事件
+        onProgress?.({
+          type: verificationResult.success ? 'step_success' : 'step_error',
+          stepId: step.id,
+          tool: 'verification',
+          description: `Verification for step ${step.id}`,
+          resultSummary: verificationResult.message,
+          final: false
+        })
+        
+        // 如果验证失败，记录警告但继续执行（可以根据需求改为失败）
+        if (!verificationResult.success) {
+          console.warn(`[Executor] Step ${step.id} verification warnings:`, verificationResult.warnings)
+        }
+      }
     }
 
     return {
@@ -857,6 +904,54 @@ export class Executor {
     
     // 默认不可跳过
     return false
+  }
+
+  /**
+   * 从执行结果中提取创建的文件列表
+   * @param result 执行结果
+   * @returns 文件路径列表
+   */
+  private extractFilesFromResult(result: any): string[] {
+    const files: string[] = []
+    
+    if (!result) return files
+    
+    // 1. 检查 result.path (单个文件路径)
+    if (typeof result.path === 'string') {
+      files.push(result.path)
+    }
+    
+    // 2. 检查 result.filePath
+    if (typeof result.filePath === 'string') {
+      files.push(result.filePath)
+    }
+    
+    // 3. 检查 result.files (文件数组)
+    if (Array.isArray(result.files)) {
+      for (const f of result.files) {
+        if (typeof f === 'string') {
+          files.push(f)
+        } else if (f?.path) {
+          files.push(f.path)
+        }
+      }
+    }
+    
+    // 4. 检查 result.artifacts
+    if (Array.isArray(result.artifacts)) {
+      for (const a of result.artifacts) {
+        if (a?.path) {
+          files.push(a.path)
+        }
+      }
+    }
+    
+    // 5. 检查 result.outputPath
+    if (typeof result.outputPath === 'string') {
+      files.push(result.outputPath)
+    }
+    
+    return [...new Set(files)] // 去重
   }
 
   private async fixParameters(step: PlanStep, currentParams: any, error: string, model: string, signal?: AbortSignal): Promise<any> {

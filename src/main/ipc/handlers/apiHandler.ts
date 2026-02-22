@@ -7,8 +7,11 @@ import { llmService } from '../../services/LLMService'
 // API 相关的 IPC 处理器
 export function registerApiHandlers() {
   // 设置 API 密钥
-  ipcMain.handle('api:setKey', (_, model: string, key: string) => {
+  ipcMain.handle('api:setKey', (_, model: string, key: string, userId?: string) => {
     try {
+      if (userId) {
+        llmService.setUserId(userId)
+      }
       const success = llmService.setApiKey(model, key)
       return { success }
     } catch (error: any) {
@@ -18,12 +21,29 @@ export function registerApiHandlers() {
   })
 
   // 获取 API 密钥
-  ipcMain.handle('api:getKey', (_, model: string) => {
+  ipcMain.handle('api:getKey', (_, model: string, userId?: string) => {
     try {
+      if (userId) {
+        llmService.setUserId(userId)
+      }
       const key = llmService.getApiKey(model)
       return { success: true, key }
     } catch (error: any) {
       console.error('获取 API 密钥失败:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  // 删除 API 密钥
+  ipcMain.handle('api:deleteKey', (_, model: string, userId?: string) => {
+    try {
+      if (userId) {
+        llmService.setUserId(userId)
+      }
+      const success = llmService.deleteApiKey(model)
+      return { success }
+    } catch (error: any) {
+      console.error('删除 API 密钥失败:', error)
       return { success: false, error: error.message }
     }
   })

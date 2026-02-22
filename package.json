@@ -1,7 +1,7 @@
 {
-  "name": "localized-agent-coder",
+  "name": "octopus-agent",
   "version": "0.1.1",
-  "description": "macOS本地化智能体编码工具",
+  "description": "Octopus Agent - 智能体编码工具",
   "main": "dist/main/index.js",
   "scripts": {
     "dev": "bash scripts/copy-bridge.sh && electron-vite dev -- --no-sandbox --disable-gpu-sandbox",
@@ -17,14 +17,19 @@
     "install": "bash scripts/install.sh"
   },
   "build": {
-    "appId": "com.localized-agent.coder",
-    "productName": "本地化TRAE",
+    "appId": "com.octopus.agent",
+    "productName": "Octopus Agent",
     "directories": {
       "output": "release"
     },
     "files": [
       "dist/**/*"
     ],
+    "publish": {
+      "provider": "github",
+      "owner": "chaowang687",
+      "repo": "octopus-agent"
+    },
     "mac": {
       "icon": "build/icon.png",
       "category": "public.app-category.developer-tools",
@@ -53,7 +58,7 @@
         "width": 540,
         "height": 380
       },
-      "title": "本地化TRAE v${version} 安装程序"
+      "title": "Octopus Agent v${version} 安装程序"
     }
   },
   "keywords": [
@@ -63,12 +68,14 @@
     "tool",
     "macos"
   ],
-  "author": "Localized Agent",
+  "author": "Octopus Agent",
   "license": "MIT",
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
+    "@types/bcryptjs": "^2.4.6",
     "axios": "^1.6.0",
+    "bcryptjs": "^3.0.3",
     "chalk": "^5.3.0",
     "chart.js": "^4.5.1",
     "commander": "^11.0.0",
@@ -98,6 +105,7 @@
     "@typescript-eslint/parser": "^6.0.0",
     "@vitejs/plugin-react": "^4.0.0",
     "electron": "^40.6.0",
+    "electron-builder": "^26.8.1",
     "electron-vite": "^1.0.29",
     "eslint": "^8.0.0",
     "eslint-plugin-react": "^7.30.0",

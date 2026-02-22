@@ -37,7 +37,7 @@ export class WorkspaceManager {
     } catch (error) {
       // 如果失败，使用系统临时目录
       console.warn(`[WorkspaceManager] 使用项目目录失败，回退到临时目录:`, error)
-      this.workspaceRoot = path.join(os.tmpdir(), '本地化TRAE-workspaces', this.sessionId)
+      this.workspaceRoot = path.join(os.tmpdir(), 'Octopus-Agent-workspaces', this.sessionId)
       this.ensureWorkspaceExists()
     }
   }

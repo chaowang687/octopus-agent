@@ -164,8 +164,16 @@ export class SystemService {
   constructor() {
     this.lruCache = new LRUCache()
     this.semanticCache = new SemanticCache()
-    this.knowledgeDistillationPath = path.join(app.getPath('userData'), 'knowledge_distillation.json')
-    this.sharedContextPath = path.join(app.getPath('userData'), 'shared_context.json')
+    
+    try {
+      this.knowledgeDistillationPath = path.join(app.getPath('userData'), 'knowledge_distillation.json')
+      this.sharedContextPath = path.join(app.getPath('userData'), 'shared_context.json')
+    } catch (error) {
+      console.warn('Failed to get userData path, using current directory:', error)
+      this.knowledgeDistillationPath = path.join(process.cwd(), 'knowledge_distillation.json')
+      this.sharedContextPath = path.join(process.cwd(), 'shared_context.json')
+    }
+    
     this.ensureKnowledgeDistillationFile()
     this.ensureSharedContextFile()
   }

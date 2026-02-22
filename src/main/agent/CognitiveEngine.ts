@@ -209,7 +209,12 @@ export class CognitiveEngine {
   }
 
   constructor() {
-    this.dataPath = path.join(app.getPath('userData'), 'cognitive')
+    try {
+      this.dataPath = path.join(app.getPath('userData'), 'cognitive')
+    } catch (error) {
+      console.warn('Failed to get userData path for CognitiveEngine, using current directory:', error)
+      this.dataPath = path.join(process.cwd(), 'cognitive')
+    }
     this.tracesPath = path.join(this.dataPath, 'traces')
     this.skillsPath = path.join(this.dataPath, 'skills.json')
     this.configPath = path.join(this.dataPath, 'config.json')

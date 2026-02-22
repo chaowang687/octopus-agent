@@ -71,7 +71,7 @@ const ProjectManagement: React.FC = () => {
 
   const loadFileSystemProjects = async () => {
     try {
-      const projectsDir = '/Users/wangchao/Desktop/本地化TRAE/projects'
+      const projectsDir = '/Users/wangchao/Desktop/Octopus Agent/projects'
       const result = await window.electron.fs.scanProjectsDirectory(projectsDir)
       if (result.success && result.projects) {
         setFileSystemProjects(result.projects)

@@ -10,16 +10,22 @@ interface ApiKey {
 const ApiManagement: React.FC = () => {
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([])
   const [loading, setLoading] = useState(true)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchApiKeys = async () => {
       try {
+        const currentUserStr = localStorage.getItem('currentUser')
+        const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null
+        const userId = currentUser?.id || null
+        setCurrentUserId(userId)
+        
         const [openaiKey, claudeKey, minimaxKey, deepseekKey, doubaoKey] = await Promise.all([
-          window.electron.api.getApiKey('openai'),
-          window.electron.api.getApiKey('claude'),
-          window.electron.api.getApiKey('minimax'),
-          window.electron.api.getApiKey('deepseek'),
-          window.electron.api.getApiKey('doubao')
+          window.electron.api.getApiKey('openai', userId),
+          window.electron.api.getApiKey('claude', userId),
+          window.electron.api.getApiKey('minimax', userId),
+          window.electron.api.getApiKey('deepseek', userId),
+          window.electron.api.getApiKey('doubao', userId)
         ])
         
         const keys: ApiKey[] = [
@@ -42,7 +48,7 @@ const ApiManagement: React.FC = () => {
 
   const handleSetApiKey = async (model: string, key: string) => {
     try {
-      await window.electron.api.setApiKey(model, key)
+      await window.electron.api.setApiKey(model, key, currentUserId)
       setApiKeys(prev => prev.map(k => k.model === model ? { ...k, key, isValid: true } : k))
     } catch (error) {
       console.error(error)

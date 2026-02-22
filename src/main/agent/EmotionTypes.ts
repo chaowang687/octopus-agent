@@ -175,7 +175,12 @@ export class EmotionProcessor {
   // ]
 
   constructor() {
-    this.dataPath = path.join(app.getPath('userData'), 'cognitive', 'emotion')
+    try {
+      this.dataPath = path.join(app.getPath('userData'), 'cognitive', 'emotion')
+    } catch (error) {
+      console.warn('Failed to get userData path for EmotionProcessor, using current directory:', error)
+      this.dataPath = path.join(process.cwd(), 'cognitive', 'emotion')
+    }
     this.ensureDirectories()
   }
 

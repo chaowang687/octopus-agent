@@ -1,5 +1,6 @@
 import * as fs from 'fs'
 import * as path from 'path'
+import * as crypto from 'crypto'
 import { app, safeStorage } from 'electron'
 
 export interface LLMResponse {
@@ -59,13 +60,75 @@ export class LLMService {
   
   // 缓存过期时间（毫秒）
   private cacheTTL = 5 * 60 * 1000 // 5分钟
+  
+  // 备用加密密钥（当safeStorage不可用时使用）
+  private fallbackKey: Buffer | null = null
+  
+  // 当前用户ID（用于用户级别的API密钥隔离）
+  private currentUserId: string | null = null
 
   constructor() {
+  }
+  
+  // 设置当前用户ID
+  public setUserId(userId: string | null): void {
+    this.currentUserId = userId
+    // 清除缓存，因为用户切换了
+    this.apiKeyCache.clear()
+  }
+  
+  // 获取当前用户ID
+  public getCurrentUserId(): string | null {
+    return this.currentUserId
+  }
+  
+  // 获取或创建备用加密密钥
+  private getOrCreateFallbackKey(): Buffer {
+    if (this.fallbackKey) {
+      return this.fallbackKey
+    }
+    
+    const keyPath = path.join(app.getPath('userData'), '.encryption_key')
+    try {
+      if (fs.existsSync(keyPath)) {
+        const key = fs.readFileSync(keyPath)
+        if (key.length === 32) {
+          this.fallbackKey = key
+          return key
+        }
+      }
+      const newKey = crypto.randomBytes(32)
+      fs.writeFileSync(keyPath, newKey, { mode: 0o600 })
+      this.fallbackKey = newKey
+      return newKey
+    } catch (error) {
+      console.error('Failed to get or create fallback encryption key:', error)
+      const newKey = crypto.randomBytes(32)
+      this.fallbackKey = newKey
+      return newKey
+    }
   }
 
   // 动态获取API密钥文件路径
   private get apiKeysPath(): string {
-    return path.join(app.getPath('userData'), 'apiKeys.json')
+    if (this.currentUserId) {
+      // 用户级别存储：userData/users/{userId}/apiKeys.json
+      const userDir = path.join(app.getPath('userData'), 'users', this.currentUserId)
+      return path.join(userDir, 'apiKeys.json')
+    } else {
+      // 全局存储（向后兼容）
+      return path.join(app.getPath('userData'), 'apiKeys.json')
+    }
+  }
+  
+  // 确保用户API密钥目录存在
+  private ensureUserApiKeyDir(): void {
+    if (this.currentUserId) {
+      const userDir = path.join(app.getPath('userData'), 'users', this.currentUserId)
+      if (!fs.existsSync(userDir)) {
+        fs.mkdirSync(userDir, { recursive: true, mode: 0o700 })
+      }
+    }
   }
 
   public getApiKey(model: string): string | null {
@@ -160,6 +223,9 @@ export class LLMService {
 
   public setApiKey(model: string, key: string): boolean {
     try {
+      // 确保用户API密钥目录存在
+      this.ensureUserApiKeyDir()
+      
       let apiKeys: any = {}
       if (fs.existsSync(this.apiKeysPath)) {
         apiKeys = JSON.parse(fs.readFileSync(this.apiKeysPath, 'utf8'))
@@ -167,7 +233,7 @@ export class LLMService {
       
       // 加密存储 API 密钥
       apiKeys[model] = this.encryptApiKey(key)
-      fs.writeFileSync(this.apiKeysPath, JSON.stringify(apiKeys, null, 2))
+      fs.writeFileSync(this.apiKeysPath, JSON.stringify(apiKeys, null, 2), { mode: 0o600 })
       
       // 清除对应缓存，确保下次获取时能获取到新的密钥
       this.apiKeyCache.delete(model)
@@ -183,50 +249,54 @@ export class LLMService {
     try {
       if (safeStorage.isEncryptionAvailable()) {
         const encrypted = safeStorage.encryptString(key)
-        return encrypted.toString('base64')
+        return 'safe:' + encrypted.toString('base64')
       }
-      // 如果加密不可用，返回原始密钥（仅用于开发环境）
-      return key
+      
+      // 确保fallbackKey已初始化
+      const keyBuffer = this.getOrCreateFallbackKey()
+      
+      // 使用AES-256-CBC备用加密
+      const iv = crypto.randomBytes(16)
+      const cipher = crypto.createCipheriv('aes-256-cbc', keyBuffer, iv)
+      let encrypted = cipher.update(key, 'utf8', 'hex')
+      encrypted += cipher.final('hex')
+      return 'fallback:' + iv.toString('hex') + ':' + encrypted
     } catch (error) {
       console.error('Failed to encrypt API key:', error)
-      return key
+      throw new Error('API密钥加密失败')
     }
   }
 
   private decryptApiKey(encryptedKey: string): string {
     try {
-      // 先检查是否是有效的base64编码
-      const isValidBase64 = (str: string): boolean => {
-        try {
-          Buffer.from(str, 'base64')
-          return true
-        } catch {
-          return false
+      // 检查加密类型
+      if (encryptedKey.startsWith('safe:')) {
+        // 使用safeStorage解密
+        const base64Key = encryptedKey.substring(5)
+        const encrypted = Buffer.from(base64Key, 'base64')
+        return safeStorage.decryptString(encrypted)
+      } else if (encryptedKey.startsWith('fallback:')) {
+        // 确保fallbackKey已初始化
+        const keyBuffer = this.getOrCreateFallbackKey()
+        
+        // 使用AES-256-CBC解密
+        const parts = encryptedKey.substring(9).split(':')
+        if (parts.length === 2) {
+          const iv = Buffer.from(parts[0], 'hex')
+          const encrypted = parts[1]
+          const decipher = crypto.createDecipheriv('aes-256-cbc', keyBuffer, iv)
+          let decrypted = decipher.update(encrypted, 'hex', 'utf8')
+          decrypted += decipher.final('utf8')
+          return decrypted
         }
       }
       
-      // 如果不是有效的base64或者长度不够，直接返回原始值
-      if (!isValidBase64(encryptedKey) || encryptedKey.length < 32) {
-        return encryptedKey
-      }
-      
-      // 尝试解密
-      if (safeStorage.isEncryptionAvailable()) {
-        try {
-          const buffer = Buffer.from(encryptedKey, 'base64')
-          return safeStorage.decryptString(buffer)
-        } catch (decryptError: any) {
-          // 解密失败，可能是未加密的密钥，返回原始值
-          console.warn('解密API密钥失败，使用原始值:', decryptError.message)
-          return encryptedKey
-        }
-      }
-      
-      // 安全存储不可用，返回原始值
+      // 兼容旧的明文格式（但记录警告）
+      console.warn('警告: 发现未加密的API密钥，建议重新设置')
       return encryptedKey
-    } catch (error: any) {
-      console.error('解密API密钥时出错:', error)
-      return encryptedKey
+    } catch (error) {
+      console.error('Failed to decrypt API key:', error)
+      throw new Error('API密钥解密失败')
     }
   }
 
@@ -247,6 +317,66 @@ export class LLMService {
       console.error('Failed to read API keys:', error)
     }
     return []
+  }
+  
+  // 删除API密钥
+  public deleteApiKey(model: string): boolean {
+    try {
+      if (!fs.existsSync(this.apiKeysPath)) {
+        return false
+      }
+      
+      const apiKeys = JSON.parse(fs.readFileSync(this.apiKeysPath, 'utf8'))
+      if (apiKeys[model]) {
+        delete apiKeys[model]
+        fs.writeFileSync(this.apiKeysPath, JSON.stringify(apiKeys, null, 2), { mode: 0o600 })
+        // 清除缓存
+        this.apiKeyCache.delete(model)
+        return true
+      }
+      return false
+    } catch (error) {
+      console.error('Failed to delete API key:', error)
+      return false
+    }
+  }
+  
+  // 迁移旧的全局API密钥到用户目录
+  public migrateGlobalApiKeys(userId: string): void {
+    try {
+      const globalPath = path.join(app.getPath('userData'), 'apiKeys.json')
+      if (!fs.existsSync(globalPath)) {
+        return
+      }
+      
+      const globalKeys = JSON.parse(fs.readFileSync(globalPath, 'utf8'))
+      if (Object.keys(globalKeys).length === 0) {
+        return
+      }
+      
+      // 设置用户ID
+      this.setUserId(userId)
+      
+      // 确保用户目录存在
+      this.ensureUserApiKeyDir()
+      
+      // 读取用户现有的API密钥
+      let userKeys: any = {}
+      if (fs.existsSync(this.apiKeysPath)) {
+        userKeys = JSON.parse(fs.readFileSync(this.apiKeysPath, 'utf8'))
+      }
+      
+      // 合并密钥（用户密钥优先）
+      const mergedKeys = { ...globalKeys, ...userKeys }
+      fs.writeFileSync(this.apiKeysPath, JSON.stringify(mergedKeys, null, 2), { mode: 0o600 })
+      
+      // 删除全局密钥文件
+      fs.unlinkSync(globalPath)
+      
+      console.log(`已将 ${Object.keys(globalKeys).length} 个API密钥从全局迁移到用户 ${userId}`)
+    } catch (error) {
+      console.error('Failed to migrate API keys:', error)
+    }
   }
 
   async chat(model: string, messages: LLMMessage[], options: any = {}): Promise<LLMResponse> {

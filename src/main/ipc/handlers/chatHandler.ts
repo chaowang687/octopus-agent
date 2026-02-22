@@ -55,4 +55,19 @@ export function registerChatHandlers() {
       mainWindow.webContents.send('chat:stream', data)
     }
   })
+
+  // 监听 TaskEngine 的 progress 事件（包括系统一的流式输出）
+  taskEngine.on('progress', (data) => {
+    const mainWindow = getMainWindow()
+    if (mainWindow) {
+      // 如果是流式事件，发送到 chat:stream 通道
+      if (data.type === 'stream') {
+        mainWindow.webContents.send('chat:stream', {
+          agentId: 'system1',
+          delta: data.content,
+          done: data.done
+        })
+      }
+    }
+  })
 }

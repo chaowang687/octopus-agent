@@ -27,6 +27,12 @@ export interface PlanStep {
   // 状态管理
   status: StepStatus
   
+  // 验收标准 - 用于验证任务是否真正完成
+  acceptanceCriteria?: string[]
+  
+  // 预期创建的文件
+  expectedFiles?: string[]
+  
   // 决策解释
   reasoning?: string          // 此步骤的选择理由
   alternatives?: string[]     // 考虑的替代方案
@@ -47,6 +53,10 @@ export interface PlanStep {
   error?: string
   startTime?: number
   endTime?: number
+  
+  // 验证结果
+  verified?: boolean
+  verificationMessage?: string
 }
 
 // ============================================
@@ -141,7 +151,26 @@ CRITICAL REQUIREMENTS:
 7. For web applications, ALWAYS create: HTML file, CSS file, JavaScript file
 8. For React/Vue projects, ALWAYS include: npm init, npm install, and build steps
 
-9. CRITICAL: When using execute_command, ensure proper shell syntax:
+9. CRITICAL: Each step MUST include "acceptanceCriteria" - how you will verify this step was actually completed
+10. CRITICAL: Each step MUST include "expectedFiles" - list of files this step should create/modify
+11. CRITICAL: Write REAL implementation code, not placeholder code. Empty functions, TODO comments will be rejected.
+
+VERIFICATION RULES:
+- "write_file" step: acceptanceCriteria should check file exists and contains actual code (>100 bytes)
+- "execute_command" step: acceptanceCriteria should check command exits with code 0
+- Each step must specify what "success" looks like
+
+Example step format:
+{
+  "id": "step_1",
+  "tool": "write_file",
+  "parameters": {"path": "${taskDir}/index.html", "content": "<!DOCTYPE html>..."},
+  "description": "Create main HTML file with grid layout",
+  "acceptanceCriteria": ["File exists", "File size > 500 bytes", "Contains <table> or grid div"],
+  "expectedFiles": ["${taskDir}/index.html"]
+}
+
+12. CRITICAL: When using execute_command, ensure proper shell syntax:
    
    WRONG: "find /path -name '*.js' head -20"
    RIGHT: "find /path -name '*.js' | head -20"
@@ -165,9 +194,9 @@ IMPORTANT: Use the task directory "${taskDir}" for all file operations. Do NOT u
 
 Output format (MUST follow this structure):
 {"reasoning": "I will create a complete project with all necessary files", "steps": [
-  {"id": "step_1", "tool": "create_directory", "parameters": {"path": "${taskDir}"}, "description": "Create project directory"},
-  {"id": "step_2", "tool": "write_file", "parameters": {"path": "${taskDir}/index.html", "content": "<!DOCTYPE html>..."}, "description": "Create main HTML file"},
-  {"id": "step_3", "tool": "write_file", "parameters": {"path": "${taskDir}/style.css", "content": "body { ... }"}, "description": "Create CSS file"},
+  {"id": "step_1", "tool": "create_directory", "parameters": {"path": "${taskDir}"}, "description": "Create project directory", "acceptanceCriteria": ["Directory exists"], "expectedFiles": []},
+  {"id": "step_2", "tool": "write_file", "parameters": {"path": "${taskDir}/index.html", "content": "<!DOCTYPE html>..."}, "description": "Create main HTML file", "acceptanceCriteria": ["File exists", "File size > 500 bytes"], "expectedFiles": ["${taskDir}/index.html"]},
+  {"id": "step_3", "tool": "write_file", "parameters": {"path": "${taskDir}/style.css", "content": "body { ... }"}, "description": "Create CSS file", "acceptanceCriteria": ["File exists", "Contains CSS rules"], "expectedFiles": ["${taskDir}/style.css"]},
   {"id": "step_4", "tool": "write_file", "parameters": {"path": "${taskDir}/app.js", "content": "document.addEventListener..."}, "description": "Create JavaScript file"},
   {"id": "step_5", "tool": "execute_command", "parameters": {"command": "cd ${taskDir} && npm init -y"}, "description": "Initialize npm project"},
   {"id": "step_6", "tool": "execute_command", "parameters": {"command": "cd ${taskDir} && ls -la"}, "description": "Verify project structure"}

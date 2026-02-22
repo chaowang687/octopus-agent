@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# 本地化TRAE 安装脚本
+# Octopus Agent 安装脚本
 # 处理依赖安装、权限检查和环境兼容性
 
 set -e
@@ -11,7 +11,7 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_ROOT"
 
 echo "========================================"
-echo "本地化TRAE 安装脚本"
+echo "Octopus Agent 安装脚本"
 echo "========================================"
 
 # 1. 环境检查

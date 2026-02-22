@@ -4,6 +4,7 @@ import ChatSidebar from '../components/ChatSidebar'
 import CreateGroupModal from '../components/CreateGroupModal'
 import ReasoningVisualizer from '../components/ReasoningVisualizer'
 import InterventionModal from '../components/InterventionModal'
+import CollaborationModal from '../components/CollaborationModal'
 import { chatDataService, ChatSession } from '../services/ChatDataService'
 
 interface Message {
@@ -377,6 +378,9 @@ const Chat: React.FC = () => {
   // === 新增：干预审批弹窗状态 ===
   const [interventionRequest, setInterventionRequest] = useState<any>(null)
   
+  // === 新增：协作方案确认弹窗状态 ===
+  const [collaborationRequest, setCollaborationRequest] = useState<any>(null)
+  
   const [activeTab, setActiveTab] = useState<'progress' | 'files' | 'history'>('progress')
 
   // 双系统状态
@@ -483,11 +487,15 @@ const Chat: React.FC = () => {
   useEffect(() => {
     // Check available models
     const checkModels = async () => {
+      const currentUserStr = localStorage.getItem('currentUser')
+      const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null
+      const userId = currentUser?.id || null
+      
       const modelsToCheck = ['openai', 'claude', 'minimax', 'deepseek']
       const configuredModels: string[] = []
       
       for (const model of modelsToCheck) {
-        const key = await window.electron.api.getApiKey(model)
+        const key = await window.electron.api.getApiKey(model, userId)
         if (key) {
           configuredModels.push(model)
         }
@@ -1188,10 +1196,19 @@ const Chat: React.FC = () => {
     // 监听来自主进程的流式事件
     window.electron.ipcRenderer.on('chat:stream', handleStream)
 
+    // 监听协作方案请求事件
+    const unsubscribeCollaboration = window.electron.collab.onRequest((request) => {
+      console.log('[Chat] 收到协作请求:', request)
+      setCollaborationRequest(request)
+    })
+
     return () => {
       // 确保ipcRenderer仍然存在
       if (window.electron && window.electron.ipcRenderer) {
         window.electron.ipcRenderer.removeListener('chat:stream', handleStream)
+      }
+      if (unsubscribeCollaboration) {
+        unsubscribeCollaboration()
       }
     }
   }, [])
@@ -2621,6 +2638,32 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
         onModify={async (_requestId: string, modifiedValue: any, _response?: string) => {
           console.log('[Chat] 修改干预请求:', _requestId, modifiedValue)
           setInterventionRequest(null)
+        }}
+      />
+      
+      {/* === 新增：协作方案确认弹窗 === */}
+      <CollaborationModal
+        request={collaborationRequest}
+        onApprove={async (requestId: string, response?: string) => {
+          console.log('[Chat] 批准协作方案:', requestId)
+          await window.electron.collab.approve(requestId, response)
+          setCollaborationRequest(null)
+        }}
+        onReject={async (requestId: string, reason?: string) => {
+          console.log('[Chat] 拒绝协作方案:', requestId, reason)
+          await window.electron.collab.reject(requestId, reason)
+          setCollaborationRequest(null)
+        }}
+        onModify={async (requestId: string, modifiedParams: any, response?: string) => {
+          console.log('[Chat] 修改协作方案:', requestId, modifiedParams)
+          await window.electron.collab.modify(requestId, modifiedParams, response)
+          setCollaborationRequest(null)
+        }}
+        onContinue={async (requestId: string, instruction: string) => {
+          console.log('[Chat] 继续完善方案:', requestId, instruction)
+          // 发送用户指令到后端，后端会根据指令重新生成方案
+          await window.electron.collab.modify(requestId, { instruction }, instruction)
+          setCollaborationRequest(null)
         }}
       />
       

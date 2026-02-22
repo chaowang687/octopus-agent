@@ -224,7 +224,13 @@ class ProjectContextManager {
   private contextFile: string
 
   constructor() {
-    const userDataPath = app.getPath('userData')
+    let userDataPath
+    try {
+      userDataPath = app.getPath('userData')
+    } catch (error) {
+      console.warn('Failed to get userData path for ProjectContextManager, using current directory:', error)
+      userDataPath = process.cwd()
+    }
     this.contextFile = path.join(userDataPath, 'omni_agent_projects.json')
     this.loadProjects()
   }

@@ -1,9 +1,12 @@
 import { EventEmitter } from 'events'
 import { llmService, LLMMessage } from '../services/LLMService'
 import { WorkspaceManager } from '../services/WorkspaceManager'
+import { VerificationEngine, type VerificationResult, type TaskVerificationContext } from './VerificationEngine'
 import { smartButlerAgent } from './SmartButlerAgent'
 import { SmartButlerExpert } from './SmartButlerExpert'
 import { getProjectTemplate } from './templates/projectTemplates'
+import { collaborationManager, CollaborationPhase } from '../ipc/handlers/collaborationHandler'
+import { TaskStateManager, TaskState } from './TaskStateManager'
 import * as path from 'path'
 import * as fs from 'fs'
 
@@ -98,6 +101,14 @@ export class MultiAgentCoordinator extends EventEmitter {
     taskPriorities: new Map<string, 'low' | 'medium' | 'high'>()
   }
   
+  // 任务状态管理器
+  private taskStateManager: TaskStateManager
+  private currentTaskId: string | null = null
+  private isPaused: boolean = false
+  
+  // 验证引擎
+  private verificationEngine: VerificationEngine
+  
   // 任务阶段配置
   private phases: CollaborationPhase[] = [
     { name: 'analysis', agents: ['document_generator'], description: '需求分析与规划', completed: false },
@@ -113,6 +124,122 @@ export class MultiAgentCoordinator extends EventEmitter {
     this.initializeAgents()
     this.initializeButler()
     this.workspaceManager = new WorkspaceManager()
+    this.taskStateManager = new TaskStateManager()
+    this.verificationEngine = new VerificationEngine()
+  }
+  
+  // ===== 文档管理辅助方法 =====
+  
+  /**
+   * 保存或更新文档文件
+   */
+  private async saveDocument(
+    docName: string,
+    content: string,
+    projectPath: string
+  ): Promise<string> {
+    const docDir = path.join(projectPath, 'docs')
+    const docPath = path.join(docDir, `${docName}.md`)
+    
+    // 创建 docs 目录
+    if (!fs.existsSync(docDir)) {
+      fs.mkdirSync(docDir, { recursive: true, mode: 0o755 })
+    }
+    
+    // 添加版本信息
+    const versionInfo = this.currentTaskId 
+      ? `\n<!-- 版本: ${Date.now()} -->\n`
+      : ''
+    
+    const fullContent = `# ${docName.replace(/_/g, ' ')}\n\n${versionInfo}${content}\n`
+    
+    fs.writeFileSync(docPath, fullContent, 'utf-8')
+    console.log(`[MultiAgentCoordinator] 文档已保存: ${docPath}`)
+    
+    return docPath
+  }
+  
+  /**
+   * 读取已有文档内容
+   */
+  private async readDocument(docName: string, projectPath: string): Promise<string | null> {
+    const docPath = path.join(projectPath, 'docs', `${docName}.md`)
+    
+    if (!fs.existsSync(docPath)) {
+      return null
+    }
+    
+    try {
+      return fs.readFileSync(docPath, 'utf-8')
+    } catch (error) {
+      console.warn(`[MultiAgentCoordinator] 读取文档失败: ${docPath}`)
+      return null
+    }
+  }
+  
+  /**
+   * 生成增量修改的 prompt
+   */
+  private buildIncrementalPrompt(
+    task: string,
+    originalContent: string,
+    userFeedback: string,
+    modificationType: 'pm' | 'design' | 'code'
+  ): string {
+    const instructions = {
+      pm: `你是项目经理。请根据用户反馈修改需求文档。
+
+## 原需求文档：
+${originalContent}
+
+## 用户反馈：
+${userFeedback}
+
+## 任务：
+请基于原文档和用户反馈，进行增量修改（即只修改需要改动的部分，不要完全重写）。
+修改后的文档应该：
+1. 保留原文档中用户满意的部分
+2. 根据反馈进行针对性修改
+3. 保持文档结构清晰
+
+请直接返回修改后的完整需求文档，不要添加任何解释。`,
+      
+      design: `你是UI设计师。请根据用户反馈修改UI设计方案。
+
+## 原有UI设计：
+${originalContent}
+
+## 用户反馈：
+${userFeedback}
+
+## 任务：
+请基于原设计和用户反馈，进行增量修改。
+修改后的设计应该：
+1. 保留原设计中用户满意的部分
+2. 根据反馈进行针对性修改
+3. 保持设计完整性
+
+请直接返回修改后的完整UI设计方案，不要添加任何解释。`,
+      
+      code: `你是全栈开发工程师。请根据用户反馈修改代码。
+
+## 原代码方案：
+${originalContent}
+
+## 用户反馈：
+${userFeedback}
+
+## 任务：
+请基于原方案和用户反馈，进行增量修改。
+修改后的代码应该：
+1. 尽量保留原代码中用户满意的部分
+2. 根据反馈进行针对性修改
+3. 确保代码完整可运行
+
+请直接返回修改后的完整代码方案（JSON格式），不要添加任何解释。`
+    }
+    
+    return instructions[modificationType]
   }
 
   private initializeButler() {
@@ -390,7 +517,7 @@ ${planResult}`,
       }
     }
     
-    const analysisResult = await this.executeAgentTask(
+    let analysisResult = await this.executeAgentTask(
       pmAgent,
       `请分析以下需求，提供详细的技术方案和实现步骤：
 
@@ -420,6 +547,133 @@ ${planResult}`,
     this.collaborationHistory.push(analysisMsg)
     onAgentMessage(analysisMsg)
     
+    // 保存分析结果
+    this.savePhaseState('analysis', analysisResult)
+    
+    // 同步保存 .md 文档（使用原有路径）
+    if (taskDir) {
+      const projectDocPath = path.join(taskDir, 'project')
+      if (!fs.existsSync(projectDocPath)) {
+        fs.mkdirSync(projectDocPath, { recursive: true })
+      }
+      const docPath = path.join(projectDocPath, '01_需求分析.md')
+      fs.writeFileSync(docPath, `# 需求分析\n\n${analysisResult}`, 'utf-8')
+      console.log(`[MultiAgentCoordinator] 需求分析已保存: ${docPath}`)
+    }
+    
+    // === PM阶段多轮迭代确认 ===
+    let pmConfirmed = false
+    let pmIteration = 0
+    const maxPMPages = 3 // 最多迭代3轮
+    
+    while (!pmConfirmed && pmIteration < maxPMPages) {
+      try {
+        const options = pmIteration === 0 
+          ? ['确认方案', '需要修改']
+          : ['确认方案', '仍需修改', '简化需求', '增加功能']
+          
+        const collaborationRequest = await collaborationManager.requestCollaboration(
+          `task_${Date.now()}`,
+          CollaborationPhase.REQUIREMENTS,
+          pmIteration === 0 ? '需求分析完成' : `需求分析 (第${pmIteration + 1}次修改)`,
+          pmIteration === 0 
+            ? 'PM已完成需求分析，请确认方案是否满足您的需求'
+            : '已根据您的反馈更新方案，请再次确认',
+          { task: instruction, analysis: analysisResult },
+          options
+        )
+        
+        if (collaborationRequest.status === 'approved') {
+          // 用户确认方案合格
+          pmConfirmed = true
+          onAgentMessage({
+            agentId: pmAgent.id,
+            agentName: pmAgent.name,
+            role: pmAgent.role,
+            content: `✅ 用户已确认需求方案，进入下一阶段。`,
+            timestamp: Date.now(),
+            phase: '需求分析',
+            messageType: 'response'
+          })
+          break
+        }
+        
+        // 用户需要修改
+        onAgentMessage({
+          agentId: pmAgent.id,
+          agentName: pmAgent.name,
+          role: pmAgent.role,
+          content: `📝 用户反馈 (第${pmIteration + 1}次)：${collaborationRequest.userFeedback}\n\n请根据反馈修改需求文档。`,
+          timestamp: Date.now(),
+          phase: '需求分析',
+          messageType: 'question'
+        })
+        
+        // 检查是否暂停
+        if (this.checkPaused()) {
+          return { success: false, error: '用户暂停任务' }
+        }
+        
+        // 增量修改分析结果
+        pmIteration++
+        
+        // 使用增量修改 prompt
+        const incrementalPrompt = this.buildIncrementalPrompt(
+          instruction,
+          analysisResult,
+          collaborationRequest.userFeedback,
+          'pm'
+        )
+        
+        const reAnalysisResult = await this.executeAgentTask(
+          pmAgent,
+          incrementalPrompt,
+          {}
+        )
+        
+        analysisResult = reAnalysisResult
+        this.savePhaseState('analysis', analysisResult)
+        
+        // 同步更新 .md 文档
+        if (taskDir) {
+          const docPath = path.join(taskDir, 'project', '01_需求分析.md')
+          fs.writeFileSync(docPath, `# 需求分析 (第${pmIteration}次修改)\n\n${analysisResult}`, 'utf-8')
+          console.log(`[MultiAgentCoordinator] 需求分析已更新: ${docPath}`)
+        }
+        
+        // 发送更新后的分析结果
+        const reAnalysisMsg: AgentMessage = {
+          agentId: pmAgent.id,
+          agentName: pmAgent.name,
+          role: pmAgent.role,
+          content: `📝 需求文档已更新 (第${pmIteration + 1}次)：\n\n${analysisResult}`,
+          timestamp: Date.now(),
+          phase: '需求分析',
+          messageType: 'response',
+          priority: 'medium'
+        }
+        this.collaborationHistory.push(reAnalysisMsg)
+        onAgentMessage(reAnalysisMsg)
+        
+      } catch (error) {
+        console.warn('[MultiAgentCoordinator] PM确认跳过:', error)
+        pmConfirmed = true // 出错时继续执行
+        break
+      }
+    }
+    
+    if (!pmConfirmed && pmIteration >= maxPMPages) {
+      onAgentMessage({
+        agentId: 'system',
+        agentName: '系统',
+        role: '协调员',
+        content: `⚠️ 已达到最大迭代次数 (${maxPMPages}次)，强制进入下一阶段。`,
+        timestamp: Date.now(),
+        phase: '需求分析',
+        messageType: 'warning'
+      })
+    }
+    
     analysisPhase.completed = true
 
     // 发送交接消息 - 告诉用户下一个智能体将接手
@@ -443,7 +697,7 @@ ${planResult}`,
     const uiAgent = this.agents.get('ui_designer')!
     uiAgent.status = 'working'
     
-    const designResult = await this.executeAgentTask(
+    let designResult = await this.executeAgentTask(
       uiAgent,
       `基于以下需求，提供UI设计方案：
 
@@ -476,6 +730,125 @@ ${analysisResult}
     this.collaborationHistory.push(designMsg)
     onAgentMessage(designMsg)
     
+    // 保存设计结果
+    this.savePhaseState('design', designResult)
+    
+    // 同步保存 .md 文档
+    if (taskDir) {
+      const docPath = path.join(taskDir, 'project', '02_UI设计.md')
+      fs.writeFileSync(docPath, `# UI设计\n\n${designResult}`, 'utf-8')
+      console.log(`[MultiAgentCoordinator] UI设计已保存: ${docPath}`)
+    }
+    
+    // === UI设计多轮迭代确认 ===
+    let designConfirmed = false
+    let designIteration = 0
+    const maxDesignIterations = 3
+    
+    while (!designConfirmed && designIteration < maxDesignIterations) {
+      try {
+        const options = designIteration === 0
+          ? ['确认设计', '需要修改']
+          : ['确认设计', '仍需修改', '简化界面', '增加效果']
+          
+        const archCollaborationRequest = await collaborationManager.requestCollaboration(
+          `task_${Date.now()}`,
+          CollaborationPhase.ARCHITECTURE,
+          designIteration === 0 ? 'UI设计完成' : `UI设计 (第${designIteration + 1}次修改)`,
+          designIteration === 0
+            ? 'UI设计师已完成界面设计，请确认是否满足需求'
+            : '已根据您的反馈更新设计，请再次确认',
+          { task: instruction, analysis: analysisResult, design: designResult },
+          options
+        )
+        
+        if (archCollaborationRequest.status === 'approved') {
+          designConfirmed = true
+          onAgentMessage({
+            agentId: uiAgent.id,
+            agentName: uiAgent.name,
+            role: uiAgent.role,
+            content: `✅ 用户已确认UI设计，进入下一阶段。`,
+            timestamp: Date.now(),
+            phase: 'UI设计',
+            messageType: 'response'
+          })
+          break
+        }
+        
+        // 用户需要修改
+        onAgentMessage({
+          agentId: uiAgent.id,
+          agentName: uiAgent.name,
+          role: uiAgent.role,
+          content: `📝 用户反馈 (第${designIteration + 1}次)：${archCollaborationRequest.userFeedback}\n\n请根据反馈修改UI设计。`,
+          timestamp: Date.now(),
+          phase: 'UI设计',
+          messageType: 'question'
+        })
+        
+        if (this.checkPaused()) {
+          return { success: false, error: '用户暂停任务' }
+        }
+        
+        // 重新设计 - 使用增量修改
+        designIteration++
+        
+        // 使用增量修改 prompt
+        const incrementalPrompt = this.buildIncrementalPrompt(
+          instruction,
+          designResult,
+          archCollaborationRequest.userFeedback,
+          'design'
+        )
+        
+        const reDesignResult = await this.executeAgentTask(
+          uiAgent,
+          incrementalPrompt,
+          { analysisResult }
+        )
+        
+        designResult = reDesignResult
+        this.savePhaseState('design', designResult)
+        
+        // 同步更新 .md 文档
+        if (taskDir) {
+          const docPath = path.join(taskDir, 'project', '02_UI设计.md')
+          fs.writeFileSync(docPath, `# UI设计方案 (第${designIteration}次修改)\n\n${designResult}`, 'utf-8')
+          console.log(`[MultiAgentCoordinator] UI设计已更新: ${docPath}`)
+        }
+        
+        const reDesignMsg: AgentMessage = {
+          agentId: uiAgent.id,
+          agentName: uiAgent.name,
+          role: uiAgent.role,
+          content: `📝 UI设计已更新 (第${designIteration + 1}次)：\n\n${designResult}`,
+          timestamp: Date.now(),
+          phase: 'UI设计',
+          messageType: 'response',
+          priority: 'medium'
+        }
+        this.collaborationHistory.push(reDesignMsg)
+        onAgentMessage(reDesignMsg)
+        
+      } catch (error) {
+        console.warn('[MultiAgentCoordinator] UI设计确认跳过:', error)
+        designConfirmed = true
+        break
+      }
+    }
+    
+    if (!designConfirmed && designIteration >= maxDesignIterations) {
+      onAgentMessage({
+        agentId: 'system',
+        agentName: '系统',
+        role: '协调员',
+        content: `⚠️ 已达到最大迭代次数 (${maxDesignIterations}次)，强制进入下一阶段。`,
+        timestamp: Date.now(),
+        phase: 'UI设计',
+        messageType: 'warning'
+      })
+    }
     designPhase.completed = true
 
     // 发送交接消息 - 告诉用户下一个智能体将接手
@@ -524,7 +897,7 @@ ${template.files.map(f => `
 `
     }
     
-    const codeResult = await this.executeAgentTask(
+    let codeResult = await this.executeAgentTask(
       codeAgent,
       `你是全栈开发工程师。在开始编码之前，你必须先仔细阅读PM的需求分析结果和UI设计方案，然后才开始编写代码。
 
@@ -587,6 +960,7 @@ ${requiredFilesList}
     // 解析代码结果并创建文件
     let projectPath = ''
     let createdFiles: string[] = []
+    let validation: { isValid: boolean; missingFiles: string[]; errors: string[] }
     
     try {
       // 使用重试机制解析JSON
@@ -615,7 +989,7 @@ ${requiredFilesList}
       console.log(`[MultiAgentCoordinator] 创建文件数: ${createdFiles.length}`)
 
       // 验证项目完整性
-      const validation = this.validateProject(projectPath, projectType)
+      validation = this.validateProject(projectPath, projectType)
 
       if (!validation.isValid) {
         console.warn(`[MultiAgentCoordinator] 项目验证失败:`)
@@ -722,13 +1096,190 @@ ${codeResult}`,
     }
     
     implPhase.completed = true
+    
+    // 保存代码实现结果
+    this.savePhaseState('implementation', codeResult)
+    
+    // ========== 代码实现完成后进行验证 ==========
+    console.log('[MultiAgentCoordinator] 开始验证代码实现...')
+    try {
+      const createdFilePaths = createdFiles.map(f => path.join(projectPath, f))
+      
+      const verificationContext: TaskVerificationContext = {
+        taskId: `impl_${Date.now()}`,
+        taskDescription: `代码实现: ${instruction}`,
+        acceptanceCriteria: [
+          '所有必需文件已创建',
+          '代码不包含TODO/FIXME占位符',
+          'TypeScript语法检查通过',
+          '项目可以成功构建'
+        ],
+        createdFiles: createdFilePaths,
+        projectPath
+      }
+      
+      const verificationResult = await this.verificationEngine.verifyTask(verificationContext)
+      
+      // 发送验证结果消息
+      const verifyMsg: AgentMessage = {
+        agentId: 'system',
+        agentName: '验证引擎',
+        role: '系统',
+        content: verificationResult.success 
+          ? `✅ 代码实现验证通过\n\n${verificationResult.message}`
+          : `⚠️ 代码实现验证发现问题\n\n${verificationResult.message}\n\n问题列表:\n${verificationResult.warnings.map(w => `- ${w}`).join('\n')}`,
+        timestamp: Date.now(),
+        phase: '代码实现',
+        messageType: verificationResult.success ? 'response' : 'warning',
+        priority: 'high'
+      }
+      this.collaborationHistory.push(verifyMsg)
+      onAgentMessage(verifyMsg)
+      
+      if (!verificationResult.success) {
+        // 验证失败，记录到智能管家
+        await smartButlerAgent.registerProblem(
+          new Error(verificationResult.message),
+          'verification',
+          'implementation',
+          { verificationResult, createdFiles }
+        )
+      }
+    } catch (verifyError) {
+      console.warn('[MultiAgentCoordinator] 代码验证失败:', verifyError)
+    }
+    
+    // === 代码实现多轮迭代确认 ===
+    let codeConfirmed = false
+    let codeIteration = 0
+    const maxCodeIterations = 2 // 代码修改成本高，最多2次
+    
+    while (!codeConfirmed && codeIteration < maxCodeIterations) {
+      try {
+        const validationInfo = validation.isValid 
+          ? '' 
+          : `\n⚠️ 项目不完整，缺少: ${validation.missingFiles.join(', ')}`
+          
+        const options = codeIteration === 0
+          ? ['确认代码', '需要修改']
+          : ['确认代码', '仍需修改']
+          
+        const implConfirm = await collaborationManager.requestCollaboration(
+          `task_${Date.now()}`,
+          CollaborationPhase.IMPLEMENTATION,
+          codeIteration === 0 ? '代码实现完成' : `代码修改 (第${codeIteration + 1}次)`,
+          codeIteration === 0
+            ? `代码已生成，共${createdFiles.length}个文件。请确认是否满足需求。${validationInfo}`
+            : '已根据您的反馈更新代码，请再次确认',
+          { task: instruction, projectPath, createdFiles: createdFiles.length, validation },
+          options
+        )
+        
+        if (implConfirm.status === 'approved') {
+          codeConfirmed = true
+          onAgentMessage({
+            agentId: codeAgent.id,
+            agentName: codeAgent.name,
+            role: codeAgent.role,
+            content: `✅ 用户已确认代码实现，进入测试和审查阶段。`,
+            timestamp: Date.now(),
+            phase: '代码实现',
+            messageType: 'response'
+          })
+          break
+        }
+        
+        // 用户需要修改
+        onAgentMessage({
+          agentId: codeAgent.id,
+          agentName: codeAgent.name,
+          role: codeAgent.role,
+          content: `📝 用户反馈 (第${codeIteration + 1}次)：${implConfirm.userFeedback}\n\n请根据反馈修改代码。`,
+          timestamp: Date.now(),
+          phase: '代码实现',
+          messageType: 'question'
+        })
+        
+        if (this.checkPaused()) {
+          return { success: false, error: '用户暂停任务' }
+        }
+        
+        // 重新生成代码
+        codeIteration++
+        
+        // 重新调用代码生成
+        const reCodeResult = await this.executeAgentTask(
+          codeAgent,
+          `请根据用户反馈修改代码：\n\n用户反馈：${implConfirm.userFeedback}\n\n原需求：${instruction}\n需求分析：${analysisResult}\nUI设计：${designResult}\n\n请修改并重新生成完整的项目代码。必须以JSON格式返回。`,
+          { analysisResult, uiDesign: designResult, workspacePath, projectName, projectType }
+        )
+        
+        // 重新解析和创建文件
+        const reCodeData = await this.parseCodeResultWithRetry(reCodeResult)
+        
+        // 删除旧文件，创建新文件
+        if (fs.existsSync(projectPath)) {
+          const oldFiles = fs.readdirSync(projectPath)
+          for (const file of oldFiles) {
+            fs.rmSync(path.join(projectPath, file), { recursive: true, force: true })
+          }
+        }
+        
+        createdFiles = []
+        for (const file of reCodeData.files) {
+          const filePath = path.join(projectPath, file.path)
+          const dirPath = path.dirname(filePath)
+          if (!fs.existsSync(dirPath)) {
+            fs.mkdirSync(dirPath, { recursive: true, mode: 0o755 })
+          }
+          fs.writeFileSync(filePath, file.content, 'utf-8')
+          createdFiles.push(filePath)
+        }
+        
+        codeResult = reCodeResult
+        this.savePhaseState('implementation', codeResult)
+        
+        // 重新验证
+        validation = this.validateProject(projectPath, projectType)
+        
+        const reCodeMsg: AgentMessage = {
+          agentId: codeAgent.id,
+          agentName: codeAgent.name,
+          role: codeAgent.role,
+          content: `📝 代码已更新 (第${codeIteration + 1}次)，创建文件 ${createdFiles.length} 个`,
+          timestamp: Date.now(),
+          phase: '代码实现',
+          messageType: 'response',
+          priority: 'high'
+        }
+        this.collaborationHistory.push(reCodeMsg)
+        onAgentMessage(reCodeMsg)
+        
+      } catch (error) {
+        console.warn('[MultiAgentCoordinator] 代码确认跳过:', error)
+        codeConfirmed = true
+        break
+      }
+    }
+    
+    if (!codeConfirmed && codeIteration >= maxCodeIterations) {
+      onAgentMessage({
+        agentId: 'system',
+        agentName: '系统',
+        role: '协调员',
+        content: `⚠️ 已达到最大迭代次数 (${maxCodeIterations}次)，强制进入测试和审查阶段。`,
+        timestamp: Date.now(),
+        phase: '代码实现',
+        messageType: 'warning'
+      })
+    }
 
-    // 发送交接消息 - 告诉用户下一个智能体将接手
+    // 发送交接消息 - 告诉用户测试和审查将并行执行
     const handoffMsg3: AgentMessage = {
       agentId: 'system',
       agentName: '系统',
       role: '协调员',
-      content: `💻 代码实现完成。现在由 **测试工程师** 接手，生成测试用例...`,
+      content: `💻 代码实现完成。现在 **测试工程师** 和 **代码审查员** 将并行工作...`,
       timestamp: Date.now(),
       phase: '交接',
       messageType: 'handover',
@@ -737,12 +1288,58 @@ ${codeResult}`,
     this.collaborationHistory.push(handoffMsg3)
     onAgentMessage(handoffMsg3)
 
-    // 4. 测试生成阶段
+    // 4. 测试生成 + 代码审查阶段（并行执行）
     const testPhase = this.phases.find(p => p.name === 'testing')!
-    this.currentPhase = 'testing'
+    const reviewPhase = this.phases.find(p => p.name === 'review')!
+    this.currentPhase = 'testing_and_review'
     
     const testAgent = this.agents.get('test_generator')!
+    const reviewAgent = this.agents.get('code_reviewer')!
     testAgent.status = 'working'
+    reviewAgent.status = 'working'
+    
+    // 统一验证项目完整性（只验证一次）
+    const preTestValidation = this.validateProject(projectPath, projectType)
+    if (!preTestValidation.isValid) {
+      const skipTestMsg: AgentMessage = {
+        agentId: 'system',
+        agentName: '系统',
+        role: '协调员',
+        content: `⚠️ 跳过测试生成阶段 - 项目不完整
+
+缺少文件：
+${preTestValidation.missingFiles.map(f => `  - ${f}`).join('\n')}
+
+错误：
+${preTestValidation.errors.map(e => `  - ${e}`).join('\n')}
+
+建议：请先修复代码生成阶段的问题。`,
+        timestamp: Date.now(),
+        phase: '测试生成',
+        messageType: 'warning',
+        priority: 'high'
+      }
+      this.collaborationHistory.push(skipTestMsg)
+      onAgentMessage(skipTestMsg)
+      
+      testAgent.status = 'failed'
+      testAgent.lastOutput = '测试生成跳过：项目不完整'
+      testPhase.completed = false
+      
+      // 继续审查阶段（不跳过）
+      const skipReviewMsg: AgentMessage = {
+        agentId: 'system',
+        agentName: '系统',
+        role: '协调员',
+        content: `⚠️ 由于项目不完整，将跳过测试生成，直接进入代码审查...`,
+        timestamp: Date.now(),
+        phase: '交接',
+        messageType: 'handover',
+        priority: 'medium'
+      }
+      this.collaborationHistory.push(skipReviewMsg)
+      onAgentMessage(skipReviewMsg)
+    }
     
     // 获取工作区中的实际文件列表用于验证
     let verificationInfo = ''
@@ -772,9 +1369,17 @@ ${projectFiles.map(f => `- ${f.path} (${f.size} bytes)`).join('\n')}
       testAgent,
       `请为以下代码生成测试用例：
 
-任务：${instruction}
+## 完整上下文信息：
+### 原始任务：
+${instruction}
 
-生成的代码：
+### 需求分析结果：
+${analysisResult}
+
+### UI设计结果：
+${designResult || '无'}
+
+### 代码实现结果：
 ${codeResult}
 ${verificationInfo}
 
@@ -783,8 +1388,15 @@ ${verificationInfo}
 2. 集成测试（如适用）
 3. 测试覆盖说明
 
-重要：请基于实际项目文件生成测试用例，确保测试文件路径与实际文件一致。`,
-      { codeResult, workspacePath: this.workspaceManager?.getWorkspaceRoot() }
+重要：
+- 请基于实际项目文件生成测试用例，确保测试文件路径与实际文件一致
+- 测试文件应放在项目的 tests 或 __tests__ 目录下`,
+      { 
+        codeResult, 
+        analysisResult,
+        designResult,
+        workspacePath: this.workspaceManager?.getWorkspaceRoot() 
+      }
     )
     
     testAgent.status = 'completed'
@@ -805,26 +1417,20 @@ ${verificationInfo}
     
     testPhase.completed = true
 
-    // 发送交接消息 - 告诉用户下一个智能体将接手
-    const handoffMsg4: AgentMessage = {
-      agentId: 'system',
-      agentName: '系统',
-      role: '协调员',
-      content: `🧪 测试用例生成完成。现在由 **代码审查员** 接手，进行代码审查...`,
-      timestamp: Date.now(),
-      phase: '交接',
-      messageType: 'handover',
-      priority: 'medium'
-    }
-    this.collaborationHistory.push(handoffMsg4)
-    onAgentMessage(handoffMsg4)
-
     // 5. 代码审查阶段
-    const reviewPhase = this.phases.find(p => p.name === 'review')!
     this.currentPhase = 'review'
     
-    const reviewAgent = this.agents.get('code_reviewer')!
     reviewAgent.status = 'working'
+    
+    // 检查项目完整性 - 使用之前的验证结果
+    const projectStatus = validation.isValid ? '完整' : '不完整'
+    const projectIssues = !validation.isValid ? `
+
+⚠️ 项目状态：不完整
+缺少文件：${validation.missingFiles.join(', ')}
+错误：${validation.errors.join(', ')}
+
+请在审查时注意以上问题，并提供修复建议。` : ''
     
     // 获取工作区中的实际文件列表
     let actualFilesContent = ''
@@ -855,7 +1461,7 @@ ${verificationInfo}
     
     const reviewResult = await this.executeAgentTask(
       reviewAgent,
-      `请审查以下代码，提供改进建议：
+      `请审查代码：
 
 任务：${instruction}
 
@@ -874,7 +1480,7 @@ ${actualFilesContent ? `\n\n## 实际项目文件内容:\n${actualFilesContent}`
 2. 问题与风险
 3. 改进建议
 4. 优化方案（如有）`,
-      { codeResult, testResult, workspacePath: this.workspaceManager?.getWorkspaceRoot() }
+      { codeResult, testResult, validation, workspacePath: this.workspaceManager?.getWorkspaceRoot() }
     )
     
     reviewAgent.status = 'completed'
@@ -894,6 +1500,39 @@ ${actualFilesContent ? `\n\n## 实际项目文件内容:\n${actualFilesContent}`
     onAgentMessage(reviewMsg)
     
     reviewPhase.completed = true
+    
+    // 保存审查结果
+    this.savePhaseState('review', reviewResult)
+    
+    // 用户协作确认 - 最终审查
+    try {
+      const finalConfirm = await collaborationManager.requestCollaboration(
+        `task_${Date.now()}`,
+        CollaborationPhase.REVIEW,
+        '审查完成',
+        '测试和审查已完成，请确认是否接受当前结果',
+        { testResult, reviewResult },
+        ['接受结果', '需要修改', '重新生成']
+      )
+      
+      if (finalConfirm.status === 'rejected') {
+        onAgentMessage({
+          agentId: reviewAgent.id,
+          agentName: reviewAgent.name,
+          role: reviewAgent.role,
+          content: `📝 用户反馈：${finalConfirm.userFeedback}\n\n请根据反馈进行调整。`,
+          timestamp: Date.now(),
+          phase: '最终审查',
+          messageType: 'question'
+        })
+        
+        if (this.checkPaused()) {
+          return { success: false, error: '用户暂停任务' }
+        }
+      }
+    } catch (error) {
+      console.warn('[MultiAgentCoordinator] 最终确认跳过:', error)
+    }
 
     // 发送交接消息 - 告诉用户下一个智能体将接手
     const handoffMsg5: AgentMessage = {
@@ -1650,7 +2289,7 @@ ${this.getExpertKnowledge(agent.type)}
     if (lower.includes('node') || lower.includes('后端') || lower.includes('api') || lower.includes('服务器')) {
       return 'node'
     }
-    if (lower.includes('electron')) {
+    if (lower.includes('electron') || lower.includes('桌面') || lower.includes('app') || lower.includes('应用')) {
       return 'electron'
     }
     if (lower.includes('html') || lower.includes('网页')) {
@@ -1681,15 +2320,54 @@ ${this.getExpertKnowledge(agent.type)}
         'index.html',
         'style.css'
       ],
-      'electron': [
-        'src/index.tsx',
-        'src/App.tsx',
-        'src/index.css',
+      'vue': [
+        'src/main.ts',
+        'src/App.vue',
+        'src/components',
         'index.html',
         'package.json',
         'tsconfig.json',
         'vite.config.ts',
         'public'
+      ],
+      'electron': [
+        // 核心配置文件
+        'package.json',
+        'tsconfig.json',
+        'vite.config.ts',
+        'forge.config.js',
+        // 源代码
+        'src/main/index.ts',
+        'src/preload/index.ts',
+        'src/renderer/index.html',
+        'src/renderer/main.tsx',
+        'src/renderer/App.tsx',
+        // Webpack 配置（Electron Forge 需要）
+        'webpack.main.config.ts',
+        'webpack.renderer.config.ts',
+        'webpack.rules.ts',
+        'webpack.plugins.ts',
+        // 其他
+        'public',
+        '.gitignore',
+        'README.md'
+      ],
+      'electron-vite': [
+        // 核心配置文件
+        'package.json',
+        'tsconfig.json',
+        'electron.vite.config.ts',
+        'electron-builder.json5',
+        // 源代码
+        'src/main/index.ts',
+        'src/preload/index.ts',
+        'src/renderer/index.html',
+        'src/renderer/src/main.tsx',
+        'src/renderer/src/App.tsx',
+        // 其他
+        'resources',
+        '.gitignore',
+        'README.md'
       ],
       'vanilla': [
         'index.html',
@@ -1772,6 +2450,109 @@ ${this.getExpertKnowledge(agent.type)}
         await new Promise(resolve => setTimeout(resolve, 1000))
       }
     }
+  }
+  
+  // ===== 任务状态管理方法 =====
+  
+  /**
+   * 初始化任务状态
+   */
+  initTask(taskId: string, instruction: string): void {
+    this.currentTaskId = taskId
+    this.isPaused = false
+    const taskName = this.extractProjectName(instruction)
+    this.taskStateManager.createTask(taskId, taskName, instruction)
+    console.log(`[MultiAgentCoordinator] 初始化任务: ${taskId}`)
+  }
+  
+  /**
+   * 暂停任务
+   */
+  pauseTask(): { success: boolean; message: string } {
+    if (this.isPaused) {
+      return { success: false, message: '任务已经处于暂停状态' }
+    }
+    
+    this.isPaused = true
+    this.taskStateManager.pauseTask()
+    console.log(`[MultiAgentCoordinator] 任务已暂停: ${this.currentTaskId}`)
+    
+    return { success: true, message: '任务已暂停，当前进度已保存' }
+  }
+  
+  /**
+   * 继续任务
+   */
+  resumeTask(): { success: boolean; message: string } {
+    if (!this.isPaused) {
+      return { success: false, message: '任务不在暂停状态' }
+    }
+    
+    if (!this.currentTaskId) {
+      return { success: false, message: '没有可恢复的任务' }
+    }
+    
+    // 加载保存的状态
+    const savedState = this.taskStateManager.loadTask(this.currentTaskId)
+    if (!savedState) {
+      return { success: false, message: '找不到保存的任务状态' }
+    }
+    
+    this.isPaused = false
+    this.taskStateManager.resumeTask()
+    console.log(`[MultiAgentCoordinator] 任务已继续: ${this.currentTaskId}`)
+    
+    return { 
+      success: true, 
+      message: `任务已继续，上次停在 "${savedState.currentPhase}" 阶段` 
+    }
+  }
+  
+  /**
+   * 获取当前任务状态
+   */
+  getTaskStatus(): { 
+    taskId: string | null
+    phase: string
+    isPaused: boolean
+    status: string
+  } {
+    return {
+      taskId: this.currentTaskId,
+      phase: this.currentPhase,
+      isPaused: this.isPaused,
+      status: this.isPaused ? 'paused' : 'running'
+    }
+  }
+  
+  /**
+   * 保存当前阶段结果
+   */
+  savePhaseState(phase: string, result: string): void {
+    if (this.currentTaskId) {
+      this.taskStateManager.savePhaseResult(phase, result)
+    }
+  }
+  
+  /**
+   * 获取保存的任务列表
+   */
+  getSavedTasks(): any[] {
+    return this.taskStateManager.getAllTasks()
+  }
+  
+  /**
+   * 删除保存的任务
+   */
+  deleteTask(taskId: string): boolean {
+    return this.taskStateManager.deleteTask(taskId)
+  }
+  
+  /**
+   * 检查是否已暂停（用于在循环中检查）
+   */
+  checkPaused(): boolean {
+    return this.isPaused
   }
 }
 

@@ -16,6 +16,13 @@ import { registerCodeHandlers } from './handlers/codeHandler'
 import { registerLibraryHandlers } from './handlers/libraryHandler'
 import { registerOmniAgentHandlers } from './handlers/omniAgentHandler'
 import { registerButlerHandlers } from './handlers/butlerHandler'
+import { registerCollaborationHandlers } from './handlers/collaborationHandler'
+import { registerAuthHandlers } from './handlers/authHandler'
+import { registerUserManagementHandlers } from './handlers/userManagementHandler'
+import { registerUpdateHandlers } from './handlers/updateHandler'
+import { registerBackupHandlers } from './handlers/backupHandler'
+import { registerAnalyticsHandlers } from './handlers/analyticsHandler'
+import { registerLicenseHandlers } from './handlers/licenseHandler'
 
 // 注册所有 IPC 处理器
 export function registerAllHandlers() {
@@ -40,6 +47,13 @@ export function registerAllHandlers() {
   registerLibraryHandlers()
   registerOmniAgentHandlers()
   registerButlerHandlers()
+  registerCollaborationHandlers()
+  registerAuthHandlers()
+  registerUserManagementHandlers()
+  registerUpdateHandlers()
+  registerBackupHandlers()
+  registerAnalyticsHandlers()
+  registerLicenseHandlers()
   
   console.log('All IPC handlers registered successfully!')
 }

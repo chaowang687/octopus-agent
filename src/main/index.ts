@@ -14,7 +14,13 @@ import { taskEngine } from './agent/TaskEngine'
 import { toolRegistry } from './agent/ToolRegistry'
 import { galleryService } from './services/GalleryService'
 import { safeCodeExecutionService } from './services/SafeCodeExecutionService'
+import { updateService } from './services/UpdateService'
+import { backupService } from './services/BackupService'
+import { analyticsService } from './services/AnalyticsService'
+import { licenseService } from './services/LicenseService'
 import { registerAllHandlers } from './ipc'
+import { collaborationManager } from './ipc/handlers/collaborationHandler'
+import { userService } from './services/UserService'
 // import './agent/imageTools' // 暂时注释掉以避免sharp模块加载问题
 
 const traeSandboxStoragePath = process.env.TRAE_SANDBOX_STORAGE_PATH
@@ -85,6 +91,12 @@ function createWindow() {
       nodeIntegration: false
     }
   })
+
+  // 设置协作管理器的主窗口
+  collaborationManager.setMainWindow(mainWindow)
+  
+  // 设置更新服务的主窗口
+  updateService.setMainWindow(mainWindow)
 
   mainWindow.on('ready-to-show', () => {
     mainWindow?.show()
@@ -157,7 +169,27 @@ function createWindow() {
 // 应用生命周期
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.localized-agent.coder')
+  
+  // 检查加密可用性
+  const { safeStorage } = require('electron')
+  if (!safeStorage.isEncryptionAvailable()) {
+    console.warn('警告: Electron safeStorage 不可用，将使用备用加密方案')
+    console.warn('建议: 在生产环境中启用系统级加密以获得更好的安全性')
+  } else {
+    console.log('安全: Electron safeStorage 可用，使用系统级加密')
+  }
+  
   ensureApiKeysFile()
+  
+  // 初始化用户服务
+  console.log('初始化用户服务...')
+  userService.initialize()
+  
+  // 初始化商业化服务
+  console.log('初始化商业化服务...')
+  backupService
+  analyticsService
+  licenseService
   
   // 注册所有IPC处理器
   console.log('注册所有IPC处理器...')
@@ -166,6 +198,17 @@ app.whenReady().then(() => {
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
+  
+  // 初始化新增的服务
+  console.log('App ready, initializing services...')
+  backupService.initialize()
+  analyticsService.initialize()
+  licenseService.initialize()
+  
+  // 启动会话
+  analyticsService.startSession()
+  
+  // 其他初始化逻辑
   createWindow()
   
   app.on('activate', function () {

@@ -1135,7 +1135,13 @@ export class SelfCorrectionEngine {
       const path = require('path')
       const { app } = require('electron')
       
-      const patternsPath = path.join(app.getPath('userData'), 'error_patterns.json')
+      let patternsPath
+      try {
+        patternsPath = path.join(app.getPath('userData'), 'error_patterns.json')
+      } catch (error) {
+        console.warn('Failed to get userData path for error patterns, using current directory:', error)
+        patternsPath = path.join(process.cwd(), 'error_patterns.json')
+      }
       if (fs.existsSync(patternsPath)) {
         this.errorPatterns = JSON.parse(fs.readFileSync(patternsPath, 'utf8'))
       }
