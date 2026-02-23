@@ -1303,7 +1303,7 @@ export class TaskEngine extends EventEmitter {
           // 将协调器的消息转发到前端
           if (type === 'agent_message') {
             console.log('[TaskEngine] 转发 agent_message:', data.agentName, 'content length:', data.content?.length)
-            // 转发智能体的详细输出消息
+            // 转发智能体的详细输出消息，包含结构化数据
             this.emit('progress', {
               taskId,
               type: 'agent_message',
@@ -1312,7 +1312,10 @@ export class TaskEngine extends EventEmitter {
               agentName: data.agentName || '智能体',
               role: data.role || '',
               content: data.content || '',
-              phase: data.phase || ''
+              phase: data.phase || '',
+              nextSteps: data.nextSteps,
+              completedTasks: data.completedTasks,
+              outputFiles: data.outputFiles
             } satisfies any)
           } else if (type === 'phase') {
             this.emit('progress', {

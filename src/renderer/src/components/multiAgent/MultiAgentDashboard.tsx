@@ -71,7 +71,8 @@ export const MultiAgentDashboard: React.FC<MultiAgentDashboardProps> = ({
       
       if (eventType === 'agent_status' || eventType === 'agent:status') {
         handleAgentStatusUpdate(data)
-      } else if (eventType === 'agent_message' || eventType === 'agent:message') {
+      } else if (eventType === 'agent_message' || eventType === 'agent:message' || data.agentId || data.agentName) {
+        // 处理智能体消息，提取结构化数据
         handleAgentMessage({
           agentId: data.agentId,
           agentName: data.agentName,
@@ -80,12 +81,24 @@ export const MultiAgentDashboard: React.FC<MultiAgentDashboardProps> = ({
           timestamp: data.timestamp || Date.now(),
           phase: data.phase
         })
-      } else if (eventType === 'progress_update' || eventType === 'progress:update') {
+        
+        // 如果包含结构化输出数据，同时更新
+        if (data.nextSteps || data.completedTasks || data.outputFiles) {
+          handleStructuredOutput({
+            agentName: data.agentName,
+            phase: data.phase,
+            content: data.content || '',
+            nextSteps: data.nextSteps || [],
+            completedTasks: data.completedTasks || [],
+            outputFiles: data.outputFiles || []
+          })
+        }
+      } else if (eventType === 'progress_update' || eventType === 'progress:update' || data.progress !== undefined) {
         handleProgressUpdate({
-          phase: data.phase,
+          phase: data.phase || 'implementation',
           progress: data.progress,
-          message: data.message,
-          subTasks: data.subTasks
+          message: data.message || data.description,
+          subTasks: data.subTasks || data.planSteps
         })
       } else if (eventType === 'file_created' || eventType === 'file:created') {
         handleFileCreated(data)
@@ -102,22 +115,6 @@ export const MultiAgentDashboard: React.FC<MultiAgentDashboardProps> = ({
         onTaskComplete?.(data)
       } else if (eventType === 'structured_output' || eventType === 'structured:output') {
         handleStructuredOutput(data)
-      } else if (data.agentId || data.agentName) {
-        handleAgentMessage({
-          agentId: data.agentId,
-          agentName: data.agentName,
-          role: data.role,
-          content: data.content || data.delta,
-          timestamp: data.timestamp || Date.now(),
-          phase: data.phase
-        })
-      } else if (data.progress !== undefined) {
-        handleProgressUpdate({
-          phase: data.phase || 'implementation',
-          progress: data.progress,
-          message: data.message || data.description,
-          subTasks: data.subTasks || data.planSteps
-        })
       }
     }
     
