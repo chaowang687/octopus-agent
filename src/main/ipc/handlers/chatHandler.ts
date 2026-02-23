@@ -93,6 +93,9 @@ export function registerChatHandlers() {
           delta: data.content,
           done: data.done
         })
+      } else {
+        // 所有其他 progress 事件都发送到 chat:stream 通道，确保 MultiAgentDashboard 能接收到
+        mainWindow.webContents.send('chat:stream', data)
       }
       // 如果是任务开始事件，发送到前端显示实际目录
       if (data.type === 'task_start') {
