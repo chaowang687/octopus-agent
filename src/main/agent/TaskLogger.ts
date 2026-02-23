@@ -31,7 +31,7 @@ export class TaskLogger implements TaskLogStorage {
     } catch (error) {
       console.warn('[TaskLogger] 无法创建日志目录，使用备用目录:', error)
       // 使用应用数据目录下的子目录
-      const fallbackDir = path.join(app.getPath('temp') || '/tmp', 'octopus-agent-logs')
+      const fallbackDir = path.join(app.getPath('temp'), 'octopus-agent-logs')
       try {
         if (!fs.existsSync(fallbackDir)) {
           fs.mkdirSync(fallbackDir, { recursive: true })
@@ -40,7 +40,7 @@ export class TaskLogger implements TaskLogStorage {
       } catch (fallbackError) {
         console.error('[TaskLogger] 无法创建备用日志目录:', fallbackError)
         // 返回临时目录
-        return '/tmp'
+        return app.getPath('temp')
       }
     }
   }

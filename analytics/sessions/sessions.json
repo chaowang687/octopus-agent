@@ -763,5 +763,95 @@
     "appVersion": "0.1.1",
     "events": 0,
     "errors": 0
+  },
+  {
+    "id": "f7cfa658-6558-45eb-8462-15f580d13db1",
+    "startTime": 1771879031780,
+    "userAgent": "",
+    "platform": "darwin",
+    "appVersion": "0.1.1",
+    "events": 0,
+    "errors": 0
+  },
+  {
+    "id": "10011237-6b27-4c5b-a93d-f7a9d8483253",
+    "startTime": 1771879134455,
+    "userAgent": "",
+    "platform": "darwin",
+    "appVersion": "0.1.1",
+    "events": 0,
+    "errors": 0
+  },
+  {
+    "id": "60b48d7f-a675-414b-84fa-4882826884ea",
+    "startTime": 1771879428381,
+    "userAgent": "",
+    "platform": "darwin",
+    "appVersion": "0.1.1",
+    "events": 0,
+    "errors": 0
+  },
+  {
+    "id": "b5d5a866-62f6-4a27-a860-9a5844b47909",
+    "startTime": 1771879608069,
+    "userAgent": "",
+    "platform": "darwin",
+    "appVersion": "0.1.1",
+    "events": 0,
+    "errors": 0
+  },
+  {
+    "id": "98ad0ece-6a39-4b50-8f3c-d08bc01b5bbf",
+    "startTime": 1771879732845,
+    "userAgent": "",
+    "platform": "darwin",
+    "appVersion": "0.1.1",
+    "events": 0,
+    "errors": 0
+  },
+  {
+    "id": "1723f888-1367-49bf-82b9-d1a621a42c1c",
+    "startTime": 1771879784016,
+    "userAgent": "",
+    "platform": "darwin",
+    "appVersion": "0.1.1",
+    "events": 0,
+    "errors": 0
+  },
+  {
+    "id": "98f02ff3-93a4-453f-9f19-0ffd1488ce3b",
+    "startTime": 1771879998043,
+    "userAgent": "",
+    "platform": "darwin",
+    "appVersion": "0.1.1",
+    "events": 0,
+    "errors": 0
+  },
+  {
+    "id": "4c0538c4-8704-4a9b-8e6a-78bc64bfc5c0",
+    "startTime": 1771880297876,
+    "userAgent": "",
+    "platform": "darwin",
+    "appVersion": "0.1.1",
+    "events": 0,
+    "errors": 0
+  },
+  {
+    "id": "ea8567db-c52a-44e7-8804-1f1a0f80b78e",
+    "startTime": 1771880386723,
+    "userAgent": "",
+    "platform": "darwin",
+    "appVersion": "0.1.1",
+    "events": 0,
+    "errors": 0
+  },
+  {
+    "id": "fc1923f7-0098-4dab-9463-46074b1c6f58",
+    "startTime": 1771880703848,
+    "userAgent": "",
+    "platform": "darwin",
+    "appVersion": "0.1.1",
+    "events": 0,
+    "errors": 0
   }
 ]

@@ -4,7 +4,7 @@
   "description": "Octopus Agent - 智能体编码工具",
   "main": "dist/main/index.js",
   "scripts": {
-    "dev": "bash scripts/copy-bridge.sh && electron-vite dev -- --no-sandbox --disable-gpu-sandbox",
+    "dev": "node scripts/copy-bridge.js && electron-vite dev -- --no-sandbox --disable-gpu-sandbox",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "test": "jest",
@@ -14,7 +14,10 @@
     "docs:serve": "npx serve docs/api",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
-    "install": "bash scripts/install.sh"
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win",
+    "dist:linux": "electron-builder --linux",
+    "install": "node scripts/install.js"
   },
   "build": {
     "appId": "com.octopus.agent",
@@ -47,6 +50,7 @@
       "hardenedRuntime": false,
       "gatekeeperAssess": false,
       "target": [
+        "dmg",
         "zip"
       ],
       "extendInfo": {
@@ -55,6 +59,21 @@
           "zh_CN"
         ]
       }
+    },
+    "win": {
+      "icon": "build/icon.png",
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "category": "Development",
+      "target": [
+        "AppImage",
+        "deb"
+      ]
     }
   },
   "keywords": [
@@ -62,7 +81,10 @@
     "ai",
     "coding",
     "tool",
-    "macos"
+    "macos",
+    "windows",
+    "linux",
+    "cross-platform"
   ],
   "author": "Octopus Agent",
   "license": "MIT",

@@ -39,6 +39,7 @@ const getLanguageFromPath = (path: string): string => {
     'cpp': 'cpp',
     'h': 'c',
     'hpp': 'cpp',
+    'cs': 'csharp',
     'sh': 'shell',
     'bash': 'shell',
     'zsh': 'shell',
@@ -150,40 +151,13 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
   return (
     <div className="code-editor-container">
       <div className="code-editor-toolbar">
-        <div className="toolbar-left">
-          {filePath && (
-            <span className="file-path" title={filePath}>
-              {filePath.split('/').pop()}
-              {isModified && <span className="modified-indicator">●</span>}
-            </span>
-          )}
-        </div>
-        <div className="toolbar-right">
-          <span className="language-badge">{detectedLanguage}</span>
-          <button 
-            className="toolbar-btn" 
-            onClick={handleFormat}
-            title="格式化文档 (Ctrl+B)"
-          >
-            格式化
-          </button>
-          <button 
-            className="toolbar-btn" 
-            onClick={handleMinimapToggle}
-            title="切换小地图"
-          >
-            小地图
-          </button>
-          {isModified && (
-            <button 
-              className="toolbar-btn save-btn" 
-              onClick={handleSave}
-              title="保存 (Ctrl+S)"
-            >
-              保存
-            </button>
-          )}
-        </div>
+        {filePath && (
+          <span className="file-path" title={filePath}>
+            {filePath.split('/').pop()}
+            {isModified && <span className="modified-indicator">*</span>}
+          </span>
+        )}
+        <span className="language-badge">{detectedLanguage}</span>
       </div>
       
       <div className="code-editor-main">
@@ -195,30 +169,30 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
           onMount={handleEditorDidMount}
           options={{
             readOnly,
-            fontSize: 14,
-            fontFamily: "'Fira Code', 'SF Mono', Monaco, Menlo, Consolas, monospace",
+            fontSize: 13,
+            fontFamily: "'JetBrains Mono', 'Fira Code', 'SF Mono', Monaco, monospace",
             fontLigatures: true,
-            lineHeight: 22,
-            letterSpacing: 0.5,
-            minimap: { enabled: true, scale: 1 },
-            scrollBeyondLastLine: false,
+            lineHeight: 1.6,
+            letterSpacing: 0.3,
+            minimap: { enabled: false },
+            scrollBeyondLastLine: true,
             automaticLayout: true,
             tabSize: 2,
             insertSpaces: true,
-            wordWrap: 'off',
+            wordWrap: 'on',
             lineNumbers: 'on',
-            renderLineHighlight: 'all',
-            cursorBlinking: 'smooth',
+            renderLineHighlight: 'line',
+            cursorBlinking: 'phase',
             cursorSmoothCaretAnimation: 'on',
             smoothScrolling: true,
-            padding: { top: 8, bottom: 8 },
+            padding: { top: 16, bottom: 16 },
             folding: true,
             foldingStrategy: 'indentation',
-            showFoldingControls: 'mouseover',
-            bracketPairColorization: { enabled: true },
+            showFoldingControls: 'always',
+            bracketPairColorization: { enabled: false },
             guides: {
-              bracketPairs: true,
-              indentation: true
+              bracketPairs: false,
+              indentation: false
             },
             suggest: {
               showKeywords: true,
@@ -235,22 +209,24 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
             },
             parameterHints: { enabled: true },
             formatOnPaste: true,
-            formatOnType: true,
-            renderWhitespace: 'selection',
+            formatOnType: false,
+            renderWhitespace: 'none',
             overviewRulerBorder: false,
             hideCursorInOverviewRuler: true,
             scrollbar: {
-              vertical: 'visible',
-              horizontal: 'visible',
+              vertical: 'auto',
+              horizontal: 'auto',
               useShadows: false,
-              verticalScrollbarSize: 10,
-              horizontalScrollbarSize: 10
-            }
+              verticalScrollbarSize: 8,
+              horizontalScrollbarSize: 8
+            },
+            selectionHighlight: false,
+            occurrencesHighlight: false,
+            renderIndentGuides: false
           }}
           loading={
             <div className="editor-loading">
-              <span className="loading-spinner">⏳</span>
-              <span>加载编辑器...</span>
+              <span>loading...</span>
             </div>
           }
         />

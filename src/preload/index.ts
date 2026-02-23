@@ -16,6 +16,11 @@ contextBridge.exposeInMainWorld('electron', {
     executeShellScript: (script: string, cwd?: string) => ipcRenderer.invoke('system:executeShellScript', script, cwd),
     getSystemInfo: () => ipcRenderer.invoke('system:getSystemInfo')
   },
+  // 窗口操作
+  window: {
+    toggleDock: () => ipcRenderer.invoke('window:toggle-dock'),
+    isDocked: () => ipcRenderer.invoke('window:is-docked')
+  },
   dialog: {
     openFile: () => ipcRenderer.invoke('dialog:openFile'),
     showOpenDialog: (options: any) => ipcRenderer.invoke('dialog:showOpenDialog', options)

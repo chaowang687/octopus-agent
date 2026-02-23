@@ -22,6 +22,7 @@ import { licenseService } from './services/LicenseService'
 import { registerAllHandlers } from './ipc'
 import { collaborationManager } from './ipc/handlers/collaborationHandler'
 import { userService } from './services/UserService'
+import { initWindowDockService } from './services/WindowDockService'
 
 const traeSandboxStoragePath = process.env.TRAE_SANDBOX_STORAGE_PATH
 if (traeSandboxStoragePath) {
@@ -79,6 +80,9 @@ function createWindow() {
   
   // 设置更新服务的主窗口
   updateService.setMainWindow(mainWindow)
+
+  // 初始化窗口吸附服务
+  initWindowDockService(mainWindow)
 
   mainWindow.on('ready-to-show', () => {
     mainWindow?.show()

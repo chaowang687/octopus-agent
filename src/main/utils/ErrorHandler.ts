@@ -106,7 +106,8 @@ export class ErrorHandler {
       this.logFilePath = path.join(logsDir, 'error.log')
       this.initialized = true
     } catch (error) {
-      this.logFilePath = '/tmp/error.log'
+      const tempDir = app.getPath('temp')
+      this.logFilePath = path.join(tempDir, 'error.log')
       this.initialized = true
     }
   }
