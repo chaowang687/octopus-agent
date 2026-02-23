@@ -1,0 +1,215 @@
+.progress-tracker {
+  background: var(--bg-primary);
+  border-radius: 12px;
+  padding: 20px;
+  border: 1px solid var(--border-color);
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.progress-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.progress-percentage {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--accent-color);
+}
+
+.progress-bar-container {
+  height: 8px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-color), #8b5cf6);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.phases-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.phase-item {
+  display: flex;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  border: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.phase-item.phase-current {
+  border-color: var(--accent-color);
+  background: var(--bg-tertiary);
+}
+
+.phase-item.phase-completed {
+  opacity: 0.7;
+}
+
+.phase-item.phase-pending {
+  opacity: 0.5;
+}
+
+.phase-icon-wrapper {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+}
+
+.phase-icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  background: var(--bg-tertiary);
+  border-radius: 12px;
+}
+
+.phase-check {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 20px;
+  height: 20px;
+  background: #10b981;
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.phase-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.phase-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.phase-description {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.phase-progress-bar {
+  height: 4px;
+  background: var(--bg-primary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.phase-progress-fill {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.phase-detail {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+.phase-message {
+  font-size: 13px;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+
+.sub-tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sub-task {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--bg-primary);
+  border-radius: 4px;
+}
+
+.sub-task-status {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.sub-task-status.sub-task-completed {
+  color: #10b981;
+}
+
+.sub-task-status.sub-task-in_progress {
+  color: #3b82f6;
+  animation: spin 1s linear infinite;
+}
+
+.sub-task-status.sub-task-pending {
+  color: var(--text-secondary);
+}
+
+.sub-task-status.sub-task-failed {
+  color: #ef4444;
+}
+
+.sub-task-status.sub-task-skipped {
+  color: #f59e0b;
+}
+
+.sub-task-name {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.sub-task-progress {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

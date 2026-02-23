@@ -180,7 +180,7 @@ export class SoloBuilderService {
       const prompt = this.buildFrontendGenerationPrompt(prd, techStack, designStyle || 'modern')
       const enhancedPrompt = context ? await contextManager.injectContext(prompt, context) : prompt
       
-      const response = await llmService.chat('deepseek-chat', [
+      const response = await llmService.chat('doubao-seed-2-0-lite-260215', [
         { role: 'system', content: `You are an expert frontend developer. Generate complete frontend code using ${techStack}.` },
         { role: 'user', content: enhancedPrompt }
       ], {

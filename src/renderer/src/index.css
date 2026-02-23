@@ -132,6 +132,10 @@ body {
   width: 100%;
   overflow: hidden;
   background-color: var(--bg-primary);
+  position: relative;
+  z-index: 50;
+  margin-top: -60px;
+  padding-top: 60px;
 }
 
 /* Session Sidebar (Left Panel) */
@@ -143,6 +147,7 @@ body {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  z-index: 150;
 }
 
 .sidebar-search-container {

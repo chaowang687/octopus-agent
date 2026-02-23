@@ -23,6 +23,7 @@ import { registerUpdateHandlers } from './handlers/updateHandler'
 import { registerBackupHandlers } from './handlers/backupHandler'
 import { registerAnalyticsHandlers } from './handlers/analyticsHandler'
 import { registerLicenseHandlers } from './handlers/licenseHandler'
+import { registerTaskLogHandlers } from './handlers/taskLogHandler'
 
 // 注册所有 IPC 处理器
 export function registerAllHandlers() {
@@ -54,6 +55,7 @@ export function registerAllHandlers() {
   registerBackupHandlers()
   registerAnalyticsHandlers()
   registerLicenseHandlers()
+  registerTaskLogHandlers()
   
   console.log('All IPC handlers registered successfully!')
 }

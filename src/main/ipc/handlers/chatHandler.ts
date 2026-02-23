@@ -48,6 +48,32 @@ export function registerChatHandlers() {
     })
   }
 
+  // 暂停任务 - 只在未注册时注册
+  if (!isHandlerRegistered('chat:pause')) {
+    ipcMain.handle('chat:pause', () => {
+      try {
+        const result = multiAgentCoordinator.pauseTask()
+        return result
+      } catch (error: any) {
+        console.error('暂停任务失败:', error)
+        return { success: false, error: error.message }
+      }
+    })
+  }
+
+  // 恢复任务 - 只在未注册时注册
+  if (!isHandlerRegistered('chat:resume')) {
+    ipcMain.handle('chat:resume', () => {
+      try {
+        const result = multiAgentCoordinator.resumeTask()
+        return result
+      } catch (error: any) {
+        console.error('恢复任务失败:', error)
+        return { success: false, error: error.message }
+      }
+    })
+  }
+
   // 监听多智能体协调器的流式事件
   multiAgentCoordinator.on('stream', (data) => {
     const mainWindow = getMainWindow()
@@ -66,6 +92,15 @@ export function registerChatHandlers() {
           agentId: 'system1',
           delta: data.content,
           done: data.done
+        })
+      }
+      // 如果是任务开始事件，发送到前端显示实际目录
+      if (data.type === 'task_start') {
+        mainWindow.webContents.send('chat:event', {
+          type: 'task_start',
+          taskId: data.taskId,
+          taskDir: data.taskDir,
+          description: data.description
         })
       }
     }

@@ -948,7 +948,7 @@ export class CognitiveEngine {
 注意：如果用户说"开发一个X"、"创建一个Y"、"帮我做Z"、"写一个W"这些都是action。`
 
     try {
-      const response = await llmService.chat('deepseek-chat', [
+      const response = await llmService.chat('doubao-seed-2-0-lite-260215', [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: `用户指令: ${instruction}` }
       ], {

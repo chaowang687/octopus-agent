@@ -13,6 +13,8 @@ export interface User {
   role: 'admin' | 'user' | 'guest'
   createdAt: number
   lastLoginAt?: number
+  isDefaultPassword?: boolean
+  mustChangePassword?: boolean
   permissions: {
     projects: {
       [projectId: string]: 'owner' | 'editor' | 'viewer'
@@ -131,9 +133,11 @@ export class UserService {
         id: uuidv4(),
         username: 'admin',
         email: 'admin@example.com',
-        passwordHash: this.hashPassword('admin123'), // 默认密码
+        passwordHash: this.hashPassword('admin123'),
         role: 'admin',
         createdAt: Date.now(),
+        isDefaultPassword: true,
+        mustChangePassword: true,
         permissions: {
           projects: {},
           canCreateProjects: true,
@@ -142,7 +146,7 @@ export class UserService {
       }
       this.users.set(defaultAdmin.id, defaultAdmin)
       this.saveUsers()
-      console.log('Created default admin user: admin/admin123')
+      console.log('[UserService] 已创建默认管理员账户，首次登录需要修改密码')
     }
   }
 
@@ -214,10 +218,14 @@ export class UserService {
         
         console.log(`[UserService] 加载令牌完成，内存中令牌数量: ${this.authTokens.size}`)
       } else {
-        console.log(`[UserService] 令牌文件不存在`)
+        console.log(`[UserService] 令牌文件不存在，将创建空文件`)
+        // 创建空的 tokens.json 文件
+        this.saveTokens()
       }
     } catch (error) {
       console.error('加载令牌失败:', error)
+      // 如果加载失败，创建空文件
+      this.saveTokens()
     }
   }
 
@@ -455,6 +463,12 @@ export class UserService {
 
   getAllUsers(): User[] {
     return Array.from(this.users.values())
+  }
+
+  restoreUser(user: User): User {
+    this.users.set(user.id, user)
+    this.saveUsers()
+    return user
   }
 
   // 更新用户信息

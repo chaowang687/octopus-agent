@@ -20,12 +20,13 @@ const ApiManagement: React.FC = () => {
         const userId = currentUser?.id || null
         setCurrentUserId(userId)
         
-        const [openaiKey, claudeKey, minimaxKey, deepseekKey, doubaoKey] = await Promise.all([
+        const [openaiKey, claudeKey, minimaxKey, deepseekKey, doubaoKey, agent5Key] = await Promise.all([
           window.electron.api.getApiKey('openai', userId),
           window.electron.api.getApiKey('claude', userId),
           window.electron.api.getApiKey('minimax', userId),
           window.electron.api.getApiKey('deepseek', userId),
-          window.electron.api.getApiKey('doubao', userId)
+          window.electron.api.getApiKey('doubao', userId),
+          window.electron.api.getApiKey('agent5', userId)
         ])
         
         const keys: ApiKey[] = [
@@ -33,7 +34,8 @@ const ApiManagement: React.FC = () => {
           { model: 'claude', key: claudeKey || '', isValid: !!claudeKey },
           { model: 'minimax', key: minimaxKey || '', isValid: !!minimaxKey },
           { model: 'deepseek', key: deepseekKey || '', isValid: !!deepseekKey },
-          { model: 'doubao', key: doubaoKey || '', isValid: !!doubaoKey }
+          { model: 'doubao', key: doubaoKey || '', isValid: !!doubaoKey },
+          { model: 'agent5', key: agent5Key || '', isValid: !!agent5Key }
         ]
         
         setApiKeys(keys)
@@ -68,12 +70,12 @@ const ApiManagement: React.FC = () => {
   if (loading) return <div className="loading-screen">Loading...</div>
 
   return (
-    <div style={{ display: 'flex', height: '100%' }}>
+    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
       {/* 双系统协同状态侧边栏 */}
       <DualSystemSidebar />
       
       {/* 主内容区域 */}
-      <div style={{ flex: 1, padding: '40px', maxWidth: '800px', margin: '0 auto' }}>
+      <div style={{ flex: 1, padding: '40px', maxWidth: '800px', margin: '0 auto', overflow: 'auto' }}>
       <div style={{ marginBottom: '32px' }}>
         <h2 style={{ fontSize: '24px', fontWeight: 600, marginBottom: '8px' }}>API Management</h2>
         <p style={{ color: 'var(--text-secondary)' }}>Configure access tokens for AI models.</p>
@@ -89,7 +91,9 @@ const ApiManagement: React.FC = () => {
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <h3 style={{ fontSize: '16px', fontWeight: 600, textTransform: 'capitalize' }}>{key.model}</h3>
+                <h3 style={{ fontSize: '16px', fontWeight: 600, textTransform: 'capitalize' }}>
+                  {key.model === 'agent5' ? 'Agent5 (Qwen3)' : key.model}
+                </h3>
                 <span style={{
                   fontSize: '12px',
                   padding: '2px 8px',
@@ -107,7 +111,7 @@ const ApiManagement: React.FC = () => {
                 type="password"
                 value={key.key}
                 onChange={(e) => setApiKeys(prev => prev.map(k => k.model === key.model ? { ...k, key: e.target.value } : k))}
-                placeholder={`Enter ${key.model} API Key`}
+                placeholder={`Enter ${key.model === 'agent5' ? 'Agent5' : key.model} API Key`}
                 style={{
                   flex: 1,
                   padding: '10px 12px',

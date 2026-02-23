@@ -1,20 +1,23 @@
 <!-- DOCUMENT_METADATA -->
-<!-- id: doc_1771696000430_rg6mynb2u -->
+<!-- id: doc_1771817252485_2f3s3p9gp -->
 <!-- name: 需求文档 -->
 <!-- type: requirement -->
-<!-- createdAt: 2026-02-21T17:46:40.430Z -->
-<!-- updatedAt: 2026-02-21T17:46:40.430Z -->
-<!-- author: 项目分析助手 -->
+<!-- createdAt: 2026-02-23T03:27:32.485Z -->
+<!-- updatedAt: 2026-02-23T03:27:32.485Z -->
+<!-- author: 系统设计 -->
 <!-- version: 1.0.0 -->
 <!-- END_METADATA -->
 
-# 本地化智能体编码工具修复项目 - 需求文档
+# 极简纯文本本地记事本Web应用 - 需求文档
 
 ## 项目概述
-待补充
+这是一个极简的纯文本本地记事本Web应用，所有数据存储在浏览器本地LocalStorage中，不需要后端服务，打开即可使用，专注于快速记录纯文本内容
 
 ## 功能需求
-
+- [object Object]
+- [object Object]
+- [object Object]
+- [object Object]
 
 ## 非功能需求
 

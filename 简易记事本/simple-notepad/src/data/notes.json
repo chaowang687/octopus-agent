@@ -1,0 +1,18 @@
+[
+  {
+    "id": "duplicate-id",
+    "title": "笔记1",
+    "content": "内容1",
+    "priority": "high",
+    "createdAt": "2024-01-01T00:00:00.000Z",
+    "updatedAt": "2024-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "duplicate-id",
+    "title": "笔记2",
+    "content": "内容2",
+    "priority": "medium",
+    "createdAt": "2024-01-02T00:00:00.000Z",
+    "updatedAt": "2024-01-02T00:00:00.000Z"
+  }
+]

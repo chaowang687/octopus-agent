@@ -1,0 +1,196 @@
+.message-content {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #1d1d1f;
+}
+
+.message-content p {
+  margin: 0 0 12px 0;
+}
+
+.message-content p:last-child {
+  margin-bottom: 0;
+}
+
+.message-h1 {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 20px 0 12px 0;
+  color: #1d1d1f;
+  border-bottom: 1px solid #e5e5e5;
+  padding-bottom: 8px;
+}
+
+.message-h2 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 18px 0 10px 0;
+  color: #1d1d1f;
+}
+
+.message-h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 14px 0 8px 0;
+  color: #1d1d1f;
+}
+
+.message-content ul,
+.message-content ol {
+  margin: 8px 0;
+  padding-left: 24px;
+}
+
+.message-content li {
+  margin: 4px 0;
+}
+
+.message-content li::marker {
+  color: #007aff;
+}
+
+.code-block-wrapper {
+  margin: 12px 0;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #282c34;
+}
+
+.code-block-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 12px;
+  background: #21252b;
+  border-bottom: 1px solid #3e4451;
+}
+
+.code-language {
+  font-size: 12px;
+  color: #abb2bf;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+.copy-button {
+  font-size: 12px;
+  padding: 4px 10px;
+  background: #4b5263;
+  color: #abb2bf;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.copy-button:hover {
+  background: #5c6370;
+}
+
+.inline-code {
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 13px;
+  background: #f5f5f7;
+  color: #d63384;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.message-link {
+  color: #007aff;
+  text-decoration: none;
+}
+
+.message-link:hover {
+  text-decoration: underline;
+}
+
+.file-link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #007aff;
+  background: rgba(0, 122, 255, 0.1);
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.file-link-button:hover {
+  background: rgba(0, 122, 255, 0.2);
+}
+
+.task-checkbox {
+  margin-right: 8px;
+  width: 16px;
+  height: 16px;
+  accent-color: #007aff;
+  cursor: pointer;
+}
+
+.task-list-item {
+  list-style: none;
+  margin: 6px 0;
+  display: flex;
+  align-items: flex-start;
+}
+
+.task-list-item input[type="checkbox"] {
+  margin-top: 4px;
+}
+
+.table-wrapper {
+  overflow-x: auto;
+  margin: 12px 0;
+}
+
+.message-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.message-table th,
+.message-table td {
+  border: 1px solid #e5e5e5;
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.message-table th {
+  background: #f5f5f7;
+  font-weight: 600;
+}
+
+.message-table tr:nth-child(even) {
+  background: #fafafa;
+}
+
+.message-blockquote {
+  margin: 12px 0;
+  padding: 8px 16px;
+  border-left: 4px solid #007aff;
+  background: #f5f5f7;
+  color: #6e6e73;
+}
+
+.message-hr {
+  border: none;
+  border-top: 1px solid #e5e5e5;
+  margin: 20px 0;
+}
+
+.message-content strong {
+  font-weight: 600;
+}
+
+.message-content em {
+  font-style: italic;
+}
+
+.message-content a[href^="http"]::before {
+  content: '🔗 ';
+}

@@ -489,7 +489,7 @@ export class Distiller {
 如果不需要任何操作，返回:
 {"type": "none"}`
 
-      const response = await llmService.chat('deepseek', [
+      const response = await llmService.chat('doubao-seed-2-0-lite-260215', [
         { role: 'system', content: '你是一个技能学习分析器，负责从任务执行中提取可重用的判断模式。' },
         { role: 'user', content: prompt }
       ], { max_tokens: 300, temperature: 0.2 })

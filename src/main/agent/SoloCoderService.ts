@@ -65,7 +65,7 @@ export class SoloCoderService {
       const enhancedPrompt = context ? await contextManager.injectContext(prompt, context) : prompt
       
       // 调用LLM生成代码
-      const response = await llmService.chat('deepseek', [
+      const response = await llmService.chat('doubao-seed-2-0-lite-260215', [
         {
           role: 'system',
           content: `You are an expert ${language} coder. Generate clean, efficient, and well-documented code.`
@@ -121,7 +121,7 @@ export class SoloCoderService {
       const enhancedPrompt = context ? await contextManager.injectContext(prompt, context) : prompt
       
       // 调用LLM生成测试
-      const response = await llmService.chat('deepseek', [
+      const response = await llmService.chat('doubao-seed-2-0-lite-260215', [
         {
           role: 'system',
           content: `You are an expert ${language} tester. Generate comprehensive tests.`
@@ -426,7 +426,7 @@ ${context}
 
 Continue the code naturally, maintaining the same style and indentation.`
 
-    const response = await llmService.chat('deepseek', [
+    const response = await llmService.chat('doubao-seed-2-0-lite-260215', [
       { role: 'system', content: `You are an expert ${language} coder. Complete code snippets accurately.` },
       { role: 'user', content: prompt }
     ], {

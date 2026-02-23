@@ -139,6 +139,7 @@ const MODEL_CAPABILITIES: Record<string, ModelCapability> = {
   // Doubao (字节跳动)
   'doubao-pro-32k': { id: 'doubao-pro-32k', name: 'Doubao Pro 32K', provider: 'doubao', contextWindow: 32000, isFast: true, isStrong: true, costLevel: 'medium' },
   'doubao-pro-128k': { id: 'doubao-pro-128k', name: 'Doubao Pro 128K', provider: 'doubao', contextWindow: 128000, isFast: false, isStrong: true, costLevel: 'high' },
+  'doubao-seed-2-0-lite-260215': { id: 'doubao-seed-2-0-lite-260215', name: 'Doubao Seed 2.0 Lite', provider: 'doubao', contextWindow: 128000, isFast: true, isStrong: true, costLevel: 'low' },
   'doubao-seed-2-0-code-preview-260215': { id: 'doubao-seed-2-0-code-preview-260215', name: 'Doubao Seed 2.0 Code', provider: 'doubao', contextWindow: 128000, isFast: true, isStrong: true, costLevel: 'medium' },
 }
 
@@ -154,98 +155,98 @@ export interface TaskTypeRoutingConfig {
 }
 
 const TASK_TYPE_ROUTING: Record<TaskType, TaskTypeRoutingConfig> = {
-  // 代码生成 - 需要高精度和代码理解能力
+  // 代码生成 - 使用豆包Lite
   [TaskType.CODE_GENERATION]: {
-    primary: 'deepseek-coder',
-    fallback: ['gpt-4o-mini', 'claude-3-sonnet', 'doubao-pro-32k'],
+    primary: 'doubao-seed-2-0-lite-260215',
+    fallback: ['doubao-pro-32k'],
     useLocalFirst: false,
     temperature: 0.3,
     maxTokens: 8000
   },
-  // 代码重构 - 需要理解代码结构
+  // 代码重构
   [TaskType.CODE_REFACTOR]: {
-    primary: 'deepseek-coder',
-    fallback: ['gpt-4o', 'claude-3-opus', 'deepseek-coder'],
+    primary: 'doubao-seed-2-0-lite-260215',
+    fallback: ['doubao-pro-128k'],
     useLocalFirst: false,
     temperature: 0.2,
     maxTokens: 10000
   },
-  // Bug修复 - 需要分析能力
+  // Bug修复
   [TaskType.CODE_FIX]: {
-    primary: 'deepseek-coder',
-    fallback: ['gpt-4o-mini', 'claude-3-sonnet', 'doubao-pro-32k'],
+    primary: 'doubao-seed-2-0-lite-260215',
+    fallback: ['doubao-pro-32k'],
     useLocalFirst: false,
     temperature: 0.2,
     maxTokens: 6000
   },
-  // 代码审查 - 需要全面分析
+  // 代码审查
   [TaskType.CODE_REVIEW]: {
-    primary: 'claude-3-sonnet',
-    fallback: ['gpt-4o', 'deepseek-coder', 'abab6.5s-chat'],
+    primary: 'doubao-seed-2-0-lite-260215',
+    fallback: ['doubao-pro-128k'],
     useLocalFirst: false,
     temperature: 0.3,
     maxTokens: 8000
   },
-  // 任务规划 - 需要强推理能力
+  // 任务规划
   [TaskType.PLANNING]: {
-    primary: 'deepseek-coder',
-    fallback: ['gpt-4o', 'claude-3-opus', 'doubao-pro-128k'],
+    primary: 'doubao-seed-2-0-lite-260215',
+    fallback: ['doubao-pro-128k'],
     useLocalFirst: false,
     temperature: 0.3,
     maxTokens: 6000
   },
-  // 深度推理 - 需要最强推理能力
+  // 深度推理
   [TaskType.REASONING]: {
-    primary: 'deepseek-coder',
-    fallback: ['gpt-4o', 'claude-3-opus', 'doubao-pro-128k'],
+    primary: 'doubao-seed-2-0-lite-260215',
+    fallback: ['doubao-pro-128k'],
     useLocalFirst: false,
     temperature: 0.2,
     maxTokens: 8000
   },
-  // 文件检索 - 快速响应即可
+  // 文件检索
   [TaskType.FILE_RETRIEVAL]: {
-    primary: 'deepseek-chat',
-    fallback: ['deepseek-coder', 'gpt-3.5-turbo', 'claude-3-haiku'],
+    primary: 'doubao-seed-2-0-lite-260215',
+    fallback: ['doubao-pro-32k'],
     useLocalFirst: true,
     temperature: 0.5,
     maxTokens: 2000
   },
-  // 代码摘要 - 需要理解能力但不需要推理
+  // 代码摘要
   [TaskType.CODE_SUMMARY]: {
-    primary: 'deepseek-coder',
-    fallback: ['gpt-4o-mini', 'claude-3-haiku', 'deepseek-chat'],
+    primary: 'doubao-seed-2-0-lite-260215',
+    fallback: ['doubao-pro-32k'],
     useLocalFirst: true,
     temperature: 0.4,
     maxTokens: 4000
   },
-  // 问答 - 简单响应
+  // 问答
   [TaskType.QA]: {
-    primary: 'deepseek-chat',
-    fallback: ['gpt-3.5-turbo', 'claude-3-haiku', 'abab6.5s-chat'],
+    primary: 'doubao-seed-2-0-lite-260215',
+    fallback: ['doubao-pro-32k'],
     useLocalFirst: true,
     temperature: 0.7,
     maxTokens: 2000
   },
-  // 闲聊 - 最简单的响应
+  // 闲聊
   [TaskType.CHAT]: {
-    primary: 'deepseek-chat',
-    fallback: ['gpt-3.5-turbo', 'claude-3-haiku', 'doubao-pro-32k'],
+    primary: 'doubao-seed-2-0-lite-260215',
+    fallback: ['doubao-pro-32k'],
     useLocalFirst: true,
     temperature: 0.8,
     maxTokens: 1000
   },
-  // 命令执行 - 需要代码能力
+  // 命令执行
   [TaskType.COMMAND_EXEC]: {
-    primary: 'deepseek-coder',
-    fallback: ['deepseek-chat', 'gpt-3.5-turbo', 'doubao-pro-32k'],
+    primary: 'doubao-seed-2-0-lite-260215',
+    fallback: ['doubao-pro-32k'],
     useLocalFirst: false,
     temperature: 0.3,
     maxTokens: 4000
   },
-  // 项目初始化 - 需要综合能力
+  // 项目初始化
   [TaskType.PROJECT_SETUP]: {
-    primary: 'deepseek-coder',
-    fallback: ['gpt-4o-mini', 'claude-3-sonnet', 'doubao-pro-32k'],
+    primary: 'doubao-seed-2-0-lite-260215',
+    fallback: ['doubao-pro-32k'],
     useLocalFirst: false,
     temperature: 0.3,
     maxTokens: 6000
@@ -255,14 +256,14 @@ const TASK_TYPE_ROUTING: Record<TaskType, TaskTypeRoutingConfig> = {
 // 默认配置
 const DEFAULT_CONFIG: ModelConfig = {
   system1: {
-    preferred: 'deepseek-chat',
-    fallback: ['doubao-pro-32k', 'gpt-3.5-turbo', 'claude-3-haiku'],
+    preferred: 'doubao-seed-2-0-lite-260215',
+    fallback: ['doubao-pro-32k'],
     timeout: 10000,
     temperature: 0.7
   },
   system2: {
-    preferred: 'deepseek-coder',
-    fallback: ['gpt-4o', 'claude-3-opus', 'deepseek-coder'],
+    preferred: 'doubao-seed-2-0-lite-260215',
+    fallback: ['doubao-pro-128k'],
     timeout: 120000,
     temperature: 0.3
   }
@@ -347,7 +348,7 @@ export class ModelRouter {
     }
 
     // 最后的兜底：查找任何可用的快速模型
-    const emergencyModel = this.findAnyAvailableModel(['deepseek-chat', 'doubao-pro-32k', 'gpt-3.5-turbo', 'claude-3-haiku'])
+    const emergencyModel = this.findAnyAvailableModel(['doubao-pro-32k', 'doubao-pro-128k'])
     if (emergencyModel) {
       console.log(`ModelRouter: System1 全部配置模型不可用，使用紧急回退 ${emergencyModel}`)
       return {
@@ -369,7 +370,7 @@ export class ModelRouter {
     
     // 高复杂度需要更强大的模型
     if (complexity > 0.7) {
-      const strongModels = ['gpt-4o', 'claude-3-opus', 'doubao-pro-128k', 'deepseek-coder']
+      const strongModels = ['doubao-pro-128k', 'doubao-seed-2-0-lite-260215']
       for (const model of strongModels) {
         if (this.isModelAvailable(model)) {
           return {
@@ -400,7 +401,7 @@ export class ModelRouter {
     }
 
     // 兜底
-    const emergencyModel = this.findAnyAvailableModel(['claude-3-sonnet', 'abab6.5s-chat', 'deepseek-chat'])
+    const emergencyModel = this.findAnyAvailableModel(['doubao-pro-128k', 'doubao-pro-32k'])
     if (emergencyModel) {
       return {
         model: emergencyModel,
@@ -599,7 +600,7 @@ export class ModelRouter {
 
     // 最后的兜底：查找任何可用模型
     const emergencyModel = this.findAnyAvailableModel([
-      'deepseek-chat', 'deepseek-coder', 'gpt-3.5-turbo', 'claude-3-haiku', 'doubao-pro-32k'
+      'doubao-pro-32k', 'doubao-pro-128k'
     ])
     if (emergencyModel) {
       return {

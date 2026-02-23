@@ -1,48 +1,61 @@
 import React, { useState, useEffect } from 'react'
 
-interface DualSystemState {
-  coordinationScore: number
-  system1Score: number
-  system2Score: number
-  distillationAccuracy: number
-  distilledItems: number
-  projectFiles: number
-  conversationHistory: number
+interface TokenUsage {
+  model: string
+  total: number
+  prompt: number
+  completion: number
 }
 
 const DualSystemSidebar: React.FC = () => {
-  const [state, setState] = useState<DualSystemState>({
-    coordinationScore: 80,
-    system1Score: 75,
-    system2Score: 85,
-    distillationAccuracy: 85,
-    distilledItems: 0,
-    projectFiles: 0,
-    conversationHistory: 0
-  })
+  const [tokenUsage, setTokenUsage] = useState<TokenUsage[]>([])
+  const [loading, setLoading] = useState(true)
 
-  // 定时更新状态（模拟实时数据）
   useEffect(() => {
-    const interval = setInterval(() => {
-      // 模拟数据变化
-      setState(prev => ({
-        ...prev,
-        coordinationScore: Math.min(100, Math.max(60, prev.coordinationScore + (Math.random() > 0.5 ? 1 : -1))),
-        system1Score: Math.min(100, Math.max(50, prev.system1Score + (Math.random() > 0.5 ? 2 : -2))),
-        system2Score: Math.min(100, Math.max(50, prev.system2Score + (Math.random() > 0.5 ? 2 : -2)))
-      }))
-    }, 5000)
+    const fetchTokenUsage = async () => {
+      try {
+        if (window.electron?.api) {
+          const result = await window.electron.api.invoke('api:getTokenUsage')
+          if (result.success) {
+            setTokenUsage(result.data || [])
+          }
+        }
+      } catch (error) {
+        console.error('获取 Token 使用量失败:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
 
+    fetchTokenUsage()
+    const interval = setInterval(fetchTokenUsage, 10000)
     return () => clearInterval(interval)
   }, [])
 
-  const getScoreColor = (score: number) => {
-    if (score >= 80) return '#34a853'
-    if (score >= 60) return '#fbbc04'
-    return '#ea4335'
+  const formatNumber = (num: number): string => {
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M'
+    if (num >= 1000) return (num / 1000).toFixed(1) + 'K'
+    return num.toString()
   }
 
+  const getModelName = (model: string): string => {
+    const nameMap: Record<string, string> = {
+      'doubao-seed-2-0-lite-260215': 'Doubao Lite',
+      'gpt-4o': 'GPT-4o',
+      'gpt-4o-mini': 'GPT-4o Mini',
+      'gpt-3.5-turbo': 'GPT-3.5',
+      'claude-3-opus': 'Claude 3 Opus',
+      'claude-3-sonnet': 'Claude 3 Sonnet',
+      'claude-3-haiku': 'Claude 3 Haiku',
+      'deepseek-chat': 'DeepSeek Chat',
+      'deepseek-coder': 'DeepSeek Coder'
+    }
+    return nameMap[model] || model
+  }
 
+  const getTotalTokens = (): number => {
+    return tokenUsage.reduce((sum, u) => sum + u.total, 0)
+  }
 
   return (
     <div style={{
@@ -52,7 +65,7 @@ const DualSystemSidebar: React.FC = () => {
       padding: '20px',
       display: 'flex',
       flexDirection: 'column',
-      gap: '20px',
+      gap: '16px',
       height: '100%',
       overflowY: 'auto'
     }}>
@@ -66,199 +79,100 @@ const DualSystemSidebar: React.FC = () => {
           alignItems: 'center',
           gap: '8px'
         }}>
-          <span style={{ fontSize: '18px' }}>🧠</span>
-          双系统协同状态
+          <span style={{ fontSize: '18px' }}>📊</span>
+          模型使用量统计
         </h3>
         <p style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
-          System 1 / System 2 Coordination
+          Token Usage by Model
         </p>
       </div>
 
-      {/* 协同评分 */}
+      {/* 总计 */}
       <div style={{
         backgroundColor: 'var(--bg-secondary)',
         borderRadius: 'var(--radius-md)',
         padding: '16px'
       }}>
+        <div style={{ fontSize: '13px', fontWeight: 500, marginBottom: '8px' }}>总 Token 使用量</div>
         <div style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center',
-          marginBottom: '8px'
+          fontSize: '24px', 
+          fontWeight: 700,
+          color: 'var(--accent-color)'
         }}>
-          <span style={{ fontSize: '13px', fontWeight: 500 }}>协同评分</span>
-          <span style={{ 
-            fontSize: '20px', 
-            fontWeight: 700,
-            color: getScoreColor(state.coordinationScore)
-          }}>
-            {state.coordinationScore}%
-          </span>
-        </div>
-        <div style={{
-          height: '6px',
-          backgroundColor: 'var(--border-color)',
-          borderRadius: '3px',
-          overflow: 'hidden'
-        }}>
-          <div style={{
-            height: '100%',
-            width: `${state.coordinationScore}%`,
-            backgroundColor: getScoreColor(state.coordinationScore),
-            borderRadius: '3px',
-            transition: 'width 0.5s ease'
-          }} />
+          {loading ? '...' : formatNumber(getTotalTokens())}
         </div>
       </div>
 
-      {/* 系统性能 */}
+      {/* 各模型使用量 */}
       <div style={{
         backgroundColor: 'var(--bg-secondary)',
         borderRadius: 'var(--radius-md)',
         padding: '16px'
       }}>
-        <div style={{ fontSize: '13px', fontWeight: 500, marginBottom: '12px' }}>系统性能</div>
+        <div style={{ fontSize: '13px', fontWeight: 500, marginBottom: '12px' }}>各模型使用量</div>
         
-        {/* System 1 */}
-        <div style={{ marginBottom: '12px' }}>
-          <div style={{ 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            marginBottom: '4px',
-            fontSize: '12px'
-          }}>
-            <span style={{ color: 'var(--text-secondary)' }}>系统1 (快速直觉)</span>
-            <span style={{ 
-              fontWeight: 600,
-              color: getScoreColor(state.system1Score)
-            }}>
-              {state.system1Score}%
-            </span>
+        {loading ? (
+          <div style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>加载中...</div>
+        ) : tokenUsage.length === 0 ? (
+          <div style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>暂无数据</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {tokenUsage.map((usage, index) => (
+              <div key={usage.model}>
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between',
+                  marginBottom: '4px',
+                  fontSize: '12px'
+                }}>
+                  <span style={{ fontWeight: 500 }}>{getModelName(usage.model)}</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>
+                    {formatNumber(usage.total)} tokens
+                  </span>
+                </div>
+                <div style={{
+                  height: '4px',
+                  backgroundColor: 'var(--border-color)',
+                  borderRadius: '2px',
+                  overflow: 'hidden'
+                }}>
+                  <div style={{
+                    height: '100%',
+                    width: `${getTotalTokens() > 0 ? (usage.total / getTotalTokens()) * 100 : 0}%`,
+                    backgroundColor: ['#4285f4', '#34a853', '#fbbc04', '#ea4335', '#9c27b0', '#00bcd4'][index % 6],
+                    borderRadius: '2px',
+                    transition: 'width 0.3s ease'
+                  }} />
+                </div>
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between',
+                  marginTop: '2px',
+                  fontSize: '10px',
+                  color: 'var(--text-tertiary)'
+                }}>
+                  <span>输入: {formatNumber(usage.prompt)}</span>
+                  <span>输出: {formatNumber(usage.completion)}</span>
+                </div>
+              </div>
+            ))}
           </div>
-          <div style={{
-            height: '4px',
-            backgroundColor: 'var(--border-color)',
-            borderRadius: '2px',
-            overflow: 'hidden'
-          }}>
-            <div style={{
-              height: '100%',
-              width: `${state.system1Score}%`,
-              backgroundColor: getScoreColor(state.system1Score),
-              borderRadius: '2px',
-              transition: 'width 0.5s ease'
-            }} />
-          </div>
-        </div>
-
-        {/* System 2 */}
-        <div>
-          <div style={{ 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            marginBottom: '4px',
-            fontSize: '12px'
-          }}>
-            <span style={{ color: 'var(--text-secondary)' }}>系统2 (慢速深思)</span>
-            <span style={{ 
-              fontWeight: 600,
-              color: getScoreColor(state.system2Score)
-            }}>
-              {state.system2Score}%
-            </span>
-          </div>
-          <div style={{
-            height: '4px',
-            backgroundColor: 'var(--border-color)',
-            borderRadius: '2px',
-            overflow: 'hidden'
-          }}>
-            <div style={{
-              height: '100%',
-              width: `${state.system2Score}%`,
-              backgroundColor: getScoreColor(state.system2Score),
-              borderRadius: '2px',
-              transition: 'width 0.5s ease'
-            }} />
-          </div>
-        </div>
+        )}
       </div>
 
-      {/* 知识蒸馏 */}
-      <div style={{
-        backgroundColor: 'var(--bg-secondary)',
-        borderRadius: 'var(--radius-md)',
-        padding: '16px'
-      }}>
-        <div style={{ fontSize: '13px', fontWeight: 500, marginBottom: '12px' }}>知识蒸馏</div>
-        
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          marginBottom: '8px',
-          fontSize: '12px'
-        }}>
-          <span style={{ color: 'var(--text-secondary)' }}>准确率</span>
-          <span style={{ 
-            fontWeight: 600,
-            color: getScoreColor(state.distillationAccuracy)
-          }}>
-            {state.distillationAccuracy}%
-          </span>
-        </div>
-        
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between',
-          fontSize: '12px'
-        }}>
-          <span style={{ color: 'var(--text-secondary)' }}>已蒸馏</span>
-          <span style={{ fontWeight: 500 }}>{state.distilledItems} 项</span>
-        </div>
-      </div>
-
-      {/* 共享上下文 */}
-      <div style={{
-        backgroundColor: 'var(--bg-secondary)',
-        borderRadius: 'var(--radius-md)',
-        padding: '16px'
-      }}>
-        <div style={{ fontSize: '13px', fontWeight: 500, marginBottom: '12px' }}>共享上下文</div>
-        
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          marginBottom: '8px',
-          fontSize: '12px'
-        }}>
-          <span style={{ color: 'var(--text-secondary)' }}>项目文件</span>
-          <span style={{ fontWeight: 500 }}>{state.projectFiles} 个</span>
-        </div>
-        
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between',
-          fontSize: '12px'
-        }}>
-          <span style={{ color: 'var(--text-secondary)' }}>对话历史</span>
-          <span style={{ fontWeight: 500 }}>{state.conversationHistory} 条</span>
-        </div>
-      </div>
-
-      {/* 系统说明 */}
+      {/* 说明 */}
       <div style={{
         marginTop: 'auto',
         padding: '12px',
         backgroundColor: 'var(--bg-tertiary)',
         borderRadius: 'var(--radius-md)',
         fontSize: '11px',
-        color: 'var(--text-tertiary)',
-        lineHeight: '1.5'
+        color: 'var(--text-tertiary)'
       }}>
-        <div style={{ fontWeight: 500, marginBottom: '4px' }}>💡 系统说明</div>
-        <div>• 系统1: 快速响应，适合简单任务</div>
-        <div>• 系统2: 深度思考，适合复杂推理</div>
-        <div>• 知识蒸馏: 将系统2能力迁移到系统1</div>
+        💡 Token 统计说明<br/>
+        • 输入 Token: 发送的请求内容<br/>
+        • 输出 Token: AI 返回的内容<br/>
+        • 按模型分别统计
       </div>
     </div>
   )

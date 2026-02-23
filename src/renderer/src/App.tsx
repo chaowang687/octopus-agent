@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'r
 import Header from './components/Header'
 import Sidebar from './components/Sidebar'
 import MainContent from './components/MainContent'
+import CollaborationDialog from './components/CollaborationDialog'
 import Tools from './pages/Tools'
 import ApiManagement from './pages/ApiManagement'
 import Console from './pages/Console'
@@ -16,10 +17,10 @@ import Memory from './pages/Memory'
 import Multimodal from './pages/Multimodal'
 import ProjectManagement from './pages/ProjectManagement'
 import Library from './pages/Library'
-import ResourceAllocation from './pages/ResourceAllocation'
 import OmniAgent from './pages/OmniAgent'
 import { Login } from './pages/Login'
 import { UserManagement } from './pages/UserManagement'
+import { BackupManager } from './components/BackupManager'
 
 interface User {
   id: string
@@ -157,6 +158,8 @@ function App() {
   return (
     <Router>
       <GlobalBrowserHandler>
+        {/* 协作确认对话框 - 全局显示 */}
+        <CollaborationDialog />
         <Routes>
           <Route 
             path="/login" 
@@ -192,8 +195,8 @@ function App() {
                         <Route path="/multimodal" element={<Multimodal />} />
                         <Route path="/projects" element={<ProjectManagement />} />
                         <Route path="/library" element={<Library />} />
-                        <Route path="/resource-allocation" element={<ResourceAllocation />} />
                         <Route path="/omni-agent" element={<OmniAgent />} />
+                        <Route path="/backup" element={<BackupManager />} />
                         <Route 
                           path="/user-management" 
                           element={

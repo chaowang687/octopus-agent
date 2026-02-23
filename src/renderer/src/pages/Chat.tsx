@@ -5,6 +5,7 @@ import CreateGroupModal from '../components/CreateGroupModal'
 import ReasoningVisualizer from '../components/ReasoningVisualizer'
 import InterventionModal from '../components/InterventionModal'
 import CollaborationModal from '../components/CollaborationModal'
+import MessageContentComponent from '../components/MessageContent'
 import { chatDataService, ChatSession } from '../services/ChatDataService'
 
 interface Message {
@@ -422,6 +423,16 @@ const Chat: React.FC = () => {
   // 当前使用的模型名称（自动判断后显示）
   const [currentModelName, setCurrentModelName] = useState<string>('DeepSeek (快速响应)')
   
+  // 可用的模型列表（从 API 配置检测）
+  const [availableModels, setAvailableModels] = useState<string[]>(['deepseek'])
+  
+  // 当前选择的模型
+  const [selectedModel, setSelectedModel] = useState<string>('deepseek')
+  
+  // 使用 ref 追踪模型，避免 useEffect 依赖问题
+  const selectedModelRef = useRef(selectedModel)
+  selectedModelRef.current = selectedModel
+  
   // 项目路径选择
   const [projectPath, setProjectPath] = useState<string>('')
   
@@ -491,7 +502,7 @@ const Chat: React.FC = () => {
       const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null
       const userId = currentUser?.id || null
       
-      const modelsToCheck = ['openai', 'claude', 'minimax', 'deepseek']
+      const modelsToCheck = ['openai', 'claude', 'minimax', 'deepseek', 'doubao', 'agent5']
       const configuredModels: string[] = []
       
       for (const model of modelsToCheck) {
@@ -499,6 +510,11 @@ const Chat: React.FC = () => {
         if (key) {
           configuredModels.push(model)
         }
+      }
+      
+      setAvailableModels(configuredModels.length > 0 ? configuredModels : ['deepseek'])
+      if (configuredModels.length > 0 && !configuredModels.includes(selectedModelRef.current)) {
+        setSelectedModel(configuredModels[0])
       }
     }
     checkModels()
@@ -540,9 +556,10 @@ const Chat: React.FC = () => {
         
         // 创建任务历史记录
         const taskDir = evt.taskDir || currentTaskDirRef.current
+        const taskTitle = evt.projectName || (taskDir ? taskDir.split('/').pop() || '新任务' : '新任务')
         const newHistoryItem = {
           id: taskId,
-          title: taskDir ? taskDir.split('/').pop() || '新任务' : '新任务',
+          title: taskTitle,
           status: '进行中',
           timestamp: eventTimestamp,
           path: taskDir, // 存储项目路径
@@ -1195,6 +1212,19 @@ const Chat: React.FC = () => {
 
     // 监听来自主进程的流式事件
     window.electron.ipcRenderer.on('chat:stream', handleStream)
+    
+    // 监听来自主进程的任务事件（如目录切换通知）
+    const handleTaskEvent = (data: any) => {
+      console.log('[Chat] 收到任务事件:', data)
+      if (data.type === 'task_start') {
+        // 显示实际使用的目录
+        const dirMessage = data.description 
+          ? `[📁 目录: ${data.taskDir}] ${data.description}`
+          : `[📁 工作目录: ${data.taskDir}]`
+        setTaskLogs(prev => [...prev, dirMessage])
+      }
+    }
+    window.electron.ipcRenderer.on('chat:event', handleTaskEvent)
 
     // 监听协作方案请求事件
     const unsubscribeCollaboration = window.electron.collab.onRequest((request) => {
@@ -1254,10 +1284,21 @@ const Chat: React.FC = () => {
     const complexity = assessTaskComplexity(input)
     console.log(`[Chat] 任务复杂度: ${complexity}, 内容: ${input.slice(0, 50)}...`)
 
-    // 根据复杂度选择系统
-    const targetSystem = complexity === 'low' ? 'system1' : 'system2'
+    // 使用用户选择的模型
+    const targetSystem = selectedModelRef.current === 'deepseek' ? 'system1' : 'system2'
     handleSystemSwitch(targetSystem)
     
+    // 根据用户选择的模型更新显示名称
+    const modelDisplayName: Record<string, string> = {
+      'openai': 'OpenAI',
+      'claude': 'Claude',
+      'minimax': 'MiniMax',
+      'deepseek': 'DeepSeek (快速响应)',
+      'doubao': '豆包 (深度思考)',
+      'agent5': 'Agent5 (Qwen3)'
+    }
+    setCurrentModelName(modelDisplayName[selectedModel] || selectedModel)
+
     // 后端 task.execute 会使用 MultiDialogueCoordinator 处理多智能体协作
     // 前端通过 progress 事件接收各个智能体的输出
     
@@ -1596,7 +1637,8 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
         sessionId,
         system: targetSystem,
         complexity,
-        taskDir
+        taskDir,
+        model: selectedModelRef.current
       })
       
       setMessages(prev => prev.filter(msg => msg.id !== thinkingMessage.id))
@@ -2133,9 +2175,7 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
                       </div>
                     )}
 
-                    <div style={{ whiteSpace: 'pre-wrap' }}>
-                      {message.content}
-                    </div>
+                    <MessageContentComponent content={message.content} />
                   </div>
                 </div>
               ))
@@ -2279,6 +2319,33 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
               />
               <div className="chat-toolbar">
                 <div className="chat-tools-left">
+                  {/* 模型选择器 */}
+                  <select
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    style={{
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      border: '1px solid #ddd',
+                      backgroundColor: 'white',
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                      marginRight: '8px'
+                    }}
+                    title="选择 AI 模型"
+                  >
+                    {availableModels.map(model => (
+                      <option key={model} value={model}>
+                        {model === 'openai' && 'OpenAI'}
+                        {model === 'claude' && 'Claude'}
+                        {model === 'minimax' && 'MiniMax'}
+                        {model === 'deepseek' && 'DeepSeek'}
+                        {model === 'doubao' && '豆包'}
+                        {model === 'agent5' && 'Agent5 (Qwen3)'}
+                      </option>
+                    ))}
+                  </select>
+                  
                   <button className="chat-tool-btn" title="Add File" onClick={handleAddFile}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>

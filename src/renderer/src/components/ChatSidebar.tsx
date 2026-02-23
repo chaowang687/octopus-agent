@@ -17,9 +17,14 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ currentSessionId, onSelectSes
   const [agents, setAgents] = useState<Agent[]>([])
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; sessionId: string } | null>(null)
 
+  console.log('[ChatSidebar] Render:', { sessions: sessions.length, agents: agents.length, currentSessionId })
+
   const refreshData = () => {
-    setSessions([...chatDataService.getSessions()])
-    setAgents(chatDataService.getAgents())
+    const newSessions = chatDataService.getSessions()
+    const newAgents = chatDataService.getAgents()
+    console.log('[ChatSidebar] Refreshing data:', { sessions: newSessions.length, agents: newAgents.length })
+    setSessions([...newSessions])
+    setAgents(newAgents)
   }
 
   const handleContextMenu = (e: React.MouseEvent, sessionId: string) => {
@@ -105,7 +110,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ currentSessionId, onSelectSes
   }
 
   return (
-    <div className="session-sidebar">
+    <div className="session-sidebar" style={{ position: 'relative' }}>
       {/* 顶部搜索栏 */}
       <div className="sidebar-search-container">
         <div className="sidebar-search-input-wrapper">
@@ -125,19 +130,19 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ currentSessionId, onSelectSes
       {showMenu && (
         <>
           <div 
-            style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} 
+            style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1000 }} 
             onClick={() => setShowMenu(false)}
           ></div>
           <div style={{
-            position: 'absolute',
-            top: '50px',
-            right: '12px',
+            position: 'fixed',
+            top: 'calc(60px + 50px)',
+            right: 'calc(68px + 12px)',
             width: '180px',
             backgroundColor: '#ffffff',
             border: '1px solid rgba(0,0,0,0.1)',
             borderRadius: '8px',
             boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-            zIndex: 100,
+            zIndex: 1001,
             padding: '4px 0',
             overflow: 'hidden'
           }}>
@@ -180,53 +185,64 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ currentSessionId, onSelectSes
 
       {/* 会话列表 */}
       <div className="sidebar-session-list">
-        {sessions.map(session => {
-          const display = getSessionDisplay(session)
-          const isActive = session.id === currentSessionId
-          
-          return (
-            <div 
-              key={session.id}
-              onClick={() => onSelectSession(session)}
-              onContextMenu={(e) => handleContextMenu(e, session.id)}
-              className={`sidebar-session-item ${isActive ? 'active' : ''}`}
-            >
-              {/* 头像 */}
-              <div className="session-avatar">
-                {Array.isArray(display.avatar) ? (
-                  <div className="session-avatar-group">
-                    {display.avatar.map((src, i) => (
-                      <img key={i} src={src} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    ))}
-                  </div>
-                ) : (
-                  <img 
-                    src={display.avatar} 
-                    alt={display.name}
-                  />
-                )}
-                {session.unread > 0 && (
-                  <div className="session-unread-badge">
-                    {session.unread}
-                  </div>
-                )}
-              </div>
+        {sessions.length === 0 ? (
+          <div style={{ 
+            padding: '20px', 
+            textAlign: 'center', 
+            color: 'var(--text-tertiary)',
+            fontSize: '13px'
+          }}>
+            暂无会话，点击 + 号开始对话
+          </div>
+        ) : (
+          sessions.map(session => {
+            const display = getSessionDisplay(session)
+            const isActive = session.id === currentSessionId
+            
+            return (
+              <div 
+                key={session.id}
+                onClick={() => onSelectSession(session)}
+                onContextMenu={(e) => handleContextMenu(e, session.id)}
+                className={`sidebar-session-item ${isActive ? 'active' : ''}`}
+              >
+                {/* 头像 */}
+                <div className="session-avatar">
+                  {Array.isArray(display.avatar) ? (
+                    <div className="session-avatar-group">
+                      {display.avatar.map((src, i) => (
+                        <img key={i} src={src} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ))}
+                    </div>
+                  ) : (
+                    <img 
+                      src={display.avatar} 
+                      alt={display.name}
+                    />
+                  )}
+                  {session.unread > 0 && (
+                    <div className="session-unread-badge">
+                      {session.unread}
+                    </div>
+                  )}
+                </div>
 
-              {/* 信息 */}
-              <div className="session-info">
-                <div className="session-header">
-                  <span className="session-name">
-                    {display.name}
-                  </span>
-                  <span className="session-time">{session.lastTime}</span>
-                </div>
-                <div className="session-preview">
-                  {session.lastMessage || (display.isGroup ? '群组已创建' : '开始对话...')}
+                {/* 信息 */}
+                <div className="session-info">
+                  <div className="session-header">
+                    <span className="session-name">
+                      {display.name}
+                    </span>
+                    <span className="session-time">{session.lastTime}</span>
+                  </div>
+                  <div className="session-preview">
+                    {session.lastMessage || (display.isGroup ? '群组已创建' : '开始对话...')}
+                  </div>
                 </div>
               </div>
-            </div>
-          )
-        })}
+            )
+          })
+        )}
       </div>
 
       {showCreateAgent && <CreateAgentModal onClose={() => setShowCreateAgent(false)} onCreated={refreshData} />}

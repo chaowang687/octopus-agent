@@ -58,6 +58,7 @@ contextBridge.exposeInMainWorld('electron', {
     compareFiles: (path1: string, path2: string) => ipcRenderer.invoke('fs:compareFiles', path1, path2),
     exists: (path: string) => ipcRenderer.invoke('fs:exists', path),
     listFiles: (path: string) => ipcRenderer.invoke('fs:listFiles', path),
+    listEntries: (dirPath: string) => ipcRenderer.invoke('fs:listEntries', dirPath),
     listDirectories: (dirPath: string) => ipcRenderer.invoke('fs:listDirectories', dirPath),
     getProjectInfo: (projectPath: string) => ipcRenderer.invoke('fs:getProjectInfo', projectPath),
     scanProjectsDirectory: (projectsDir: string) => ipcRenderer.invoke('fs:scanProjectsDirectory', projectsDir),
@@ -78,7 +79,9 @@ contextBridge.exposeInMainWorld('electron', {
   chat: {
     sendMessage: (model: string, message: string, agentOptions?: { agentId?: string; sessionId?: string }) =>
       ipcRenderer.invoke('chat:sendMessage', model, message, agentOptions),
-    cancel: () => ipcRenderer.invoke('chat:cancel')
+    cancel: () => ipcRenderer.invoke('chat:cancel'),
+    pause: () => ipcRenderer.invoke('chat:pause'),
+    resume: () => ipcRenderer.invoke('chat:resume')
   },
   // 网页自动化
   web: {
@@ -197,7 +200,10 @@ contextBridge.exposeInMainWorld('electron', {
     },
     offEvent: () => {
       ipcRenderer.removeAllListeners('collaboration:event')
-    }
+    },
+    approve: (requestId: string, response?: string) => ipcRenderer.invoke('collaboration:approve', requestId, response),
+    reject: (requestId: string, reason?: string) => ipcRenderer.invoke('collaboration:reject', requestId, reason),
+    modify: (requestId: string, modifiedParams: any, response?: string) => ipcRenderer.invoke('collaboration:modify', requestId, modifiedParams, response)
   },
   events: {
     onWebviewNewWindow: (callback: (details: { url: string; frameName?: string }) => void) => {
@@ -287,7 +293,9 @@ contextBridge.exposeInMainWorld('electron', {
     setWorkflowSettings: (settings: any) => ipcRenderer.invoke('agent:setWorkflowSettings', settings),
     getAvailableAgents: () => ipcRenderer.invoke('agent:getAvailableAgents'),
     getAgentConfig: (agentId: string) => ipcRenderer.invoke('agent:getAgentConfig', agentId),
-    setAgentConfig: (agentId: string, config: any) => ipcRenderer.invoke('agent:setAgentConfig', agentId, config)
+    setAgentConfig: (agentId: string, config: any) => ipcRenderer.invoke('agent:setAgentConfig', agentId, config),
+    getToolState: () => ipcRenderer.invoke('agent:getToolState'),
+    updateToolState: (state: any) => ipcRenderer.invoke('agent:updateToolState', state)
   },
   // 用户认证
   auth: {
@@ -478,12 +486,13 @@ declare global {
         restorePlanVersion: (projectPath: string, versionId: string) => Promise<{ success: boolean; error?: string }>
       }
       fs: {
-        readFile: (path: string) => Promise<string>
-        writeFile: (path: string, content: string) => Promise<void>
-        editFile: (path: string, oldContent: string, newContent: string) => Promise<any>
-        compareFiles: (path1: string, path2: string) => Promise<any>
-        exists: (path: string) => Promise<boolean>
-        listFiles: (path: string) => Promise<string[]>
+        readFile: (path: string) => Promise<{ success: boolean; content?: string; error?: string }>
+        writeFile: (path: string, content: string) => Promise<{ success: boolean; error?: string }>
+        editFile: (path: string, oldContent: string, newContent: string) => Promise<{ success: boolean; error?: string }>
+        compareFiles: (path1: string, path2: string) => Promise<{ success: boolean; isEqual?: boolean; error?: string }>
+        exists: (path: string) => Promise<{ success: boolean; exists?: boolean; error?: string }>
+        listFiles: (path: string) => Promise<{ success: boolean; files?: string[]; error?: string }>
+        listEntries: (dirPath: string) => Promise<{ success: boolean; entries?: { name: string; isDirectory: boolean; isFile: boolean }[]; error?: string }>
         listDirectories: (dirPath: string) => Promise<{ success: boolean; directories?: string[]; error?: string }>
         getProjectInfo: (projectPath: string) => Promise<{ success: boolean; project?: any; error?: string }>
         scanProjectsDirectory: (projectsDir: string) => Promise<{ success: boolean; projects?: any[]; error?: string }>
@@ -502,6 +511,8 @@ declare global {
       chat: {
         sendMessage: (model: string, message: string) => Promise<any>
         cancel: () => Promise<any>
+        pause: () => Promise<any>
+        resume: () => Promise<any>
       },
       web: {
         crawlPage: (url: string, options?: any) => Promise<any>

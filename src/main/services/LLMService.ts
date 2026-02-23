@@ -32,7 +32,7 @@ export interface LLMMultimodalMessage {
 
 export interface LLMClientBase {
   id: string
-  provider: 'openai' | 'deepseek' | 'claude' | 'minimax' | 'doubao'
+  provider: 'openai' | 'deepseek' | 'claude' | 'minimax' | 'doubao' | 'agent5'
   chat: (messages: LLMMessage[], options?: any) => Promise<LLMResponse>
 }
 
@@ -48,8 +48,36 @@ export class LLMService {
     'deepseek-chat': 'deepseek', 'deepseek-coder': 'deepseek',
     'abab6.5s-chat': 'minimax',
     'doubao-pro-32k': 'doubao', 'doubao-pro-128k': 'doubao',
-    'doubao-seed-2-0-pro-260215': 'doubao',
-    'doubao-seed-2-0-code-preview-260215': 'doubao'
+    'doubao-seed-2-0-lite-260215': 'doubao',
+    'doubao-seed-2-0-code-preview-260215': 'doubao',
+    'qwen3': 'agent5'
+  }
+  
+  // Token 统计
+  private tokenUsage: Map<string, { promptTokens: number; completionTokens: number }> = new Map()
+  
+  // 统计 Token 使用量
+  public addTokenUsage(model: string, promptTokens: number, completionTokens: number): void {
+    const current = this.tokenUsage.get(model) || { promptTokens: 0, completionTokens: 0 }
+    this.tokenUsage.set(model, {
+      promptTokens: current.promptTokens + promptTokens,
+      completionTokens: current.completionTokens + completionTokens
+    })
+  }
+  
+  // 获取 Token 使用量统计
+  public getTokenUsage(): Map<string, { promptTokens: number; completionTokens: number }> {
+    return new Map(this.tokenUsage)
+  }
+  
+  // 获取所有模型的 Token 统计摘要
+  public getTokenUsageSummary(): { model: string; total: number; prompt: number; completion: number }[] {
+    const result: { model: string; total: number; prompt: number; completion: number }[] = []
+    this.tokenUsage.forEach((usage, model) => {
+      const total = usage.promptTokens + usage.completionTokens
+      result.push({ model, total, prompt: usage.promptTokens, completion: usage.completionTokens })
+    })
+    return result.sort((a, b) => b.total - a.total)
   }
   
   // API 密钥缓存
@@ -132,20 +160,28 @@ export class LLMService {
   }
 
   public getApiKey(model: string): string | null {
+    console.log('[LLMService] getApiKey - Requested model:', model)
+    console.log('[LLMService] getApiKey - Current userId:', this.currentUserId)
+    console.log('[LLMService] getApiKey - API keys path:', this.apiKeysPath)
+    
     try {
       // 先检查缓存
       const cachedKey = this.getCachedApiKey(model)
       if (cachedKey) {
+        console.log('[LLMService] getApiKey - Found in cache')
         return cachedKey
       }
 
       if (fs.existsSync(this.apiKeysPath)) {
         const apiKeys = JSON.parse(fs.readFileSync(this.apiKeysPath, 'utf8'))
+        console.log('[LLMService] getApiKey - Loaded API keys:', Object.keys(apiKeys))
+        
         if (apiKeys[model]) {
           // 尝试解密 API 密钥
           const key = this.decryptApiKey(apiKeys[model])
           // 缓存 API 密钥
           this.cacheApiKey(model, key)
+          console.log('[LLMService] getApiKey - Found key for model:', model)
           return key
         }
         const provider = this.modelToProvider[model]
@@ -154,12 +190,16 @@ export class LLMService {
           const key = this.decryptApiKey(apiKeys[provider])
           // 缓存 API 密钥
           this.cacheApiKey(model, key)
+          console.log('[LLMService] getApiKey - Found key for provider:', provider)
           return key
         }
+        console.log('[LLMService] getApiKey - No key found for model:', model)
         return null
+      } else {
+        console.log('[LLMService] getApiKey - API keys file does not exist:', this.apiKeysPath)
       }
     } catch (error) {
-      console.error('Failed to read API keys:', error)
+      console.error('[LLMService] getApiKey - Failed to read API keys:', error)
     }
     return null
   }
@@ -171,13 +211,23 @@ export class LLMService {
         const providers: string[] = []
         
         // 检查所有提供商
-        const providerList: string[] = ['openai', 'claude', 'deepseek', 'minimax', 'doubao']
+        const providerList: string[] = ['openai', 'claude', 'deepseek', 'minimax', 'doubao', 'agent5']
         for (const provider of providerList) {
-          if (apiKeys[provider] && apiKeys[provider].trim()) {
-            providers.push(provider)
+          if (apiKeys[provider]) {
+            try {
+              // 解密 API Key 后检查是否为空
+              const decryptedKey = this.decryptApiKey(apiKeys[provider])
+              if (decryptedKey && decryptedKey.trim()) {
+                providers.push(provider)
+              }
+            } catch (decryptError) {
+              console.error(`Failed to decrypt API key for ${provider}:`, decryptError)
+              // 解密失败，跳过这个提供商，继续检查其他提供商
+            }
           }
         }
         
+        console.log('Available providers:', providers)
         return providers
       }
     } catch (error) {
@@ -188,7 +238,10 @@ export class LLMService {
 
   public getFirstAvailableProvider(): string | null {
     const providers = this.getAvailableProviders()
-    return providers.length > 0 ? providers[0] : null
+    console.log('[LLMService] getFirstAvailableProvider - Available providers:', providers)
+    const result = providers.length > 0 ? providers[0] : null
+    console.log('[LLMService] getFirstAvailableProvider - Selected provider:', result)
+    return result
   }
 
   private getCachedApiKey(model: string): string | null {
@@ -223,24 +276,33 @@ export class LLMService {
 
   public setApiKey(model: string, key: string): boolean {
     try {
+      console.log('[LLMService] setApiKey - Model:', model)
+      console.log('[LLMService] setApiKey - Key length:', key.length)
+      console.log('[LLMService] setApiKey - Current userId:', this.currentUserId)
+      console.log('[LLMService] setApiKey - API keys path:', this.apiKeysPath)
+      
       // 确保用户API密钥目录存在
       this.ensureUserApiKeyDir()
       
       let apiKeys: any = {}
       if (fs.existsSync(this.apiKeysPath)) {
         apiKeys = JSON.parse(fs.readFileSync(this.apiKeysPath, 'utf8'))
+        console.log('[LLMService] setApiKey - Existing keys:', Object.keys(apiKeys))
       }
       
       // 加密存储 API 密钥
       apiKeys[model] = this.encryptApiKey(key)
       fs.writeFileSync(this.apiKeysPath, JSON.stringify(apiKeys, null, 2), { mode: 0o600 })
       
+      console.log('[LLMService] setApiKey - Saved successfully to:', this.apiKeysPath)
+      console.log('[LLMService] setApiKey - New keys:', Object.keys(apiKeys))
+      
       // 清除对应缓存，确保下次获取时能获取到新的密钥
       this.apiKeyCache.delete(model)
       
       return true
     } catch (error) {
-      console.error('Failed to write API keys:', error)
+      console.error('[LLMService] setApiKey - Failed to write API keys:', error)
       return false
     }
   }
@@ -380,7 +442,11 @@ export class LLMService {
   }
 
   async chat(model: string, messages: LLMMessage[], options: any = {}): Promise<LLMResponse> {
+    console.log('[LLMService] chat() called with model:', model)
+    console.log('[LLMService] chat() messages count:', messages.length)
+    
     const apiKey = this.getApiKey(model)
+    console.log('[LLMService] chat() API key result:', apiKey ? 'Found' : 'Not found')
     
     // 如果没有API Key，尝试使用模拟响应（用于演示模式）
     if (!apiKey) {
@@ -443,31 +509,72 @@ export class LLMService {
       return { success: false, error: `请先在 "API 管理" 页面配置 ${model} 的 API Key` }
     }
 
-    try {
-      // 将模型名称映射到provider
-      const provider = this.modelToProvider[model] || model
-      
-      if (provider === 'openai' || model === 'openai') {
-        return await this.callOpenAI(apiKey, messages, options)
-      } else if (provider === 'deepseek' || model === 'deepseek') {
-        return await this.callDeepSeek(apiKey, messages, options)
-      } else if (provider === 'claude' || model === 'claude') {
-        return await this.callClaude(apiKey, messages, options)
-      } else if (provider === 'minimax' || model === 'minimax') {
-        return await this.callMiniMax(apiKey, messages, options)
-      } else if (provider === 'doubao' || model === 'doubao') {
-        return await this.callDoubao(apiKey, messages, options)
-      } else {
-        return { success: false, error: `Unsupported model: ${model}` }
+    // 自动重试配置
+    const maxRetries = 3
+    const baseDelay = 2000 // 基础延迟2秒
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        // 将模型名称映射到provider
+        const provider = this.modelToProvider[model] || model
+        
+        let result: LLMResponse
+        if (provider === 'openai' || model === 'openai') {
+          result = await this.callOpenAI(apiKey, messages, options)
+        } else if (provider === 'deepseek' || model === 'deepseek') {
+          result = await this.callDeepSeek(apiKey, messages, options)
+        } else if (provider === 'claude' || model === 'claude') {
+          result = await this.callClaude(apiKey, messages, options)
+        } else if (provider === 'minimax' || model === 'minimax') {
+          result = await this.callMiniMax(apiKey, messages, options)
+        } else if (provider === 'doubao' || model === 'doubao') {
+          result = await this.callDoubao(apiKey, messages, options)
+        } else if (provider === 'agent5' || model === 'agent5') {
+          result = await this.callAgent5(apiKey, messages, options)
+        } else {
+          return { success: false, error: `Unsupported model: ${model}` }
+        }
+        
+        // 成功则返回结果
+        if (result.success) {
+          return result
+        }
+        
+        // 检查是否是速率限制错误（429）
+        const errorMsg = result.error || ''
+        if (errorMsg.includes('429') || errorMsg.includes('Too Many Requests') || errorMsg.includes('RequestBurstTooFast')) {
+          if (attempt < maxRetries - 1) {
+            const delay = baseDelay * Math.pow(2, attempt) // 指数退避
+            console.log(`[LLMService] 速率限制，${delay}ms后重试 (尝试 ${attempt + 1}/${maxRetries})`)
+            await new Promise(resolve => setTimeout(resolve, delay))
+            continue
+          }
+        }
+        
+        // 其他错误直接返回
+        return result
+      } catch (error: any) {
+        console.error(`LLM call failed for ${model}:`, error)
+        const msg = String(error?.message || error || '')
+        
+        // 检查是否是速率限制错误
+        if (msg.includes('429') || msg.includes('Too Many Requests') || msg.includes('RequestBurstTooFast')) {
+          if (attempt < maxRetries - 1) {
+            const delay = baseDelay * Math.pow(2, attempt)
+            console.log(`[LLMService] 速率限制异常，${delay}ms后重试 (尝试 ${attempt + 1}/${maxRetries})`)
+            await new Promise(resolve => setTimeout(resolve, delay))
+            continue
+          }
+        }
+        
+        if (error?.name === 'AbortError' || msg.toLowerCase().includes('abort')) {
+          return { success: false, error: 'Task cancelled' }
+        }
+        return { success: false, error: msg }
       }
-    } catch (error: any) {
-      console.error(`LLM call failed for ${model}:`, error)
-      const msg = String(error?.message || error || '')
-      if (error?.name === 'AbortError' || msg.toLowerCase().includes('abort')) {
-        return { success: false, error: 'Task cancelled' }
-      }
-      return { success: false, error: msg }
     }
+    
+    return { success: false, error: '超过最大重试次数' }
   }
 
   // 多模态聊天方法 - 支持图像输入
@@ -514,6 +621,8 @@ export class LLMService {
         return await this.callOpenAIStream(apiKey, messages, options, onChunk)
       } else if (provider === 'claude' || model === 'claude') {
         return await this.callClaudeStream(apiKey, messages, options, onChunk)
+      } else if (provider === 'doubao' || model.startsWith('doubao')) {
+        return await this.callDoubaoStream(apiKey, messages, options, onChunk)
       } else {
         return { success: false, error: `流式响应暂不支持模型: ${model}` }
       }
@@ -601,6 +710,9 @@ export class LLMService {
     }
 
     const data = await response.json()
+    const promptTokens = data.usage?.prompt_tokens || Math.ceil(JSON.stringify(messages).length / 4)
+    const completionTokens = data.usage?.completion_tokens || Math.ceil((data.choices?.[0]?.message?.content || '').length / 4)
+    this.addTokenUsage(options.model || 'gpt-4o', promptTokens, completionTokens)
     return { success: true, content: data.choices?.[0]?.message?.content || '' }
   }
 
@@ -610,7 +722,7 @@ export class LLMService {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${apiKey}`
     }
-    const model = options.model || 'deepseek-chat'
+    const model = options.model || 'doubao-seed-2-0-lite-260215'
     const maxTokens = options?.max_tokens ?? 1000
     const temperature = options?.temperature ?? 0.7
 
@@ -632,6 +744,9 @@ export class LLMService {
     const response1 = await send(messages as any[])
     if (response1.ok) {
       const data = await response1.json()
+      const pt = data.usage?.prompt_tokens || Math.ceil(JSON.stringify(messages).length / 4)
+      const ct = data.usage?.completion_tokens || Math.ceil((data.choices?.[0]?.message?.content || '').length / 4)
+      this.addTokenUsage(options.model || 'deepseek-chat', pt, ct)
       return { success: true, content: data.choices?.[0]?.message?.content || '' }
     }
 
@@ -714,8 +829,14 @@ export class LLMService {
 
   // 豆包模型 API (字节跳动)
   private async callDoubao(apiKey: string, messages: LLMMessage[], options: any): Promise<LLMResponse> {
+    // 转换消息格式为豆包API格式
+    const input = messages.map(m => ({
+      role: m.role,
+      content: m.content
+    }))
+    
     // 豆包API端点 - 使用volcengine/maas API
-    const response = await this.fetchWithTimeout('https://ark.cn-beijing.volces.com/api/v3/chat/completions', {
+    const response = await this.fetchWithTimeout('https://ark.cn-beijing.volces.com/api/v3/responses', {
       method: 'POST',
       signal: options?.signal,
       headers: {
@@ -723,10 +844,8 @@ export class LLMService {
         'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: options.model || 'deepseek-coder',
-        messages: messages,
-        max_tokens: options?.max_tokens ?? 1000,
-        temperature: options?.temperature ?? 0.7
+        model: options.model || 'doubao-seed-2-0-lite-260215',
+        input
       })
     })
 
@@ -736,13 +855,44 @@ export class LLMService {
     }
 
     const data = await response.json()
-    return { success: true, content: data.choices?.[0]?.message?.content || '' }
+    
+    // 解析豆包API响应格式
+    let content = ''
+    let promptTokens = 0
+    let completionTokens = 0
+    
+    if (data.output && Array.isArray(data.output)) {
+      const message = data.output.find((o: any) => o.type === 'message')
+      if (message?.content && Array.isArray(message.content)) {
+        content = message.content.map((c: any) => c.text || '').join('')
+      }
+    }
+    
+    // 统计 token
+    if (data.usage) {
+      promptTokens = data.usage.prompt_tokens || 0
+      completionTokens = data.usage.completion_tokens || 0
+    } else {
+      // 估算 token 数量
+      const promptText = JSON.stringify(input)
+      promptTokens = Math.ceil(promptText.length / 4)
+      completionTokens = Math.ceil(content.length / 4)
+    }
+    this.addTokenUsage(options.model || 'doubao-seed-2-0-lite-260215', promptTokens, completionTokens)
+    
+    return { success: true, content: content || '' }
   }
 
-  // 豆包多模态模型 API - 支持图像输入
-  private async callDoubaoMultimodal(apiKey: string, messages: LLMMultimodalMessage[], options: any): Promise<LLMResponse> {
-    // 使用豆包多模态API端点
-    const response = await this.fetchWithTimeout('https://ark.cn-beijing.volces.com/api/v3/chat/completions', {
+  // Agent5 API (OpenWebUI兼容) - 支持多种开源模型
+  private async callAgent5(apiKey: string, messages: LLMMessage[], options: any): Promise<LLMResponse> {
+    const input = messages.map(m => ({
+      role: m.role,
+      content: m.content
+    }))
+    
+    const model = options.model || 'qwen3'
+    
+    const response = await this.fetchWithTimeout('https://ai.agent5.art/api/chat/completions', {
       method: 'POST',
       signal: options?.signal,
       headers: {
@@ -750,10 +900,82 @@ export class LLMService {
         'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: options.model || 'doubao-seed-2-0-pro-260215',
-        messages: messages,
-        max_tokens: options?.max_tokens ?? 1000,
-        temperature: options?.temperature ?? 0.7
+        model: model,
+        messages: input,
+        temperature: options.temperature ?? 0.7,
+        max_tokens: options.max_tokens ?? 4096,
+        stream: false
+      })
+    }, 180000)
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '')
+      throw new Error(`Agent5 API error: ${response.status} ${response.statusText} - ${errorText.slice(0, 200)}`)
+    }
+
+    const data = await response.json()
+    
+    let content = ''
+    let promptTokens = 0
+    let completionTokens = 0
+    
+    if (data.choices && Array.isArray(data.choices) && data.choices.length > 0) {
+      const choice = data.choices[0]
+      if (choice.message && choice.message.content) {
+        content = choice.message.content
+      }
+    }
+    
+    if (data.usage) {
+      promptTokens = data.usage.prompt_tokens || 0
+      completionTokens = data.usage.completion_tokens || 0
+    } else {
+      const promptText = JSON.stringify(input)
+      promptTokens = Math.ceil(promptText.length / 4)
+      completionTokens = Math.ceil(content.length / 4)
+    }
+    
+    this.addTokenUsage(model, promptTokens, completionTokens)
+    
+    return { success: true, content: content || '' }
+  }
+
+  // 豆包多模态模型 API - 支持图像输入
+  private async callDoubaoMultimodal(apiKey: string, messages: LLMMultimodalMessage[], options: any): Promise<LLMResponse> {
+    // 转换消息格式为豆包API格式
+    const input = messages.map(m => {
+      // 检查是否包含图像内容
+      const hasImage = Array.isArray(m.content) && m.content.some(c => c.type === 'input_image')
+      if (hasImage) {
+        const textContent = Array.isArray(m.content) 
+          ? m.content.filter(c => c.type === 'input_text').map(c => c.text || '').join('')
+          : m.content
+        const imageContents = Array.isArray(m.content)
+          ? m.content.filter(c => c.type === 'input_image').map(c => ({ type: 'input_image', image_url: c.image_url || '' }))
+          : []
+        return {
+          role: m.role,
+          content: [
+            ...imageContents,
+            ...(textContent ? [{ type: 'input_text', text: textContent }] : [])
+          ]
+        }
+      }
+      const text = Array.isArray(m.content) ? m.content.map(c => c.text || '').join('') : m.content
+      return { role: m.role, content: text }
+    })
+    
+    // 使用豆包 responses API 端点
+    const response = await this.fetchWithTimeout('https://ark.cn-beijing.volces.com/api/v3/responses', {
+      method: 'POST',
+      signal: options?.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: options.model || 'doubao-seed-2-0-lite-260215',
+        input
       })
     })
 
@@ -763,7 +985,102 @@ export class LLMService {
     }
 
     const data = await response.json()
-    return { success: true, content: data.choices?.[0]?.message?.content || '' }
+    
+    // 解析豆包API响应格式
+    let content = ''
+    if (data.output && Array.isArray(data.output)) {
+      const message = data.output.find((o: any) => o.type === 'message')
+      if (message?.content && Array.isArray(message.content)) {
+        content = message.content.map((c: any) => c.text || '').join('')
+      }
+    }
+    return { success: true, content: content || '' }
+  }
+
+  // 豆包流式响应
+  private async callDoubaoStream(
+    apiKey: string, 
+    messages: LLMMessage[], 
+    options: any,
+    onChunk: (chunk: LLMStreamChunk) => void
+  ): Promise<LLMResponse> {
+    // 转换消息格式为豆包API格式
+    const input = messages.map(m => ({
+      role: m.role,
+      content: m.content
+    }))
+    
+    const response = await this.fetchWithTimeout('https://ark.cn-beijing.volces.com/api/v3/responses', {
+      method: 'POST',
+      signal: options?.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: options.model || 'doubao-seed-2-0-lite-260215',
+        input
+      })
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '')
+      throw new Error(`Doubao Stream API error: ${response.status} ${response.statusText} - ${errorText.slice(0, 200)}`)
+    }
+
+    const reader = response.body?.getReader()
+    if (!reader) {
+      throw new Error('No response body')
+    }
+
+    const decoder = new TextDecoder()
+    let fullContent = ''
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunkText = decoder.decode(value, { stream: true })
+        const lines = chunkText.split('\n')
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6)
+            if (data === '[DONE]') {
+              onChunk({ delta: '', done: true })
+              break
+            }
+
+            try {
+              const parsed = JSON.parse(data)
+              // 豆包 responses API 格式 - output 是数组
+              let delta = ''
+              if (parsed.output && Array.isArray(parsed.output)) {
+                const message = parsed.output.find((o: any) => o.type === 'message')
+                if (message?.content && Array.isArray(message.content)) {
+                  delta = message.content.map((c: any) => c.text || '').join('')
+                }
+              }
+              if (delta) {
+                fullContent += delta
+                onChunk({ delta, done: false })
+              }
+              // 检查是否完成
+              if (parsed.output?.finish_reason) {
+                onChunk({ delta: '', done: true })
+              }
+            } catch (e) {
+              // 忽略解析错误
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock()
+    }
+
+    return { success: true, content: fullContent }
   }
 
   // 流式响应实现
@@ -848,7 +1165,7 @@ export class LLMService {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${apiKey}`
     }
-    const model = options.model || 'deepseek-chat'
+    const model = options.model || 'doubao-seed-2-0-lite-260215'
     const maxTokens = options?.max_tokens ?? 1000
     const temperature = options?.temperature ?? 0.7
 

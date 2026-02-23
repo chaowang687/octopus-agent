@@ -26,6 +26,40 @@ export const UserManagement: React.FC<UserManagementProps> = ({ token, currentUs
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [editingUser, setEditingUser] = useState<User | null>(null)
 
+  // 防御性检查
+  if (!token) {
+    return (
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: '400px',
+        color: '#666'
+      }}>
+        <div>
+          <p>请先登录</p>
+          <button onClick={() => window.location.href = '/login'}>返回登录</button>
+        </div>
+      </div>
+    )
+  }
+
+  if (!currentUser || currentUser.role !== 'admin') {
+    return (
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: '400px',
+        color: '#666'
+      }}>
+        <div>
+          <p>您没有权限访问此页面</p>
+        </div>
+      </div>
+    )
+  }
+
   const [newUser, setNewUser] = useState({
     username: '',
     email: '',

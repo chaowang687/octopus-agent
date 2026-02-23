@@ -32,6 +32,7 @@ export interface UnifiedReasoningOptions {
   maxIterations?: number
   maxDepth?: number
   temperature?: number
+  model?: string
 }
 
 // ============================================
@@ -300,7 +301,8 @@ export class UnifiedReasoningEngine extends EventEmitter {
       earlyStopping: true,
       useChainOfThought: true,
       useSelfConsistency: options.enableSelfConsistency,
-      consistencySamples: 3
+      consistencySamples: 3,
+      model: options.model || 'doubao-seed-2-0-lite-260215'
     }
     
     const trace = await reactEngine.execute(task, reactOptions)
@@ -349,6 +351,7 @@ export class UnifiedReasoningEngine extends EventEmitter {
       maxIterations: options.maxIterations || 10,
       temperature: options.temperature || 0.7,
       maxDepth: options.maxDepth || 5,
+      model: options.model || 'doubao-seed-2-0-lite-260215',
       branchStrategy: {
         type: 'adaptive',
         beamWidth: 3,

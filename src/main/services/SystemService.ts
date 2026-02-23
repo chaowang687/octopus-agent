@@ -223,7 +223,7 @@ export class SystemService {
   }
 
   // 快系统处理
-  async processSystem1(instruction: string, model: string = 'deepseek'): Promise<string> {
+  async processSystem1(instruction: string, model: string = 'doubao-seed-2-0-lite-260215'): Promise<string> {
     try {
       // 1. 检查LRU缓存
       const cachedResult = this.lruCache.get(instruction)

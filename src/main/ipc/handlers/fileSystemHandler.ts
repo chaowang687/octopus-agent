@@ -94,6 +94,25 @@ export function registerFileSystemHandlers() {
     }
   })
 
+  // 列出目录条目（带类型）
+  ipcMain.handle('fs:listEntries', (_, dirPath: string) => {
+    try {
+      if (fs.existsSync(dirPath)) {
+        const entries = fs.readdirSync(dirPath, { withFileTypes: true })
+        const result = entries.map(entry => ({
+          name: entry.name,
+          isDirectory: entry.isDirectory(),
+          isFile: entry.isFile()
+        }))
+        return { success: true, entries: result }
+      }
+      return { success: false, error: 'Path not found' }
+    } catch (error: any) {
+      console.error('列出目录条目失败:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
   // 列出目录
   ipcMain.handle('fs:listDirectories', (_, dirPath: string) => {
     try {

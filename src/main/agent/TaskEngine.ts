@@ -19,6 +19,7 @@ import { distiller } from './Distiller'
 import { AgentType } from './SkillManager'
 import { toolRegistry } from './ToolRegistry'
 import { ErrorHandler } from '../utils/ErrorHandler'
+import { taskLogger } from './TaskLogger'
 import './tools'
 
 // 推理步骤类型（用于可视化）
@@ -89,6 +90,7 @@ export interface TaskProgressEvent {
   retryCount?: number
   maxRetries?: number
   taskDir?: string
+  projectName?: string
   thinkingReasoning?: string
   // 推理步骤相关
   reasoningStep?: ReasoningStep
@@ -269,6 +271,15 @@ export class TaskEngine extends EventEmitter {
     let targetSystem: 'system1' | 'system2'
     let emotion: any = null
     
+    // 启动任务日志
+    const taskLog = taskLogger.startTask({
+      taskId,
+      projectName: instruction.slice(0, 50),
+      instruction,
+      originalInstruction: instruction,
+      taskDir: agentOptions?.taskDir || ''
+    })
+    
     try {
       console.log(`[TaskEngine] 收到任务指令: ${instruction.slice(0, 100)}...`)
       console.log(`[TaskEngine] 智能体选项: ${JSON.stringify(agentOptions)}`)
@@ -323,6 +334,13 @@ export class TaskEngine extends EventEmitter {
         }
         targetSystem = emotionDecision.selectedSystem
         
+        // 记录路由决策
+        taskLogger.logRouting({
+          targetSystem,
+          reasoning: routingDecision.reason,
+          confidence: routingDecision.confidence
+        })
+        
         if ((emotionDecision as any).complexity) {
           complexity = (emotionDecision as any).complexity
         } else if (emotionDecision.emotion.risk > 0.6 || emotionDecision.emotion.uncertainty > 0.7) {
@@ -335,7 +353,12 @@ export class TaskEngine extends EventEmitter {
       }
       
       try {
-        if (targetSystem === 'system1') {
+        // 如果用户明确指定了模型（非默认模型），则使用用户选择的模型
+        const defaultModels = ['openai', 'doubao-seed-2-0-lite-260215', 'doubao-pro-32k', 'doubao-pro-128k']
+        if (model && !defaultModels.includes(model)) {
+          selectedModel = model
+          console.log(`ModelRouter: 使用用户指定模型 ${selectedModel}`)
+        } else if (targetSystem === 'system1') {
           const system1Result = modelRouter.getSystem1Model(emotion)
           selectedModel = system1Result.model
           console.log(`ModelRouter: System1 选择模型 ${selectedModel}`)
@@ -399,6 +422,14 @@ export class TaskEngine extends EventEmitter {
             
             if (distillationResult.success && distillationResult.skill) {
               console.log(`[TaskEngine] 在线蒸馏成功 - ${distillationResult.skill.name}`)
+              
+              // 记录蒸馏结果
+              taskLogger.logDistillation({
+                enabled: true,
+                skillName: distillationResult.skill.name,
+                cacheHit: distillationResult.cacheHit,
+                knowledgeInjected: !!distillationResult.skill.distilledKnowledge
+              })
               
               // 应用蒸馏的技能
               await onlineDistiller.applyDistilledSkill(distillationResult.skill)
@@ -563,7 +594,7 @@ export class TaskEngine extends EventEmitter {
 
   private async executeSystem1Task(
     instruction: string, 
-    model: string = 'deepseek',
+    model: string = 'doubao-seed-2-0-lite-260215',
     routingDecision?: RoutingDecision
   ): Promise<any> {
     try {
@@ -580,7 +611,7 @@ export class TaskEngine extends EventEmitter {
 
       // 使用优化后的快系统处理（流式）
       let fullResponse = ''
-      const response = await systemService.processSystem1Optimized(instruction, model, (chunk) => {
+      const response = await systemService.processSystem1(instruction, 'doubao-seed-2-0-lite-260215', (chunk) => {
         fullResponse += chunk
         // 发送流式事件到前端
         this.emit('progress', {
@@ -698,12 +729,41 @@ export class TaskEngine extends EventEmitter {
       let taskDir: string
       const defaultTaskDir = path.join(app.getPath('userData'), 'tasks', taskId)
       
+      // 检查目录是否可写
+      const checkDirWritable = (dirPath: string): boolean => {
+        try {
+          // 尝试在目录下创建测试文件
+          const testFile = path.join(dirPath, `.write_test_${Date.now()}`)
+          fs.writeFileSync(testFile, 'test', { encoding: 'utf8' })
+          fs.unlinkSync(testFile)
+          return true
+        } catch (error: any) {
+          console.log(`[TaskEngine] 目录不可写: ${dirPath}, 错误: ${error.message}`)
+          return false
+        }
+      }
+      
       try {
         if (agentOptions?.taskDir) {
-          // 尝试使用用户指定的目录
-          taskDir = agentOptions.taskDir
-          fs.mkdirSync(taskDir, { recursive: true, mode: 0o755 })
-          console.log(`[TaskEngine] 使用用户指定的任务目录: ${taskDir}`)
+          // 先检查用户指定的目录是否可写
+          const userDir = agentOptions.taskDir
+          const parentDir = path.dirname(userDir)
+          
+          // 检查父目录是否存在且可写
+          if (fs.existsSync(parentDir) && checkDirWritable(parentDir)) {
+            taskDir = userDir
+            console.log(`[TaskEngine] 使用用户指定的任务目录（已验证可写）: ${taskDir}`)
+            // 确保目录存在
+            if (!fs.existsSync(taskDir)) {
+              fs.mkdirSync(taskDir, { recursive: true, mode: 0o755 })
+            }
+          } else {
+            // 父目录不可写，使用默认目录
+            console.log(`[TaskEngine] 用户指定目录不可写，使用默认目录`)
+            taskDir = defaultTaskDir
+            fs.mkdirSync(taskDir, { recursive: true, mode: 0o755 })
+            console.log(`[TaskEngine] 使用默认任务目录: ${taskDir}`)
+          }
         } else {
           // 使用默认目录
           taskDir = defaultTaskDir
@@ -765,7 +825,7 @@ export class TaskEngine extends EventEmitter {
       if (!llmService.getApiKey(selectedModel)) {
         const availableModels = llmService.getAvailableModels()
         if (availableModels.length > 0) {
-          const priority = ['openai', 'deepseek', 'claude', 'minimax']
+          const priority = ['doubao-seed-2-0-lite-260215', 'deepseek', 'openai']
           selectedModel = priority.find(m => availableModels.includes(m)) || availableModels[0]
         } else {
           return { success: false, error: `未配置任何 API Key，请在"API 管理"中配置后再试。` }
@@ -1058,6 +1118,9 @@ export class TaskEngine extends EventEmitter {
         } satisfies TaskProgressEvent)
       }
 
+      // 结束任务日志
+      taskLogger.endTask(!lastError ? 'completed' : 'failed')
+
       return {
         success: !lastError,
         requestedModel: model,
@@ -1123,32 +1186,93 @@ export class TaskEngine extends EventEmitter {
     try {
       const taskId = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
       
+      // 从指令中提取原始任务描述（跳过蒸馏知识部分）
+      let originalTask = instruction
+      if (instruction.includes('原始任务:')) {
+        const match = instruction.match(/原始任务:\s*([\s\S]*?)(?:\n\n\[调度信息\]|$)/)
+        if (match && match[1]) {
+          originalTask = match[1].trim()
+        }
+      }
+      
       // 使用用户指定的taskDir，如果没有则使用默认路径
-      const taskDir = agentOptions?.taskDir || path.join(app.getPath('userData'), 'tasks', taskId)
-      fs.mkdirSync(taskDir, { recursive: true })
+      console.log(`[TaskEngine] agentOptions.taskDir:`, agentOptions?.taskDir)
+      let taskDir = agentOptions?.taskDir || path.join(app.getPath('userData'), 'tasks', taskId)
+      
+      // 检查目录是否可写
+      const checkDirWritable = (dirPath: string): boolean => {
+        try {
+          const testFile = path.join(dirPath, `.write_test_${Date.now()}`)
+          fs.writeFileSync(testFile, 'test', { encoding: 'utf8' })
+          fs.unlinkSync(testFile)
+          return true
+        } catch {
+          return false
+        }
+      }
+      
+      // 检查并创建目录，必要时切换到默认目录
+      let dirSwitched = false
+      let finalDir = taskDir
+      try {
+        // 直接尝试创建目录（这是最直接的检查方式）
+        fs.mkdirSync(taskDir, { recursive: true, mode: 0o755 })
+        // 创建成功后尝试写入测试文件
+        const testFile = path.join(taskDir, `.write_test_${Date.now()}`)
+        fs.writeFileSync(testFile, 'test', { encoding: 'utf8' })
+        fs.unlinkSync(testFile)
+        console.log(`[TaskEngine] 用户指定目录可用: ${taskDir}`)
+      } catch (dirError: any) {
+        // 创建或写入失败，切换到默认目录
+        finalDir = path.join(app.getPath('userData'), 'tasks', taskId)
+        fs.mkdirSync(finalDir, { recursive: true, mode: 0o755 })
+        dirSwitched = true
+        console.log(`[TaskEngine] 用户指定目录创建失败 (${dirError.code})，切换到默认目录: ${finalDir}`)
+      }
+      
+      taskDir = finalDir
       console.log(`[TaskEngine] 多智能体任务使用目录: ${taskDir}`)
+
+      // 提取项目名称（使用原始任务描述）
+      let projectName = originalTask
+        .slice(0, 100)  // 增加长度限制
+        .replace(/^#+\s*/, '')  // 移除Markdown标题标记
+        .replace(/\n.*$/s, '')  // 移除换行后的内容
+        .replace(/[*_#`]/g, '')  // 移除Markdown格式字符
+        .trim()
+      
+      // 如果提取出来的名称太短或包含特殊模式，使用整个输入的前几个字
+      if (!projectName || projectName.length < 2 || projectName.match(/^[_#*]+$/)) {
+        // 尝试提取纯文本（移除所有Markdown格式）
+        projectName = originalTask
+          .replace(/[#*_`\[\]()]/g, ' ')  // 替换Markdown字符为空格
+          .replace(/\s+/g, ' ')  // 合并多个空格
+          .slice(0, 30)  // 取前30个字符
+          .trim()
+      }
+      
+      // 确保项目名称有效（只保留字母数字中文和基本符号）
+      if (!projectName || projectName.length < 2) {
+        projectName = `project_${Date.now()}`
+      } else {
+        // 进一步清理，只保留显示友好的字符
+        projectName = projectName.replace(/[<>:"|?*]/g, '').trim()
+      }
+      
+      console.log(`[TaskEngine] 项目名称: ${projectName} (原始任务: ${originalTask.slice(0, 50)}...)`)
 
       this.emit('progress', {
         taskId,
         type: 'task_start',
         timestamp: Date.now(),
         taskDir,
+        projectName,
         requestedModel: model,
         modelUsed: model,
-        description: '开始多智能体协作任务'
+        description: dirSwitched 
+          ? `目录切换: 用户指定目录不可用，已切换到应用数据目录`
+          : '开始多智能体协作任务'
       } satisfies TaskProgressEvent)
-
-      // 提取项目名称
-      // 使用更合理的项目名称生成逻辑
-      let projectName = instruction
-        .slice(0, 50)
-        .replace(/[\s\/\\:*?"<>|]/g, '_')  // 替换文件系统不允许的字符
-        .trim()
-      
-      // 确保项目名称有效
-      if (!projectName || projectName === '_' || /^_+$/.test(projectName)) {
-        projectName = `project_${Date.now()}`
-      }
 
       // 初始化多智能体对话协调器
       const initResult = await multiDialogueCoordinator.initializeProject(projectName, instruction, agentOptions?.taskDir)
@@ -1232,10 +1356,13 @@ export class TaskEngine extends EventEmitter {
               phase: '问题分析'
             } satisfies any)
           }
-        })
+        }, { model })  // 传递用户选择的模型
         
         console.log(`[TaskEngine] 第${currentIteration}轮迭代完成: completed=${iterationResult.completed}, delivered=${iterationResult.delivered}`)
       }
+
+      // 结束任务日志
+      taskLogger.endTask(iterationResult.completed ? 'completed' : 'failed')
 
       // 返回结果
       return {

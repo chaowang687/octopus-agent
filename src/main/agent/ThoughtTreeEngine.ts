@@ -363,7 +363,7 @@ export class ThoughtTreeEngine extends EventEmitter {
     const prompt = this.buildGenerationPrompt(parent, tree, options)
     
     const response = await llmService.chat(
-      options.model || 'openai',
+      options.model || 'doubao-seed-2-0-lite-260215',
       [
         { role: 'system', content: this.getSystemPrompt() },
         { role: 'user', content: prompt }

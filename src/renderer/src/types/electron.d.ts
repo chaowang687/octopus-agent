@@ -54,6 +54,9 @@ export interface ElectronAPI {
   }
   chat: {
     sendMessage: (message: string, sessionId: string) => Promise<any>
+    cancel: () => Promise<any>
+    pause: () => Promise<any>
+    resume: () => Promise<any>
   }
   project: {
     create: (name: string, path: string) => Promise<any>
@@ -89,6 +92,9 @@ export interface ElectronAPI {
   collaboration: {
     onEvent: (callback: (event: any) => void) => void
     offEvent: () => void
+    approve: (requestId: string, response?: string) => Promise<any>
+    reject: (requestId: string, reason?: string) => Promise<any>
+    modify: (requestId: string, modifiedParams: any, response?: string) => Promise<any>
   }
   omni: {
     executeTask: (instruction: string, options?: any) => Promise<any>

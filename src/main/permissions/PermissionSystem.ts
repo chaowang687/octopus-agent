@@ -167,6 +167,132 @@ export class PermissionSystem {
           write: [],
           deny: ['**/node_modules/**', '**/.git/**', '**/dist/**']
         }
+      },
+      {
+        agentId: 'pm',
+        agentName: '项目经理 (PM)',
+        mode: 'plan',
+        tools: {
+          read_file: { read: true, write: false, execute: false, level: PermissionLevel.ALLOW },
+          list_dir: { read: true, write: false, execute: false, level: PermissionLevel.ALLOW },
+          grep_search: { read: true, write: false, execute: false, level: PermissionLevel.ALLOW },
+          web_fetch: { read: true, write: false, execute: false, level: PermissionLevel.ALLOW },
+          write_file: { read: false, write: true, execute: false, level: PermissionLevel.ALLOW },
+          execute_command: { read: false, write: false, execute: true, level: PermissionLevel.DENY }
+        },
+        commands: [
+          { pattern: '*', level: PermissionLevel.DENY, reason: 'PM智能体不允许执行命令' }
+        ],
+        files: {
+          read: ['**/*'],
+          write: ['**/docs/**/*.md'],
+          deny: ['**/*.env', '**/secrets/**', '**/.git/**']
+        }
+      },
+      {
+        agentId: 'ui',
+        agentName: 'UI设计师',
+        mode: 'subagent',
+        tools: {
+          read_file: { read: true, write: false, execute: false, level: PermissionLevel.ALLOW },
+          write_file: { read: false, write: true, execute: false, level: PermissionLevel.ALLOW },
+          execute_command: { read: false, write: false, execute: true, level: PermissionLevel.ASK }
+        },
+        commands: [
+          { pattern: 'npm install', level: PermissionLevel.ALLOW },
+          { pattern: 'npm run dev', level: PermissionLevel.ALLOW },
+          { pattern: 'npm run build', level: PermissionLevel.ALLOW },
+          { pattern: 'rm -rf', level: PermissionLevel.DENY, reason: '危险操作，需要手动确认' },
+          { pattern: '*', level: PermissionLevel.ASK }
+        ],
+        files: {
+          read: ['**/*.{tsx,ts,css,scss,html,vue}'],
+          write: ['**/*.{tsx,ts,css,scss,html,vue}'],
+          deny: ['**/node_modules/**', '**/.git/**', '**/dist/**']
+        }
+      },
+      {
+        agentId: 'dev',
+        agentName: '全栈开发工程师',
+        mode: 'build',
+        tools: {
+          read_file: { read: true, write: false, execute: false, level: PermissionLevel.ALLOW },
+          write_file: { read: false, write: true, execute: false, level: PermissionLevel.ALLOW },
+          execute_command: { read: false, write: false, execute: true, level: PermissionLevel.ALLOW },
+          create_directory: { read: false, write: true, execute: false, level: PermissionLevel.ALLOW },
+          list_dir: { read: true, write: false, execute: false, level: PermissionLevel.ALLOW },
+          grep_search: { read: true, write: false, execute: false, level: PermissionLevel.ALLOW }
+        },
+        commands: [
+          { pattern: 'npm *', level: PermissionLevel.ALLOW },
+          { pattern: 'yarn *', level: PermissionLevel.ALLOW },
+          { pattern: 'pnpm *', level: PermissionLevel.ALLOW },
+          { pattern: 'node *', level: PermissionLevel.ALLOW },
+          { pattern: 'npx *', level: PermissionLevel.ALLOW },
+          { pattern: 'git *', level: PermissionLevel.ALLOW },
+          { pattern: 'ls *', level: PermissionLevel.ALLOW },
+          { pattern: 'cat *', level: PermissionLevel.ALLOW },
+          { pattern: 'mkdir *', level: PermissionLevel.ALLOW },
+          { pattern: 'touch *', level: PermissionLevel.ALLOW },
+          { pattern: 'rm -rf', level: PermissionLevel.ASK, reason: '危险操作，需要确认' },
+          { pattern: 'sudo *', level: PermissionLevel.DENY, reason: '禁止使用 sudo' },
+          { pattern: '*', level: PermissionLevel.ASK }
+        ],
+        files: {
+          read: ['**/*'],
+          write: ['**/*'],
+          deny: ['**/node_modules/**', '**/.git/**', '**/*.env', '**/secrets/**']
+        }
+      },
+      {
+        agentId: 'test',
+        agentName: '测试工程师',
+        mode: 'subagent',
+        tools: {
+          read_file: { read: true, write: false, execute: false, level: PermissionLevel.ALLOW },
+          write_file: { read: false, write: true, execute: false, level: PermissionLevel.ALLOW },
+          execute_command: { read: false, write: false, execute: true, level: PermissionLevel.ALLOW },
+          list_dir: { read: true, write: false, execute: false, level: PermissionLevel.ALLOW },
+          grep_search: { read: true, write: false, execute: false, level: PermissionLevel.ALLOW }
+        },
+        commands: [
+          { pattern: 'npm test', level: PermissionLevel.ALLOW },
+          { pattern: 'npm run test*', level: PermissionLevel.ALLOW },
+          { pattern: 'jest *', level: PermissionLevel.ALLOW },
+          { pattern: 'vitest *', level: PermissionLevel.ALLOW },
+          { pattern: 'cypress *', level: PermissionLevel.ALLOW },
+          { pattern: 'playwright *', level: PermissionLevel.ALLOW },
+          { pattern: 'ls *', level: PermissionLevel.ALLOW },
+          { pattern: 'cat *', level: PermissionLevel.ALLOW },
+          { pattern: 'rm -rf', level: PermissionLevel.DENY, reason: '危险操作' },
+          { pattern: 'sudo *', level: PermissionLevel.DENY, reason: '禁止使用 sudo' },
+          { pattern: '*', level: PermissionLevel.ASK }
+        ],
+        files: {
+          read: ['**/*'],
+          write: ['**/*.{test.ts,test.js,spec.ts,spec.js}'],
+          deny: ['**/node_modules/**', '**/.git/**', '**/*.env', '**/secrets/**']
+        }
+      },
+      {
+        agentId: 'review',
+        agentName: '代码审查员',
+        mode: 'subagent',
+        tools: {
+          read_file: { read: true, write: false, execute: false, level: PermissionLevel.ALLOW },
+          write_file: { read: false, write: true, execute: false, level: PermissionLevel.ALLOW },
+          execute_command: { read: false, write: false, execute: true, level: PermissionLevel.DENY },
+          list_dir: { read: true, write: false, execute: false, level: PermissionLevel.ALLOW },
+          grep_search: { read: true, write: false, execute: false, level: PermissionLevel.ALLOW }
+        },
+        commands: [
+          { pattern: '*', level: PermissionLevel.DENY, reason: '审查员不允许执行命令' }
+        ],
+        files: {
+          read: ['**/*'],
+          write: ['**/docs/**/*.md'],
+          deny: ['**/node_modules/**', '**/.git/**', '**/*.env', '**/secrets/**']
+        }
       }
     ]
 

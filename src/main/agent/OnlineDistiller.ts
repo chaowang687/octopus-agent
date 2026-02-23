@@ -465,7 +465,7 @@ export class OnlineDistiller {
   ): Promise<DistilledSkill> {
     const prompt = this.generateDistillationPrompt(request, gatheredInfo)
     
-    const response = await llmService.chat('deepseek', [
+    const response = await llmService.chat('doubao-seed-2-0-lite-260215', [
       {
         role: 'system',
         content: '你是一个专业的知识蒸馏专家，擅长从大量信息中提取核心知识，并将其结构化为可执行的技能包。'
@@ -701,7 +701,7 @@ ${gatheredInfo.sources.map((source: any, index: number) => `
 
 请提供一个更好的描述（1-2句话）：`
 
-    const response = await llmService.chat('deepseek', [
+    const response = await llmService.chat('doubao-seed-2-0-lite-260215', [
       {
         role: 'system',
         content: '你是一个技能描述优化专家'

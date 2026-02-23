@@ -53,7 +53,7 @@ export class AgentScheduler extends EventEmitter {
       id: 'agent-solo-coder',
       type: 'code_generator',
       capabilities: ['code_generation', 'code_review', 'test_generation'],
-      model: 'deepseek',
+      model: 'doubao-seed-2-0-lite-260215',
       config: {
         temperature: 0.1,
         max_tokens: 2000
@@ -75,7 +75,7 @@ export class AgentScheduler extends EventEmitter {
       id: 'agent-test-generator',
       type: 'test_generator',
       capabilities: ['test_generation', 'test_execution'],
-      model: 'deepseek',
+      model: 'doubao-seed-2-0-lite-260215',
       config: {
         temperature: 0.2,
         max_tokens: 1500

@@ -1,15 +1,16 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron'
-
-// 必须在app ready之前禁用沙箱！
-app.commandLine.appendSwitch('no-sandbox')
-app.commandLine.appendSwitch('disable-sandbox')
-app.commandLine.appendSwitch('disable-gpu-sandbox')
-
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import * as fs from 'fs'
 import * as path from 'path'
+import { configureSecurity, getRecommendedSecurityOptions } from './security/ElectronSecurity'
+import { securityManager } from './security/SecurityManager'
+
+const isDev = is.dev
+const securityOptions = getRecommendedSecurityOptions()
+configureSecurity(securityOptions)
+
 import { taskEngine } from './agent/TaskEngine'
 import { toolRegistry } from './agent/ToolRegistry'
 import { galleryService } from './services/GalleryService'
@@ -21,7 +22,6 @@ import { licenseService } from './services/LicenseService'
 import { registerAllHandlers } from './ipc'
 import { collaborationManager } from './ipc/handlers/collaborationHandler'
 import { userService } from './services/UserService'
-// import './agent/imageTools' // 暂时注释掉以避免sharp模块加载问题
 
 const traeSandboxStoragePath = process.env.TRAE_SANDBOX_STORAGE_PATH
 if (traeSandboxStoragePath) {
@@ -31,24 +31,6 @@ if (traeSandboxStoragePath) {
   }
   app.setPath('userData', userDataDir)
 }
-
-// 添加WebView实验性功能开关
-app.commandLine.appendSwitch('enable-webview')
-app.commandLine.appendSwitch('allow-file-access-from-files')
-app.commandLine.appendSwitch('allow-universal-access-from-file-urls')
-app.commandLine.appendSwitch('disable-web-security')
-app.commandLine.appendSwitch('disable-features', 'CrossSiteDocumentBlockingIfIsolating')
-app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
-
-// 禁用GPU加速以避免崩溃
-app.commandLine.appendSwitch('disable-gpu')
-app.commandLine.appendSwitch('disable-gpu-compositing')
-app.commandLine.appendSwitch('disable-software-rasterizer')
-app.commandLine.appendSwitch('disable-gpu-process')
-app.commandLine.appendSwitch('disable-gpu-sandbox')
-app.commandLine.appendSwitch('disable-gpu-watchdog')
-app.commandLine.appendSwitch('no-sandbox')
-app.commandLine.appendSwitch('disable-sandbox')
 
 // 全局窗口引用
 let mainWindow: BrowserWindow | null = null
@@ -201,7 +183,6 @@ app.whenReady().then(() => {
   
   // 初始化新增的服务
   console.log('App ready, initializing services...')
-  backupService.initialize()
   analyticsService.initialize()
   licenseService.initialize()
   

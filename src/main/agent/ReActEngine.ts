@@ -8,6 +8,9 @@ import { EventEmitter } from 'events'
 import { llmService, LLMMessage } from '../services/LLMService'
 import { toolRegistry } from './ToolRegistry'
 import { ErrorHandler } from '../utils/ErrorHandler'
+import { taskLogger } from './TaskLogger'
+import { ReActStepLog } from './TaskLogTypes'
+import { permissionSystem, PermissionLevel } from '../permissions/PermissionSystem'
 
 // ReAct步骤类型
 export enum ReActStepType {
@@ -62,6 +65,7 @@ export interface ReActOptions {
   useSelfConsistency?: boolean // 是否使用Self-Consistency验证
   consistencySamples?: number // Self-Consistency样本数
   timeout?: number           // 超时时间（毫秒）
+  agentId?: string           // 智能体ID，用于权限检查
 }
 
 // ReAct引擎类
@@ -70,6 +74,7 @@ export class ReActEngine extends EventEmitter {
     maxIterations: 10,
     maxTokens: 4000,
     temperature: 0.7,
+    model: 'doubao-seed-2-0-lite-260215',
     includeReflection: true,
     earlyStopping: true,
     useChainOfThought: true,
@@ -227,8 +232,11 @@ export class ReActEngine extends EventEmitter {
         const stepStartTime = Date.now()
         
         // 自动选择可用的提供商
+        console.log('[ReActEngine] Calling getFirstAvailableProvider()...')
         const availableProvider = llmService.getFirstAvailableProvider()
-        const model = availableProvider || opts.model || 'openai'
+        console.log('[ReActEngine] Available provider:', availableProvider)
+        const model = opts.model || availableProvider || 'doubao-seed-2-0-lite-260215'
+        console.log('[ReActEngine] Selected model:', model)
         
         if (!availableProvider) {
           const errorStep: ReActStep = {
@@ -252,6 +260,14 @@ export class ReActEngine extends EventEmitter {
             max_tokens: opts.maxTokens
           }
         )
+        
+        // 记录LLM调用
+        taskLogger.logLLMCall({
+          model,
+          latency: Date.now() - stepStartTime,
+          success: llmResponse.success || false,
+          error: llmResponse.error
+        })
 
         if (!llmResponse.success || !llmResponse.content) {
           const errorStep: ReActStep = {
@@ -307,6 +323,18 @@ export class ReActEngine extends EventEmitter {
             }
             trace.steps.push(thinkStep)
             
+            // 记录思考步骤
+            taskLogger.logReActStep({
+              stepId: thinkStep.id,
+              stepNumber: iteration,
+              type: 'think',
+              timestamp: thinkStep.timestamp,
+              duration: thinkStep.durationMs,
+              think: {
+                reasoning: parsed.content || ''
+              }
+            })
+            
             // 添加到消息历史
             messages.push({ 
               role: 'assistant', 
@@ -340,11 +368,28 @@ export class ReActEngine extends EventEmitter {
               if (!tool) {
                 actionError = `Tool not found: ${parsed.action}`
               } else {
-                actionResult = await tool.handler(parsed.actionInput || {}, {})
-                if (actionResult.error) {
-                  actionError = actionResult.error
+                // 权限检查
+                const agentId = options.agentId || 'dev'
+                const permission = permissionSystem.checkToolPermission(agentId, parsed.action, 'execute')
+                
+                if (permission === PermissionLevel.DENY) {
+                  actionError = `Permission denied: Agent '${agentId}' is not allowed to execute tool '${parsed.action}'`
+                  observation = `❌ 权限拒绝: ${actionError}`
+                } else if (permission === PermissionLevel.ASK) {
+                  // 对于需要询问的操作，暂时允许但记录日志
+                  console.log(`[ReActEngine] Tool '${parsed.action}' requires user confirmation for agent '${agentId}'`)
+                  actionResult = await tool.handler(parsed.actionInput || {}, {})
+                  if (actionResult.error) {
+                    actionError = actionResult.error
+                  }
+                  observation = actionError || this.formatResult(actionResult)
+                } else {
+                  actionResult = await tool.handler(parsed.actionInput || {}, {})
+                  if (actionResult.error) {
+                    actionError = actionResult.error
+                  }
+                  observation = actionError || this.formatResult(actionResult)
                 }
-                observation = actionError || this.formatResult(actionResult)
               }
             }
           } catch (error: any) {
@@ -356,6 +401,41 @@ export class ReActEngine extends EventEmitter {
           actStep.result = actionResult
           actStep.error = actionError
           actStep.durationMs = Date.now() - stepStartTime
+
+          // 记录行动和观察步骤
+          taskLogger.logReActStep({
+            stepId: actStep.id,
+            stepNumber: iteration,
+            type: 'act',
+            timestamp: actStep.timestamp,
+            duration: actStep.durationMs,
+            act: {
+              tool: parsed.action || '',
+              parameters: parsed.actionInput,
+              description: parsed.thought
+            }
+          })
+          
+          taskLogger.logReActStep({
+            stepId: `${actStep.id}_observe`,
+            stepNumber: iteration,
+            type: 'observe',
+            timestamp: Date.now(),
+            observe: {
+              result: observation,
+              success: !actionError,
+              error: actionError
+            }
+          })
+          
+          // 记录工具调用
+          taskLogger.logToolCall({
+            tool: parsed.action || '',
+            parameters: parsed.actionInput,
+            result: actionResult,
+            error: actionError,
+            duration: actStep.durationMs
+          })
 
           // 添加观察结果到消息历史
           messages.push({ 

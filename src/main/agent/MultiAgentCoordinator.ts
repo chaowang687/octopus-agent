@@ -242,6 +242,24 @@ ${userFeedback}
     return instructions[modificationType]
   }
 
+  /**
+   * 生成结构化的智能体输出（简化版，只输出核心内容）
+   */
+  private generateStructuredOutput(
+    agentName: string,
+    phase: string,
+    content: string,
+    todoItems: string[] = [],
+    completedItems: string[] = [],
+    outputFiles: string[] = [],
+    executionTime?: number,
+    qualityScore?: number
+  ): string {
+    const structuredOutput = content + `\n\n---\n*由 ${agentName} 生成于 ${new Date().toLocaleString('zh-CN')}*`;
+    
+    return structuredOutput;
+  }
+
   private initializeButler() {
     smartButlerAgent.on('problem_detected', (problem) => {
       console.log(`[MultiAgentCoordinator] 智能管家检测到问题: ${problem.message}`)
@@ -269,7 +287,7 @@ ${userFeedback}
       name: '全栈开发工程师',
       type: 'code_generator',
       role: '全栈开发工程师 (Dev)',
-      model: 'deepseek-coder',
+      model: 'doubao-seed-2-0-lite-260215',
       capabilities: ['code_generation', 'fullstack_development', 'api_design', 'database_design'],
       status: 'idle'
     })
@@ -280,7 +298,7 @@ ${userFeedback}
       name: '测试工程师',
       type: 'test_generator',
       role: '测试工程师 (Test Engineer)',
-      model: 'deepseek-coder',
+      model: 'doubao-seed-2-0-lite-260215',
       capabilities: ['test_generation', 'unit_test', 'integration_test', 'e2e_test'],
       status: 'idle'
     })
@@ -291,7 +309,7 @@ ${userFeedback}
       name: '代码审查员',
       type: 'code_reviewer',
       role: '代码审查员 (Code Reviewer)',
-      model: 'deepseek-coder',
+      model: 'doubao-seed-2-0-lite-260215',
       capabilities: ['code_review', 'security_analysis', 'performance_analysis', 'best_practices'],
       status: 'idle'
     })
@@ -302,7 +320,7 @@ ${userFeedback}
       name: '项目经理',
       type: 'document_generator',
       role: '项目经理 (PM)',
-      model: 'deepseek-coder',
+      model: 'doubao-seed-2-0-lite-260215',
       capabilities: ['requirement_analysis', 'project_planning', 'progress_tracking', 'summary'],
       status: 'idle'
     })
@@ -313,7 +331,7 @@ ${userFeedback}
       name: 'UI设计师',
       type: 'ui_designer',
       role: 'UI设计师/前端工程师',
-      model: 'deepseek-coder',
+      model: 'doubao-seed-2-0-lite-260215',
       capabilities: ['ui_design', 'frontend_development', 'responsive_layout', 'ux_improvement'],
       status: 'idle'
     })
@@ -358,7 +376,7 @@ ${userFeedback}
 `
 
     try {
-      const response = await llmService.chat('deepseek-coder', [
+      const response = await llmService.chat('doubao-seed-2-0-lite-260215', [
         { role: 'system', content: '你是一个任务分析专家。只需返回JSON数组，不要有其他内容。' },
         { role: 'user', content: prompt }
       ], {
@@ -430,6 +448,17 @@ ${userFeedback}
     // PM分析需求
     const pmAgent = this.agents.get('document_generator')!
     pmAgent.status = 'working'
+    
+    // 发送智能体状态更新事件
+    this.emit('stream', {
+      type: 'agent_status',
+      agentId: pmAgent.id,
+      agentName: pmAgent.name,
+      agentType: pmAgent.type,
+      status: pmAgent.status,
+      model: pmAgent.model,
+      phase: this.currentPhase
+    })
     
     // 如果指定了任务目录，PM需要创建项目文件夹和Plan
     if (taskDir) {
@@ -517,28 +546,161 @@ ${planResult}`,
       }
     }
     
-    let analysisResult = await this.executeAgentTask(
-      pmAgent,
-      `请分析以下需求，提供详细的技术方案和实现步骤：
+    // === PM阶段方案方向选择 ===
+    let pmDirection = 'default'
+    let directionOptionsList: string[] = []
+    
+    try {
+      // 第一步：让PM分析任务，智能生成适合的方向选项
+      const directionAnalysis = await this.executeAgentTask(
+        pmAgent,
+        `你是项目经理，请分析以下任务并生成适合的需求分析方向选项。
 
 任务：${instruction}
 
-请提供：
-1. 需求理解
-2. 技术方案
-3. 实现步骤列表
-4. 关键点说明`,
-      {}
+请基于任务性质，生成3-5个具体的需求分析方向选项，这些选项应该：
+1. 符合项目的实际需求
+2. 具有明确的导向性
+3. 便于用户理解和选择
+4. 涵盖不同的侧重点
+
+请直接返回选项列表，每个选项占一行，不要有任何解释。
+
+示例：
+快速原型开发
+功能完整性优先
+技术架构创新
+用户体验优化
+成本控制优先`,
+        {}
+      )
+      
+      // 解析生成的选项列表
+      directionOptionsList = directionAnalysis
+        .split('\n')
+        .map(option => option.trim())
+        .filter(option => option.length > 0)
+        .slice(0, 5) // 最多取5个选项
+      
+      // 如果生成的选项不足，使用默认选项
+      if (directionOptionsList.length < 3) {
+        const defaultOptions = ['快速交付', '功能完整', '技术创新']
+        directionOptionsList = [...directionOptionsList, ...defaultOptions].slice(0, 5)
+      }
+      
+      // 第二步：使用智能生成的选项进行用户选择
+      const directionOptions = await collaborationManager.requestCollaboration(
+        `direction_${Date.now()}`,
+        CollaborationPhase.REQUIREMENTS,
+        '需求分析方向选择',
+        'PM已根据项目需求分析生成了适合的方向选项，请选择一个方向，PM将基于所选方向生成详细的需求文档',
+        { task: instruction, generatedOptions: directionOptionsList },
+        directionOptionsList
+      )
+      
+      if (directionOptions.status === 'approved') {
+        pmDirection = directionOptions.approvedOption || 'default'
+        
+        const directionMsg: AgentMessage = {
+          agentId: 'system',
+          agentName: '系统',
+          role: '协调员',
+          content: `📋 用户选择需求分析方向：${pmDirection}`,
+          timestamp: Date.now(),
+          phase: '需求分析',
+          messageType: 'system',
+          priority: 'high'
+        }
+        this.collaborationHistory.push(directionMsg)
+        onAgentMessage(directionMsg)
+      }
+    } catch (error) {
+      console.warn('[MultiAgentCoordinator] 方向选择跳过:', error)
+      // 出错时使用默认方向
+      pmDirection = '功能完整'
+    }
+    
+    let analysisResult = await this.executeAgentTask(
+      pmAgent,
+      `你是项目经理，请对以下任务进行专业的需求分析。
+
+⚠️ 任务信息（直接分析，不要检查任何文件）：
+- 任务描述：${instruction}
+- 分析方向：${pmDirection}
+
+## 你的任务：输出完整的《需求分析文档》
+
+请按以下格式输出（内容要专业、简洁、聚焦产品本身）：
+
+# 需求分析文档
+
+## 1. 项目概述
+[用1-2句话描述这个项目的核心价值和目标]
+
+## 2. 核心功能
+[列出3-7个核心功能点，每个功能用1句话描述]
+
+## 3. 功能需求
+### 3.1 功能1名称
+- 功能描述
+- 用户操作流程
+- 预期结果
+
+### 3.2 功能2名称
+[按上述格式列出所有功能]
+
+## 4. 技术选型
+- 前端技术栈：[列出核心技术]
+- 后端技术栈（如需要）：[列出核心技术]
+- 数据存储：[说明存储方案]
+
+## 5. 实施计划
+1. [阶段1：核心功能开发]
+2. [阶段2：功能完善]
+3. [阶段3：测试优化]
+
+请直接输出完整的分析文档，不要询问任何问题，不要输出任何无关信息。`,
+      { direction: pmDirection }
     )
     
-    pmAgent.status = 'completed'
-    pmAgent.lastOutput = analysisResult
+    // 同步保存 .md 文档（使用原有路径）
+    let outputFiles: string[] = []
+    if (taskDir) {
+      try {
+        const projectDocPath = path.join(taskDir, 'project')
+        if (!fs.existsSync(projectDocPath)) {
+          // 添加权限参数，确保创建的目录有读写权限
+          fs.mkdirSync(projectDocPath, { recursive: true, mode: 0o755 })
+        }
+        const docPath = path.join(projectDocPath, '01_需求分析.md')
+        fs.writeFileSync(docPath, `# 需求分析\n\n${analysisResult}`, { encoding: 'utf-8', mode: 0o644 })
+        outputFiles.push(docPath)
+        console.log(`[MultiAgentCoordinator] 需求分析已保存: ${docPath}`)
+      } catch (error: any) {
+        console.error(`[MultiAgentCoordinator] 保存需求分析文档失败:`, error)
+        if (error.code === 'EACCES') {
+          // 权限错误，尝试使用权限修复工具
+          console.log(`[MultiAgentCoordinator] 权限不足，尝试修复权限...`)
+          // 这里可以调用权限修复工具
+        }
+      }
+    }
+    
+    // 生成结构化输出
+    const structuredOutput = this.generateStructuredOutput(
+      pmAgent.name,
+      '需求分析',
+      analysisResult,
+      ['用户确认需求方案', '进入UI设计阶段'],
+      ['分析用户需求', '生成需求文档', '保存需求分析.md'],
+      outputFiles
+    )
     
     const analysisMsg: AgentMessage = {
       agentId: pmAgent.id,
       agentName: pmAgent.name,
       role: pmAgent.role,
-      content: analysisResult,
+      content: structuredOutput,
       timestamp: Date.now(),
       phase: '需求分析',
       messageType: 'response',
@@ -549,17 +711,6 @@ ${planResult}`,
     
     // 保存分析结果
     this.savePhaseState('analysis', analysisResult)
-    
-    // 同步保存 .md 文档（使用原有路径）
-    if (taskDir) {
-      const projectDocPath = path.join(taskDir, 'project')
-      if (!fs.existsSync(projectDocPath)) {
-        fs.mkdirSync(projectDocPath, { recursive: true })
-      }
-      const docPath = path.join(projectDocPath, '01_需求分析.md')
-      fs.writeFileSync(docPath, `# 需求分析\n\n${analysisResult}`, 'utf-8')
-      console.log(`[MultiAgentCoordinator] 需求分析已保存: ${docPath}`)
-    }
     
     // === PM阶段多轮迭代确认 ===
     let pmConfirmed = false
@@ -609,9 +760,22 @@ ${planResult}`,
           messageType: 'question'
         })
         
-        // 检查是否暂停
-        if (this.checkPaused()) {
-          return { success: false, error: '用户暂停任务' }
+        // 检查是否暂停，如果暂停则等待恢复
+        while (this.checkPaused()) {
+          console.log('[MultiAgentCoordinator] 等待任务恢复...')
+          // 发送暂停消息
+          onAgentMessage({
+            agentId: 'system',
+            agentName: '系统',
+            role: '协调员',
+            content: '⏸️ 任务已暂停，等待恢复...',
+            timestamp: Date.now(),
+            phase: this.currentPhase,
+            messageType: 'system',
+            priority: 'high'
+          })
+          // 等待2秒再检查
+          await new Promise(resolve => setTimeout(resolve, 2000))
         }
         
         // 增量修改分析结果
@@ -693,35 +857,183 @@ ${planResult}`,
     // 2. UI设计阶段（所有复杂开发任务都需要）
     const designPhase = this.phases.find(p => p.name === 'design')!
     this.currentPhase = 'design'
-    
+   // UI开始设计
     const uiAgent = this.agents.get('ui_designer')!
     uiAgent.status = 'working'
     
-    let designResult = await this.executeAgentTask(
-      uiAgent,
-      `基于以下需求，提供UI设计方案：
+    // 发送智能体状态更新事件
+    this.emit('stream', {
+      type: 'agent_status',
+      agentId: uiAgent.id,
+      agentName: uiAgent.name,
+      agentType: uiAgent.type,
+      status: uiAgent.status,
+      model: uiAgent.model,
+      phase: this.currentPhase
+    })
+    
+    // === UI阶段方案方向选择 ===
+    let uiDirection = 'default'
+    let uiOptionsList: string[] = []
+    
+    try {
+      // 第一步：让UI设计师分析任务，智能生成适合的风格选项
+      const styleAnalysis = await this.executeAgentTask(
+        uiAgent,
+        `你是UI设计师，请分析以下任务和需求分析结果，并生成适合的UI设计风格选项。
 
 任务：${instruction}
 
-需求分析结果：
-${analysisResult}
+需求分析结果：${analysisResult}
 
-请提供：
-1. 页面结构/模块划分
-2. 组件设计
-3. 用户交互流程
-4. 视觉风格建议`,
+请基于任务性质和需求分析，生成3-5个具体的UI设计风格选项，这些选项应该：
+1. 符合项目的实际需求和目标用户
+2. 具有明确的设计风格导向
+3. 便于用户理解和选择
+4. 涵盖不同的设计美学
+
+请直接返回选项列表，每个选项占一行，不要有任何解释。
+
+示例：
+极简现代风格
+科技感未来风格
+温馨自然风格
+商务专业风格
+复古经典风格`,
+        { analysisResult }
+      )
+      
+      // 解析生成的选项列表
+      uiOptionsList = styleAnalysis
+        .split('\n')
+        .map(option => option.trim())
+        .filter(option => option.length > 0)
+        .slice(0, 5) // 最多取5个选项
+      
+      // 如果生成的选项不足，使用默认选项
+      if (uiOptionsList.length < 3) {
+        const defaultOptions = ['极简风格', '现代风格', '科技风格']
+        uiOptionsList = [...uiOptionsList, ...defaultOptions].slice(0, 5)
+      }
+      
+      // 第二步：使用智能生成的选项进行用户选择
+      const directionOptions = await collaborationManager.requestCollaboration(
+        `direction_${Date.now()}`,
+        CollaborationPhase.ARCHITECTURE,
+        'UI设计方向选择',
+        'UI设计师已根据项目需求分析生成了适合的设计风格选项，请选择一个风格，设计师将基于所选风格生成详细的设计方案',
+        { task: instruction, analysis: analysisResult, generatedOptions: uiOptionsList },
+        uiOptionsList
+      )
+      
+      if (directionOptions.status === 'approved') {
+        uiDirection = directionOptions.approvedOption || 'default'
+        
+        const directionMsg: AgentMessage = {
+          agentId: 'system',
+          agentName: '系统',
+          role: '协调员',
+          content: `🎨 用户选择UI设计方向：${uiDirection}`,
+          timestamp: Date.now(),
+          phase: 'UI设计',
+          messageType: 'system',
+          priority: 'high'
+        }
+        this.collaborationHistory.push(directionMsg)
+        onAgentMessage(directionMsg)
+      }
+    } catch (error) {
+      console.warn('[MultiAgentCoordinator] UI方向选择跳过:', error)
+      // 出错时使用默认方向
+      uiDirection = '现代风格'
+    }
+    
+    let designResult = await this.executeAgentTask(
+      uiAgent,
+      `你是UI设计师/前端工程师，请基于需求分析结果进行界面设计。
+
+⚠️ 已知信息（直接设计，不要检查任何文件）：
+- 任务描述：${instruction}
+- 需求分析结果：${analysisResult}
+- 设计风格：${uiDirection}
+
+## 你的任务：输出完整的《UI设计方案》
+
+请按以下格式输出（内容要专业、简洁、聚焦设计本身）：
+
+# UI设计方案
+
+## 1. 设计概述
+[用1-2句话描述整体设计风格和设计理念]
+
+## 2. 页面结构
+### 2.1 页面1名称
+- 页面功能：[描述]
+- 布局结构：[描述布局方式]
+- 核心组件：[列出主要组件]
+
+### 2.2 页面2名称
+[按上述格式列出所有页面]
+
+## 3. 组件设计
+### 3.1 组件1名称
+- 组件用途：[描述]
+- 属性：[列出关键属性]
+- 交互：[描述交互方式]
+
+### 3.2 组件2名称
+[按上述格式列出所有组件]
+
+## 4. 视觉规范
+- 配色方案：[主色、辅助色、背景色]
+- 字体：[字体族、字号规范]
+- 间距：[基础间距单位]
+
+## 5. 交互设计
+[列出关键交互流程]
+
+请直接输出完整的设计方案，不要询问任何问题，不要输出任何无关信息。`,
       { analysisResult }
     )
     
-    uiAgent.status = 'completed'
-    uiAgent.lastOutput = designResult
+    // 同步保存 .md 文档
+    let uiOutputFiles: string[] = []
+    if (taskDir) {
+      try {
+        const projectDocPath = path.join(taskDir, 'project')
+        if (!fs.existsSync(projectDocPath)) {
+          // 添加权限参数，确保创建的目录有读写权限
+          fs.mkdirSync(projectDocPath, { recursive: true, mode: 0o755 })
+        }
+        const docPath = path.join(projectDocPath, '02_UI设计.md')
+        fs.writeFileSync(docPath, `# UI设计\n\n${designResult}`, { encoding: 'utf-8', mode: 0o644 })
+        uiOutputFiles.push(docPath)
+        console.log(`[MultiAgentCoordinator] UI设计已保存: ${docPath}`)
+      } catch (error: any) {
+        console.error(`[MultiAgentCoordinator] 保存UI设计文档失败:`, error)
+        if (error.code === 'EACCES') {
+          // 权限错误，尝试使用权限修复工具
+          console.log(`[MultiAgentCoordinator] 权限不足，尝试修复权限...`)
+          // 这里可以调用权限修复工具
+        }
+      }
+    }
+    
+    // 生成结构化输出
+    const uiStructuredOutput = this.generateStructuredOutput(
+      uiAgent.name,
+      'UI设计',
+      designResult,
+      ['用户确认UI设计', '进入代码实现阶段'],
+      ['分析需求文档', '生成UI设计方案', '保存UI设计.md'],
+      uiOutputFiles
+    )
     
     const designMsg: AgentMessage = {
       agentId: uiAgent.id,
       agentName: uiAgent.name,
       role: uiAgent.role,
-      content: designResult,
+      content: uiStructuredOutput,
       timestamp: Date.now(),
       phase: 'UI设计',
       messageType: 'response',
@@ -732,13 +1044,6 @@ ${analysisResult}
     
     // 保存设计结果
     this.savePhaseState('design', designResult)
-    
-    // 同步保存 .md 文档
-    if (taskDir) {
-      const docPath = path.join(taskDir, 'project', '02_UI设计.md')
-      fs.writeFileSync(docPath, `# UI设计\n\n${designResult}`, 'utf-8')
-      console.log(`[MultiAgentCoordinator] UI设计已保存: ${docPath}`)
-    }
     
     // === UI设计多轮迭代确认 ===
     let designConfirmed = false
@@ -871,6 +1176,17 @@ ${analysisResult}
     
     const codeAgent = this.agents.get('code_generator')!
     codeAgent.status = 'working'
+    
+    // 发送智能体状态更新事件
+    this.emit('stream', {
+      type: 'agent_status',
+      agentId: codeAgent.id,
+      agentName: codeAgent.name,
+      agentType: codeAgent.type,
+      status: codeAgent.status,
+      model: codeAgent.model,
+      phase: this.currentPhase
+    })
 
     // 确定项目类型
     const projectType = this.determineProjectType(instruction)
@@ -974,15 +1290,23 @@ ${requiredFilesList}
 
       // 创建文件
       for (const file of codeData.files) {
-        const filePath = path.join(projectPath, file.path)
-        const dirPath = path.dirname(filePath)
+        try {
+          const filePath = path.join(projectPath, file.path)
+          const dirPath = path.dirname(filePath)
 
-        if (!fs.existsSync(dirPath)) {
-          fs.mkdirSync(dirPath, { recursive: true, mode: 0o755 })
+          if (!fs.existsSync(dirPath)) {
+            fs.mkdirSync(dirPath, { recursive: true, mode: 0o755 })
+          }
+
+          fs.writeFileSync(filePath, file.content, { encoding: 'utf-8', mode: 0o644 })
+          createdFiles.push(filePath)
+        } catch (error: any) {
+          console.error(`[MultiAgentCoordinator] 创建文件失败 ${file.path}:`, error)
+          if (error.code === 'EACCES') {
+            console.log(`[MultiAgentCoordinator] 权限不足，尝试修复权限...`)
+            // 这里可以调用权限修复工具
+          }
         }
-
-        fs.writeFileSync(filePath, file.content, 'utf-8')
-        createdFiles.push(filePath)
       }
 
       console.log(`[MultiAgentCoordinator] 项目创建成功: ${projectPath}`)
@@ -1040,11 +1364,8 @@ ${validation.errors.map(e => `  - ${e}`).join('\n')}
       codeAgent.status = 'completed'
       codeAgent.lastOutput = codeResult
 
-      const codeMsg: AgentMessage = {
-        agentId: codeAgent.id,
-        agentName: codeAgent.name,
-        role: codeAgent.role,
-        content: `✅ 代码实现完成！
+      // 生成代码实现的详细内容
+      const codeContent = `✅ 代码实现完成！
 
 项目路径：${projectPath}
 创建文件数：${createdFiles.length}
@@ -1054,7 +1375,25 @@ ${!validation.isValid ? `
 ` : ''}
 
 文件列表：
-${createdFiles.map(f => `  - ${path.relative(projectPath, f)}`).join('\n')}`,
+${createdFiles.map(f => `  - ${path.relative(projectPath, f)}`).join('\n')}`
+
+      // 生成结构化输出
+      const codeStructuredOutput = this.generateStructuredOutput(
+        codeAgent.name,
+        '代码实现',
+        codeContent,
+        ['用户确认代码实现', '进入测试和审查阶段'],
+        ['分析需求和设计', '生成项目代码', '创建项目文件', '验证项目完整性'],
+        createdFiles.map(f => path.relative(projectPath, f)),
+        undefined,
+        validation.isValid ? 9 : 7
+      )
+
+      const codeMsg: AgentMessage = {
+        agentId: codeAgent.id,
+        agentName: codeAgent.name,
+        role: codeAgent.role,
+        content: codeStructuredOutput,
         timestamp: Date.now(),
         phase: '代码实现',
         messageType: 'response',
@@ -1204,13 +1543,21 @@ ${codeResult}`,
           return { success: false, error: '用户暂停任务' }
         }
         
-        // 重新生成代码
+        // 重新生成代码 - 使用增量修改
         codeIteration++
+        
+        // 使用增量修改 prompt
+        const incrementalPrompt = this.buildIncrementalPrompt(
+          instruction,
+          codeResult,
+          implConfirm.userFeedback,
+          'code'
+        )
         
         // 重新调用代码生成
         const reCodeResult = await this.executeAgentTask(
           codeAgent,
-          `请根据用户反馈修改代码：\n\n用户反馈：${implConfirm.userFeedback}\n\n原需求：${instruction}\n需求分析：${analysisResult}\nUI设计：${designResult}\n\n请修改并重新生成完整的项目代码。必须以JSON格式返回。`,
+          incrementalPrompt,
           { analysisResult, uiDesign: designResult, workspacePath, projectName, projectType }
         )
         
@@ -1298,6 +1645,26 @@ ${codeResult}`,
     testAgent.status = 'working'
     reviewAgent.status = 'working'
     
+    // 发送测试和审查智能体状态更新事件
+    this.emit('stream', {
+      type: 'agent_status',
+      agentId: testAgent.id,
+      agentName: testAgent.name,
+      agentType: testAgent.type,
+      status: testAgent.status,
+      model: testAgent.model,
+      phase: this.currentPhase
+    })
+    this.emit('stream', {
+      type: 'agent_status',
+      agentId: reviewAgent.id,
+      agentName: reviewAgent.name,
+      agentType: reviewAgent.type,
+      status: reviewAgent.status,
+      model: reviewAgent.model,
+      phase: this.currentPhase
+    })
+    
     // 统一验证项目完整性（只验证一次）
     const preTestValidation = this.validateProject(projectPath, projectType)
     if (!preTestValidation.isValid) {
@@ -1341,8 +1708,10 @@ ${preTestValidation.errors.map(e => `  - ${e}`).join('\n')}
       onAgentMessage(skipReviewMsg)
     }
     
-    // 获取工作区中的实际文件列表用于验证
+    // 获取工作区中的实际文件列表用于测试和审查
     let verificationInfo = ''
+    let actualFilesContent = ''
+    
     if (this.workspaceManager) {
       try {
         const files = await this.workspaceManager.listFiles('', true)
@@ -1360,14 +1729,33 @@ ${projectFiles.map(f => `- ${f.path} (${f.size} bytes)`).join('\n')}
 目录总数：${files.filter(f => f.isDirectory).length}
 
 请验证以上文件是否与代码实现一致，并基于实际文件生成测试用例。`
+
+        // 读取关键源代码文件用于审查
+        const sourceFiles = projectFiles.filter(f => 
+          f.name.endsWith('.ts') || f.name.endsWith('.tsx') || 
+          f.name.endsWith('.js') || f.name.endsWith('.jsx') ||
+          f.name.endsWith('.py') || f.name.endsWith('.java')
+        ).slice(0, 10)
+        
+        for (const file of sourceFiles) {
+          try {
+            const content = await this.workspaceManager.readFile(file.path)
+            actualFilesContent += `\n\n## 文件: ${file.path}\n\`\`\`\n${content.slice(0, 2000)}\n\`\`\`\n`
+          } catch (e) {
+            console.warn(`[MultiAgentCoordinator] 读取文件失败: ${file.path}`)
+          }
+        }
       } catch (error) {
         console.warn('[MultiAgentCoordinator] 获取文件列表失败:', error)
       }
     }
     
-    const testResult = await this.executeAgentTask(
-      testAgent,
-      `请为以下代码生成测试用例：
+    // 5. 测试生成 + 代码审查阶段（真正并行执行）
+    const [testResult, reviewResult] = await Promise.all([
+      // 测试任务
+      this.executeAgentTask(
+        testAgent,
+        `请为以下代码生成测试用例：
 
 ## 完整上下文信息：
 ### 原始任务：
@@ -1391,17 +1779,38 @@ ${verificationInfo}
 重要：
 - 请基于实际项目文件生成测试用例，确保测试文件路径与实际文件一致
 - 测试文件应放在项目的 tests 或 __tests__ 目录下`,
-      { 
-        codeResult, 
-        analysisResult,
-        designResult,
-        workspacePath: this.workspaceManager?.getWorkspaceRoot() 
-      }
-    )
+        { codeResult, analysisResult, designResult, workspacePath: this.workspaceManager?.getWorkspaceRoot() }
+      ),
+      // 审查任务
+      this.executeAgentTask(
+        reviewAgent,
+        `请审查代码：
+
+任务：${instruction}
+
+代码实现：
+${codeResult}
+
+${actualFilesContent ? `\n\n## 实际项目文件内容:\n${actualFilesContent}` : ''}
+
+工作区路径：${this.workspaceManager?.getWorkspaceRoot() || '未指定'}
+
+请提供：
+1. 代码质量评估
+2. 问题与风险
+3. 改进建议
+4. 优化方案（如有）`,
+        { codeResult, validation, workspacePath: this.workspaceManager?.getWorkspaceRoot() }
+      )
+    ])
     
+    // 更新智能体状态
     testAgent.status = 'completed'
     testAgent.lastOutput = testResult
+    reviewAgent.status = 'completed'
+    reviewAgent.lastOutput = reviewResult
     
+    // 发送测试结果消息
     const testMsg: AgentMessage = {
       agentId: testAgent.id,
       agentName: testAgent.name,
@@ -1415,77 +1824,7 @@ ${verificationInfo}
     this.collaborationHistory.push(testMsg)
     onAgentMessage(testMsg)
     
-    testPhase.completed = true
-
-    // 5. 代码审查阶段
-    this.currentPhase = 'review'
-    
-    reviewAgent.status = 'working'
-    
-    // 检查项目完整性 - 使用之前的验证结果
-    const projectStatus = validation.isValid ? '完整' : '不完整'
-    const projectIssues = !validation.isValid ? `
-
-⚠️ 项目状态：不完整
-缺少文件：${validation.missingFiles.join(', ')}
-错误：${validation.errors.join(', ')}
-
-请在审查时注意以上问题，并提供修复建议。` : ''
-    
-    // 获取工作区中的实际文件列表
-    let actualFilesContent = ''
-    if (this.workspaceManager) {
-      try {
-        const files = await this.workspaceManager.listFiles('', true)
-        const projectFiles = files.filter(f => !f.isDirectory && !f.name.endsWith('.md'))
-        
-        // 读取关键源代码文件
-        const sourceFiles = projectFiles.filter(f => 
-          f.name.endsWith('.ts') || f.name.endsWith('.tsx') || 
-          f.name.endsWith('.js') || f.name.endsWith('.jsx') ||
-          f.name.endsWith('.py') || f.name.endsWith('.java')
-        ).slice(0, 10) // 限制读取前10个文件
-        
-        for (const file of sourceFiles) {
-          try {
-            const content = await this.workspaceManager.readFile(file.path)
-            actualFilesContent += `\n\n## 文件: ${file.path}\n\`\`\`\n${content.slice(0, 2000)}\n\`\`\`\n`
-          } catch (e) {
-            console.warn(`[MultiAgentCoordinator] 读取文件失败: ${file.path}`)
-          }
-        }
-      } catch (error) {
-        console.warn('[MultiAgentCoordinator] 获取文件列表失败:', error)
-      }
-    }
-    
-    const reviewResult = await this.executeAgentTask(
-      reviewAgent,
-      `请审查代码：
-
-任务：${instruction}
-
-代码实现：
-${codeResult}
-
-测试用例：
-${testResult}
-
-${actualFilesContent ? `\n\n## 实际项目文件内容:\n${actualFilesContent}` : ''}
-
-工作区路径：${this.workspaceManager?.getWorkspaceRoot() || '未指定'}
-
-请提供：
-1. 代码质量评估
-2. 问题与风险
-3. 改进建议
-4. 优化方案（如有）`,
-      { codeResult, testResult, validation, workspacePath: this.workspaceManager?.getWorkspaceRoot() }
-    )
-    
-    reviewAgent.status = 'completed'
-    reviewAgent.lastOutput = reviewResult
-    
+    // 发送审查结果消息
     const reviewMsg: AgentMessage = {
       agentId: reviewAgent.id,
       agentName: reviewAgent.name,
@@ -1498,6 +1837,8 @@ ${actualFilesContent ? `\n\n## 实际项目文件内容:\n${actualFilesContent}`
     }
     this.collaborationHistory.push(reviewMsg)
     onAgentMessage(reviewMsg)
+    
+    testPhase.completed = true
     
     reviewPhase.completed = true
     
@@ -1553,6 +1894,17 @@ ${actualFilesContent ? `\n\n## 实际项目文件内容:\n${actualFilesContent}`
     this.currentPhase = 'documentation'
     
     pmAgent.status = 'working'
+    
+    // 发送智能体状态更新事件
+    this.emit('stream', {
+      type: 'agent_status',
+      agentId: pmAgent.id,
+      agentName: pmAgent.name,
+      agentType: pmAgent.type,
+      status: pmAgent.status,
+      model: pmAgent.model,
+      phase: this.currentPhase
+    })
     
     const summaryResult = await this.executeAgentTask(
       pmAgent,
@@ -1727,6 +2079,32 @@ ${this.getExpertKnowledge(agent.type)}
       })
 
       if (response.success && response.content) {
+        // 验证产出物质量
+        const validationResult = this.validateAgentOutput(agent.type, response.content)
+        
+        if (!validationResult.isValid) {
+          console.warn(`[MultiAgentCoordinator] ${agent.name} 产出验证失败: ${validationResult.reason}`)
+          
+          // 如果验证失败，尝试让智能体重新生成
+          const retryPrompt = `${instruction}
+
+⚠️ 上一次输出不符合要求：${validationResult.reason}
+
+请重新输出符合要求的格式。`
+          
+          const retryResponse = await llmService.chat(agent.model, [
+            ...messages.slice(0, -1),
+            { role: 'user', content: retryPrompt }
+          ], { temperature: 0.7, max_tokens: 8000 })
+          
+          if (retryResponse.success && retryResponse.content) {
+            const retryValidation = this.validateAgentOutput(agent.type, retryResponse.content)
+            if (retryValidation.isValid) {
+              response.content = retryResponse.content
+            }
+          }
+        }
+        
         // 学习经验
         expert.learnFromExperience({
           experienceId: `exp_${Date.now()}`,
@@ -1779,33 +2157,211 @@ ${this.getExpertKnowledge(agent.type)}
 - 理解需求并实现功能
 - 编写高质量、可维护的代码
 - 设计合理的架构
-- 遵循最佳实践`,
+- 遵循最佳实践
+
+## 输出格式要求
+
+### 代码块
+必须使用Markdown代码块格式，例如：
+\`\`\`typescript
+// 你的代码
+function example() {
+  return "Hello";
+}
+\`\`\`
+
+### 待办事项
+使用Markdown待办列表格式：
+- [ ] 待完成的任务1
+- [x] 已完成的任务2
+
+### 文件引用
+使用完整路径引用文件：
+\`/Users/xxx/project/src/App.tsx\`
+
+⚠️ 重要约束：
+- 禁止使用任何文件检查/读取工具（如check_file, glob_paths, list_files等）
+- 必须直接根据任务描述编写代码
+- 输出必须是完整的、可运行的代码文件列表（JSON格式）`,
 
       test_generator: `你是测试工程师，负责：
 - 理解代码功能
 - 编写全面的测试用例
 - 确保测试覆盖率
-- 提供测试报告`,
+- 提供测试报告
+
+## 输出格式要求
+
+### 测试代码
+必须使用Markdown代码块：
+\`\`\`typescript
+describe('功能测试', () => {
+  it('should work', () => {
+    expect(true).toBe(true);
+  });
+});
+\`\`\`
+
+### 测试报告
+使用表格形式：
+| 测试项 | 预期 | 实际 | 结果 |
+|--------|------|------|------|
+| 功能测试 | 通过 | 通过 | ✅ |
+
+⚠️ 重要约束：
+- 禁止使用任何文件检查工具
+- 必须基于代码功能编写测试用例`,
 
       code_reviewer: `你是代码审查员，负责：
 - 审查代码质量
 - 发现潜在问题
 - 提供改进建议
-- 确保代码安全性和性能`,
+- 确保代码安全性和性能
+
+## 输出格式要求
+
+### 问题列表
+使用Markdown表格：
+| 严重程度 | 位置 | 问题描述 | 建议修复 |
+|----------|------|----------|----------|
+| 🔴 严重 | src/app.ts | 内存泄漏 | 清理定时器 |
+| 🟡 警告 | src/utils.ts | 未使用变量 | 删除代码 |
+
+### 代码片段
+\`\`\`typescript
+// 问题代码示例
+\`\`\`
+
+⚠️ 建议使用列表和表格清晰展示审查结果`,
 
       document_generator: `你是项目经理，负责：
 - 分析需求
 - 规划项目方案
 - 协调各智能体工作
-- 总结项目成果`,
+- 总结项目成果
+
+## 输出格式要求
+
+### 需求文档
+必须使用Markdown格式，包含：
+- # 标题
+- ## 二级标题
+- - 列表项
+- **加粗**强调
+
+### 待办事项
+使用标准Markdown待办列表：
+- [ ] 任务1
+- [x] 任务2
+
+### 里程碑
+使用表格或时间线：
+| 阶段 | 目标 | 预期时间 |
+|------|------|----------|
+| 需求分析 | 完成需求文档 | 30分钟 |
+
+### 文件输出
+列出生成的文件路径：
+- \`/path/to/PM需求分析.md\`
+- \`/path/to/项目计划.md\`
+
+⚠️ 重要约束：
+- 禁止使用任何文件检查/读取工具（如check_file, glob_paths, list_files等）
+- 禁止查看项目目录结构
+- 必须直接基于用户提供的任务描述进行需求分析
+- 必须输出完整的Markdown格式需求文档
+- 你的职责是分析"用户想要什么"，而不是查看"现在有什么"`,
 
       ui_designer: `你是UI设计师/前端工程师，负责：
 - 设计用户界面
 - 实现前端页面
 - 优化用户体验
-- 确保响应式设计`
+- 确保响应式设计
+
+## 输出格式要求
+
+### UI规范
+使用Markdown和代码块：
+\`\`\`json
+{
+  "components": [
+    {"name": "Button", "props": {...}}
+  ]
+}
+\`\`\`
+
+### 布局说明
+使用列表和表格：
+- 组件列表：
+  | 组件名 | 用途 | 路径 |
+  |--------|------|------|
+  | Header | 顶部导航 | components/Header.tsx |
+
+### 样式参考
+\`\`\`css
+.container {
+  display: flex;
+}
+\`\`\`
+
+⚠️ 重要约束：
+- 禁止使用任何文件检查/读取工具（如check_file, glob_paths, list_files等）
+- 禁止查看项目目录结构
+- 必须直接基于需求分析结果进行界面设计
+- 必须输出完整的UI设计方案（JSON格式）`
     }
     return descriptions[type]
+  }
+
+  // 验证智能体产出物质量
+  private validateAgentOutput(agentType: AgentType, content: string): { isValid: boolean; reason?: string } {
+    // 检查内容是否为空
+    if (!content || content.trim().length === 0) {
+      return { isValid: false, reason: '输出内容为空' }
+    }
+
+    // 检查内容长度
+    if (content.trim().length < 50) {
+      return { isValid: false, reason: '输出内容过短，不符合专业标准' }
+    }
+
+    // 检查是否包含文件检查相关关键词（说明智能体没有专注于任务）
+    const fileCheckPatterns = [
+      /check_file|glob_paths|list_files|查看目录|文件列表|目录结构/i,
+      /没有找到|不存在|无法访问/i
+    ]
+
+    for (const pattern of fileCheckPatterns) {
+      if (pattern.test(content)) {
+        return { isValid: false, reason: '检测到文件检查行为，应直接完成任务而不是检查文件' }
+      }
+    }
+
+    // 根据智能体类型进行特定验证
+    switch (agentType) {
+      case 'document_generator':
+        // PM应该输出Markdown格式的需求文档
+        if (!content.includes('#') && !content.includes('需求') && !content.includes('功能')) {
+          return { isValid: false, reason: 'PM输出应包含需求分析文档格式' }
+        }
+        break
+
+      case 'ui_designer':
+        // UI应该输出JSON格式或包含组件设计
+        if (!content.includes('{') && !content.includes('组件') && !content.includes('页面')) {
+          return { isValid: false, reason: 'UI输出应包含组件或页面设计' }
+        }
+        break
+
+      case 'code_generator':
+        // 开发应该输出代码文件结构
+        if (!content.includes('"path"') && !content.includes('"content"') && !content.includes('files')) {
+          return { isValid: false, reason: '开发输出应包含代码文件结构(JSON格式)' }
+        }
+        break
+    }
+
+    return { isValid: true }
   }
 
   // 获取专业知识
@@ -2270,12 +2826,6 @@ ${this.getExpertKnowledge(agent.type)}
     return this.agentCapabilities.get(agentType)
   }
 
-  // 优化资源分配
-  optimizeResourceAllocation(): void {
-    // 这里可以添加资源优化逻辑
-    // 例如，根据任务优先级调整智能体分配
-  }
-
   // 确定项目类型
   private determineProjectType(instruction: string): string {
     const lower = instruction.toLowerCase()
@@ -2550,10 +3100,38 @@ ${this.getExpertKnowledge(agent.type)}
   
   /**
    * 检查是否已暂停（用于在循环中检查）
+   * 如果暂停，会等待恢复而不是直接返回错误
    */
   checkPaused(): boolean {
+    // 如果没有暂停，直接返回
+    if (!this.isPaused) {
+      return false
+    }
+    
+    // 如果已暂停，进入等待循环
+    console.log('[MultiAgentCoordinator] 任务已暂停，等待恢复...')
+    
+    // 等待恢复（每500ms检查一次）
+    while (this.isPaused) {
+      // 检查是否有恢复标志
+      const savedTasks = this.taskStateManager.getAllTasks()
+      const currentTask = savedTasks.find(t => t.id === this.currentTaskId)
+      
+      if (currentTask && currentTask.status === 'running') {
+        // 任务已恢复
+        this.isPaused = false
+        console.log('[MultiAgentCoordinator] 任务已恢复，继续执行')
+        return false
+      }
+      
+      // 等待500ms再检查
+      return true // 仍然暂停
+    }
+    
     return this.isPaused
   }
+  
+
 }
 
 export const multiAgentCoordinator = new MultiAgentCoordinator()

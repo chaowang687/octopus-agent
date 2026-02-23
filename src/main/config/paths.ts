@@ -19,7 +19,7 @@ export interface PathsConfig {
 
 export const PATHS: PathsConfig = {
   USER_HOME: process.env.HOME || os.homedir(),
-  PROJECT_ROOT: process.env.PROJECT_ROOT || path.join(os.homedir(), 'Desktop', 'Octopus Agent'),
+  PROJECT_ROOT: process.env.PROJECT_ROOT || path.join(os.homedir(), 'Library', 'Application Support', 'trae', 'projects'),
   DESKTOP: path.join(os.homedir(), 'Desktop'),
   DOCUMENTS: path.join(os.homedir(), 'Documents'),
   DOWNLOADS: path.join(os.homedir(), 'Downloads'),
@@ -31,11 +31,11 @@ export const PATHS: PathsConfig = {
   VSCODE: path.join(os.homedir(), 'Applications', 'Visual Studio Code.app'),
   
   getWorkspacePath(projectName: string): string {
-    return path.join(this.DESKTOP, projectName)
+    return path.join(this.PROJECT_ROOT, projectName)
   },
   
   getProjectPath(projectName: string): string {
-    return path.join(this.DESKTOP, projectName)
+    return path.join(this.PROJECT_ROOT, projectName)
   }
 }
 

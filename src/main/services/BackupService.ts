@@ -1,501 +1,369 @@
 import * as fs from 'fs'
 import * as path from 'path'
-import * as crypto from 'crypto'
+import { dialog } from 'electron'
 import { app } from 'electron'
-import { exec } from 'child_process'
-import { promisify } from 'util'
+import { userService } from './UserService'
+import { projectService } from '../services/ProjectService'
+import { llmService } from './LLMService'
 
-const execAsync = promisify(exec)
-
-export interface BackupConfig {
-  enabled: boolean
-  autoBackup: boolean
-  backupInterval: number // 毫秒
-  maxBackups: number
-  backupLocation: string
-  compressionEnabled: boolean
-  encryptionEnabled: boolean
-  encryptionKey?: string
-}
-
-export interface BackupInfo {
-  id: string
-  timestamp: number
-  size: number
-  compressed: boolean
-  encrypted: boolean
-  checksum: string
-  userId?: string
-  description?: string
-  filePath: string
-}
-
-export interface BackupRestoreResult {
-  success: boolean
-  restoredItems: number
-  errors: string[]
-  warnings: string[]
+export interface BackupData {
+  version: string
+  exportedAt: number
+  users: any[]
+  projects: any[]
+  apiKeys: any[]
+  settings: any
 }
 
 export class BackupService {
   private backupDir: string
-  private config: BackupConfig
-  private backupTimer?: NodeJS.Timeout
-  private backupHistory: BackupInfo[] = []
-  private initialized: boolean = false
 
-  constructor(config?: Partial<BackupConfig>) {
-    // 使用当前工作目录作为初始目录
-    this.backupDir = path.join(process.cwd(), 'backups')
-    this.config = {
-      enabled: true,
-      autoBackup: true,
-      backupInterval: 24 * 60 * 60 * 1000, // 24小时
-      maxBackups: 10,
-      backupLocation: this.backupDir,
-      compressionEnabled: true,
-      encryptionEnabled: false,
-      ...config
-    }
+  constructor() {
+    this.backupDir = path.join(app.getPath('userData'), 'backups')
+    this.initializeBackupDir()
   }
 
-  initialize() {
-    if (this.initialized) return
-    
-    try {
-      this.initializeBackupDirectory()
-      this.loadBackupHistory()
-      this.startAutoBackup()
-      this.initialized = true
-      console.log('[BackupService] 服务初始化完成')
-    } catch (error) {
-      console.error('[BackupService] 初始化失败:', error)
-    }
-  }
-
-  private initializeBackupDirectory(): void {
-    try {
-      if (!fs.existsSync(this.backupDir)) {
-        fs.mkdirSync(this.backupDir, { recursive: true, mode: 0o755 })
-        console.log('[BackupService] 创建备份目录:', this.backupDir)
-      } else {
-        console.log('[BackupService] 备份目录已存在:', this.backupDir)
-      }
-    } catch (error: any) {
-      console.error('[BackupService] 创建备份目录失败:', error)
-      // 使用备用目录
-      this.backupDir = path.join(process.cwd(), 'backups')
-      try {
-        if (!fs.existsSync(this.backupDir)) {
-          fs.mkdirSync(this.backupDir, { recursive: true, mode: 0o755 })
-          console.log('[BackupService] 使用备用备份目录:', this.backupDir)
-        }
-      } catch (backupError) {
-        console.error('[BackupService] 备用目录也失败:', backupError)
-      }
-    }
-  }
-
-  private loadBackupHistory(): void {
-    try {
-      const historyPath = path.join(this.backupDir, 'backup-history.json')
-      if (fs.existsSync(historyPath)) {
-        const data = fs.readFileSync(historyPath, 'utf-8')
-        this.backupHistory = JSON.parse(data)
-        console.log('[BackupService] 加载备份历史:', this.backupHistory.length, '个备份')
-      }
-    } catch (error) {
-      console.error('[BackupService] 加载备份历史失败:', error)
-    }
-  }
-
-  private saveBackupHistory(): void {
-    try {
-      const historyPath = path.join(this.backupDir, 'backup-history.json')
-      fs.writeFileSync(historyPath, JSON.stringify(this.backupHistory, null, 2))
-    } catch (error) {
-      console.error('[BackupService] 保存备份历史失败:', error)
-    }
-  }
-
-  private startAutoBackup(): void {
-    if (this.config.autoBackup && this.config.enabled) {
-      this.backupTimer = setInterval(() => {
-        this.createAutoBackup()
-      }, this.config.backupInterval)
-      console.log('[BackupService] 自动备份已启动，间隔:', this.config.backupInterval / 1000 / 60, '分钟')
-    }
-  }
-
-  private stopAutoBackup(): void {
-    if (this.backupTimer) {
-      clearInterval(this.backupTimer)
-      this.backupTimer = undefined
-      console.log('[BackupService] 自动备份已停止')
-    }
-  }
-
-  async createBackup(description?: string, userId?: string): Promise<BackupInfo> {
-    if (!this.initialized) {
-      this.initialize()
-    }
-
-    const timestamp = Date.now()
-    const backupId = `backup_${timestamp}_${crypto.randomBytes(8).toString('hex')}`
-    const backupPath = path.join(this.backupDir, `${backupId}.json`)
-
-    console.log('[BackupService] 开始创建备份:', backupId)
-
+  private initializeBackupDir() {
     try {
       const userDataPath = app.getPath('userData')
-      const dataToBackup: any = {
-        timestamp,
-        backupId,
-        version: app.getVersion(),
-        data: {}
-      }
-
-      const itemsToBackup = [
-        'users',
-        'tokens',
-        'workspaces',
-        'preferences',
-        'projects',
-        'library',
-        'knowledge-base'
-      ]
-
-      for (const item of itemsToBackup) {
-        const itemPath = path.join(userDataPath, item)
-        if (fs.existsSync(itemPath)) {
-          dataToBackup.data[item] = this.readDirectory(itemPath)
-        }
-      }
-
-      let backupContent = JSON.stringify(dataToBackup, null, 2)
-
-      if (this.config.compressionEnabled) {
-        backupContent = await this.compressData(backupContent)
-      }
-
-      if (this.config.encryptionEnabled && this.config.encryptionKey) {
-        backupContent = this.encryptData(backupContent, this.config.encryptionKey)
-      }
-
-      fs.writeFileSync(backupPath, backupContent)
-
-      const stats = fs.statSync(backupPath)
-      const checksum = this.calculateChecksum(backupPath)
-
-      const backupInfo: BackupInfo = {
-        id: backupId,
-        timestamp,
-        size: stats.size,
-        compressed: this.config.compressionEnabled,
-        encrypted: this.config.encryptionEnabled,
-        checksum,
-        userId,
-        description,
-        filePath: backupPath
-      }
-
-      this.backupHistory.push(backupInfo)
-      this.saveBackupHistory()
-      this.cleanupOldBackups()
-
-      console.log('[BackupService] 备份创建成功:', backupId, '大小:', stats.size, '字节')
-      return backupInfo
-
-    } catch (error: any) {
-      console.error('[BackupService] 创建备份失败:', error)
-      throw new Error(`创建备份失败: ${error.message}`)
-    }
-  }
-
-  private async createAutoBackup(): Promise<void> {
-    try {
-      await this.createBackup('自动备份')
-    } catch (error) {
-      console.error('[BackupService] 自动备份失败:', error)
-    }
-  }
-
-  async restoreBackup(backupId: string): Promise<BackupRestoreResult> {
-    if (!this.initialized) {
-      this.initialize()
-    }
-
-    const result: BackupRestoreResult = {
-      success: false,
-      restoredItems: 0,
-      errors: [],
-      warnings: []
-    }
-
-    console.log('[BackupService] 开始恢复备份:', backupId)
-
-    try {
-      const backupInfo = this.backupHistory.find(b => b.id === backupId)
-      if (!backupInfo) {
-        throw new Error('备份不存在')
-      }
-
-      const backupPath = backupInfo.filePath
-      if (!fs.existsSync(backupPath)) {
-        throw new Error('备份文件不存在')
-      }
-
-      let backupContent = fs.readFileSync(backupPath, 'utf-8')
-
-      if (backupInfo.encrypted && this.config.encryptionKey) {
-        backupContent = this.decryptData(backupContent, this.config.encryptionKey)
-      }
-
-      if (backupInfo.compressed) {
-        backupContent = await this.decompressData(backupContent)
-      }
-
-      const backupData = JSON.parse(backupContent)
-      const userDataPath = app.getPath('userData')
-
-      for (const [key, value] of Object.entries(backupData.data)) {
+      console.log(`[BackupService] 用户数据目录: ${userDataPath}`)
+      
+      if (!fs.existsSync(userDataPath)) {
+        console.log(`[BackupService] 用户数据目录不存在，创建: ${userDataPath}`)
         try {
-          const itemPath = path.join(userDataPath, key)
-          
-          if (!fs.existsSync(itemPath)) {
-            fs.mkdirSync(itemPath, { recursive: true })
-          }
-
-          if (typeof value === 'object' && value !== null) {
-            for (const [fileName, fileContent] of Object.entries(value as any)) {
-              const filePath = path.join(itemPath, fileName)
-              fs.writeFileSync(filePath, JSON.stringify(fileContent, null, 2))
-              result.restoredItems++
-            }
-          }
-        } catch (error: any) {
-          result.errors.push(`恢复 ${key} 失败: ${error.message}`)
+          fs.mkdirSync(userDataPath, { recursive: true, mode: 0o755 })
+        } catch (error) {
+          console.error('[BackupService] 无法创建用户数据目录，尝试使用临时目录')
+          this.backupDir = path.join(app.getPath('temp'), 'octopus-agent-backups')
+          return
         }
       }
-
-      result.success = result.errors.length === 0
-      console.log('[BackupService] 备份恢复完成:', result)
-      return result
-
-    } catch (error: any) {
-      console.error('[BackupService] 恢复备份失败:', error)
-      result.errors.push(`恢复失败: ${error.message}`)
-      return result
+      
+      if (!fs.existsSync(this.backupDir)) {
+        console.log(`[BackupService] 备份目录不存在，创建: ${this.backupDir}`)
+        try {
+          fs.mkdirSync(this.backupDir, { recursive: true, mode: 0o755 })
+        } catch (error) {
+          console.error('[BackupService] 无法创建备份目录，尝试使用临时目录')
+          this.backupDir = path.join(app.getPath('temp'), 'octopus-agent-backups')
+          if (!fs.existsSync(this.backupDir)) {
+            fs.mkdirSync(this.backupDir, { recursive: true, mode: 0o755 })
+          }
+          return
+        }
+      }
+      
+      console.log(`[BackupService] 备份目录已准备: ${this.backupDir}`)
+    } catch (error) {
+      console.error('[BackupService] 初始化备份目录失败，使用临时目录:', error)
+      this.backupDir = path.join(app.getPath('temp'), 'octopus-agent-backups')
+      if (!fs.existsSync(this.backupDir)) {
+        try {
+          fs.mkdirSync(this.backupDir, { recursive: true, mode: 0o755 })
+          console.log(`[BackupService] 临时备份目录已创建: ${this.backupDir}`)
+        } catch (fallbackError) {
+          console.error('[BackupService] 无法创建临时备份目录:', fallbackError)
+        }
+      }
     }
   }
 
-  deleteBackup(backupId: string): boolean {
-    if (!this.initialized) {
-      this.initialize()
-    }
-
-    const backupInfo = this.backupHistory.find(b => b.id === backupId)
-    if (!backupInfo) {
-      return false
-    }
-
+  async exportData(): Promise<{ success: boolean; data?: BackupData; error?: string }> {
     try {
-      if (fs.existsSync(backupInfo.filePath)) {
-        fs.unlinkSync(backupInfo.filePath)
+      console.log('[BackupService] 开始导出数据')
+
+      const users = userService.getAllUsers()
+      const projects = await this.getAllProjects()
+      const apiKeys = await this.getAllApiKeys()
+      const settings = await this.getSettings()
+
+      const backupData: BackupData = {
+        version: '1.0.0',
+        exportedAt: Date.now(),
+        users,
+        projects,
+        apiKeys,
+        settings
       }
 
-      this.backupHistory = this.backupHistory.filter(b => b.id !== backupId)
-      this.saveBackupHistory()
-      console.log('[BackupService] 删除备份:', backupId)
-      return true
-    } catch (error) {
-      console.error('[BackupService] 删除备份失败:', error)
-      return false
+      console.log('[BackupService] 数据导出成功')
+      return { success: true, data: backupData }
+    } catch (error: any) {
+      console.error('[BackupService] 导出数据失败:', error)
+      return { success: false, error: error.message }
     }
   }
 
-  getBackupList(): BackupInfo[] {
-    if (!this.initialized) {
-      this.initialize()
-    }
-    return this.backupHistory.sort((a, b) => b.timestamp - a.timestamp)
-  }
-
-  getBackupInfo(backupId: string): BackupInfo | null {
-    if (!this.initialized) {
-      this.initialize()
-    }
-    return this.backupHistory.find(b => b.id === backupId) || null
-  }
-
-  private cleanupOldBackups(): void {
-    if (this.backupHistory.length <= this.config.maxBackups) {
-      return
-    }
-
-    const backupsToDelete = this.backupHistory
-      .sort((a, b) => a.timestamp - b.timestamp)
-      .slice(0, this.backupHistory.length - this.config.maxBackups)
-
-    for (const backup of backupsToDelete) {
-      this.deleteBackup(backup.id)
-    }
-
-    console.log('[BackupService] 清理旧备份:', backupsToDelete.length, '个')
-  }
-
-  private readDirectory(dirPath: string): any {
-    const result: any = {}
-
+  async importData(backupData: BackupData): Promise<{ success: boolean; error?: string; message?: string }> {
     try {
-      const items = fs.readdirSync(dirPath)
-      for (const item of items) {
-        const itemPath = path.join(dirPath, item)
-        const stats = fs.statSync(itemPath)
+      console.log('[BackupService] 开始导入数据')
 
-        if (stats.isDirectory()) {
-          result[item] = this.readDirectory(itemPath)
-        } else if (stats.isFile() && item.endsWith('.json')) {
+      if (!backupData.version) {
+        return { success: false, error: '无效的备份文件' }
+      }
+
+      let importedCount = 0
+
+      if (backupData.users && backupData.users.length > 0) {
+        console.log(`[BackupService] 导入 ${backupData.users.length} 个用户`)
+        for (const user of backupData.users) {
           try {
-            const content = fs.readFileSync(itemPath, 'utf-8')
-            result[item] = JSON.parse(content)
+            const existingUser = userService.getUserByUsername(user.username)
+            if (!existingUser) {
+              userService.restoreUser(user)
+              importedCount++
+            }
           } catch (error) {
-            console.warn('[BackupService] 读取文件失败:', itemPath)
+            console.error('[BackupService] 导入用户失败:', error)
           }
         }
       }
-    } catch (error) {
-      console.error('[BackupService] 读取目录失败:', dirPath, error)
-    }
 
-    return result
-  }
-
-  private async compressData(data: string): Promise<string> {
-    return data
-  }
-
-  private async decompressData(data: string): Promise<string> {
-    return data
-  }
-
-  private encryptData(data: string, key: string): string {
-    const iv = crypto.randomBytes(16)
-    const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(key, 'hex'), iv)
-    let encrypted = cipher.update(data, 'utf8', 'hex')
-    encrypted += cipher.final('hex')
-    return iv.toString('hex') + ':' + encrypted
-  }
-
-  private decryptData(encryptedData: string, key: string): string {
-    const parts = encryptedData.split(':')
-    const iv = Buffer.from(parts[0], 'hex')
-    const encrypted = parts[1]
-    const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(key, 'hex'), iv)
-    let decrypted = decipher.update(encrypted, 'hex', 'utf8')
-    decrypted += decipher.final('utf8')
-    return decrypted
-  }
-
-  private calculateChecksum(filePath: string): string {
-    try {
-      const content = fs.readFileSync(filePath)
-      return crypto.createHash('sha256').update(content).digest('hex')
-    } catch (error) {
-      console.error('[BackupService] 计算校验和失败:', error)
-      return ''
-    }
-  }
-
-  updateConfig(newConfig: Partial<BackupConfig>): void {
-    this.config = { ...this.config, ...newConfig }
-    
-    if (newConfig.backupLocation) {
-      this.backupDir = newConfig.backupLocation
-    }
-
-    if (newConfig.autoBackup !== undefined || newConfig.backupInterval !== undefined) {
-      this.stopAutoBackup()
-      if (this.initialized) {
-        this.startAutoBackup()
-      }
-    }
-
-    console.log('[BackupService] 配置已更新:', this.config)
-  }
-
-  getConfig(): BackupConfig {
-    return { ...this.config }
-  }
-
-  async exportBackup(backupId: string, exportPath: string): Promise<boolean> {
-    if (!this.initialized) {
-      this.initialize()
-    }
-
-    try {
-      const backupInfo = this.getBackupInfo(backupId)
-      if (!backupInfo) {
-        throw new Error('备份不存在')
+      if (backupData.projects && backupData.projects.length > 0) {
+        console.log(`[BackupService] 导入 ${backupData.projects.length} 个项目`)
+        for (const project of backupData.projects) {
+          try {
+            await this.restoreProject(project)
+          } catch (error) {
+            console.error('[BackupService] 导入项目失败:', error)
+          }
+        }
       }
 
-      const exportDir = path.dirname(exportPath)
-      if (!fs.existsSync(exportDir)) {
-        fs.mkdirSync(exportDir, { recursive: true })
+      if (backupData.apiKeys && backupData.apiKeys.length > 0) {
+        console.log(`[BackupService] 导入 ${backupData.apiKeys.length} 个 API 密钥`)
+        for (const apiKey of backupData.apiKeys) {
+          try {
+            await this.restoreApiKey(apiKey)
+          } catch (error) {
+            console.error('[BackupService] 导入 API 密钥失败:', error)
+          }
+        }
       }
 
-      fs.copyFileSync(backupInfo.filePath, exportPath)
-      console.log('[BackupService] 导出备份:', backupId, '到:', exportPath)
-      return true
-    } catch (error) {
-      console.error('[BackupService] 导出备份失败:', error)
-      return false
-    }
-  }
-
-  async importBackup(importPath: string): Promise<BackupInfo> {
-    if (!this.initialized) {
-      this.initialize()
-    }
-
-    try {
-      if (!fs.existsSync(importPath)) {
-        throw new Error('导入文件不存在')
+      if (backupData.settings) {
+        console.log('[BackupService] 导入设置')
+        await this.restoreSettings(backupData.settings)
       }
 
-      const backupId = `imported_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`
-      const backupPath = path.join(this.backupDir, `${backupId}.json`)
-
-      fs.copyFileSync(importPath, backupPath)
-
-      const stats = fs.statSync(backupPath)
-      const checksum = this.calculateChecksum(backupPath)
-
-      const backupInfo: BackupInfo = {
-        id: backupId,
-        timestamp: Date.now(),
-        size: stats.size,
-        compressed: false,
-        encrypted: false,
-        checksum,
-        description: '导入的备份',
-        filePath: backupPath
+      console.log(`[BackupService] 数据导入成功，共导入 ${importedCount} 个用户`)
+      return { 
+        success: true, 
+        message: `成功导入 ${importedCount} 个用户、${backupData.projects?.length || 0} 个项目、${backupData.apiKeys?.length || 0} 个 API 密钥`
       }
-
-      this.backupHistory.push(backupInfo)
-      this.saveBackupHistory()
-
-      console.log('[BackupService] 导入备份成功:', backupId)
-      return backupInfo
     } catch (error: any) {
-      console.error('[BackupService] 导入备份失败:', error)
-      throw new Error(`导入备份失败: ${error.message}`)
+      console.error('[BackupService] 导入数据失败:', error)
+      return { success: false, error: error.message }
     }
   }
 
-  destroy(): void {
-    this.stopAutoBackup()
-    console.log('[BackupService] 服务已销毁')
+  async exportToFile(): Promise<{ success: boolean; filePath?: string; error?: string }> {
+    try {
+      const result = await this.exportData()
+      if (!result.success || !result.data) {
+        return { success: false, error: result.error || '导出数据失败' }
+      }
+
+      const { filePath } = await dialog.showSaveDialog({
+        title: '导出数据',
+        defaultPath: path.join(app.getPath('downloads'), `octopus-agent-backup-${Date.now()}.json`),
+        filters: [
+          { name: 'JSON 文件', extensions: ['json'] },
+          { name: '所有文件', extensions: ['*'] }
+        ]
+      })
+
+      if (!filePath) {
+        return { success: false, error: '用户取消了导出' }
+      }
+
+      const jsonData = JSON.stringify(result.data, null, 2)
+      fs.writeFileSync(filePath, jsonData, 'utf-8')
+
+      console.log(`[BackupService] 数据已导出到: ${filePath}`)
+      return { success: true, filePath }
+    } catch (error: any) {
+      console.error('[BackupService] 导出文件失败:', error)
+      return { success: false, error: error.message }
+    }
+  }
+
+  async importFromFile(): Promise<{ success: boolean; message?: string; error?: string }> {
+    try {
+      const { filePaths } = await dialog.showOpenDialog({
+        title: '导入数据',
+        filters: [
+          { name: 'JSON 文件', extensions: ['json'] },
+          { name: '所有文件', extensions: ['*'] }
+        ],
+        properties: ['openFile']
+      })
+
+      if (!filePaths || filePaths.length === 0) {
+        return { success: false, error: '用户取消了导入' }
+      }
+
+      const filePath = filePaths[0]
+      const fileContent = fs.readFileSync(filePath, 'utf-8')
+      const backupData: BackupData = JSON.parse(fileContent)
+
+      const result = await this.importData(backupData)
+      return result
+    } catch (error: any) {
+      console.error('[BackupService] 导入文件失败:', error)
+      return { success: false, error: error.message }
+    }
+  }
+
+  async autoBackup(): Promise<{ success: boolean; filePath?: string; error?: string }> {
+    try {
+      const result = await this.exportData()
+      if (!result.success || !result.data) {
+        return { success: false, error: result.error || '导出数据失败' }
+      }
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+      const fileName = `auto-backup-${timestamp}.json`
+      const filePath = path.join(this.backupDir, fileName)
+
+      const jsonData = JSON.stringify(result.data, null, 2)
+      fs.writeFileSync(filePath, jsonData, 'utf-8', { mode: 0o600 })
+
+      console.log(`[BackupService] 自动备份已保存到: ${filePath}`)
+      return { success: true, filePath }
+    } catch (error: any) {
+      console.error('[BackupService] 自动备份失败:', error)
+      return { success: false, error: error.message }
+    }
+  }
+
+  async getBackupFiles(): Promise<{ success: boolean; files?: Array<{ name: string; path: string; size: number; date: number }>; error?: string }> {
+    try {
+      console.log('[BackupService] 获取备份文件列表')
+
+      if (!fs.existsSync(this.backupDir)) {
+        console.log('[BackupService] 备份目录不存在，返回空列表')
+        return { success: true, files: [] }
+      }
+
+      const files = fs.readdirSync(this.backupDir)
+        .filter(file => file.endsWith('.json'))
+        .map(file => {
+          const filePath = path.join(this.backupDir, file)
+          const stats = fs.statSync(filePath)
+          return {
+            name: file,
+            path: filePath,
+            size: stats.size,
+            date: stats.mtimeMs
+          }
+        })
+        .sort((a, b) => b.date - a.date)
+
+      console.log(`[BackupService] 找到 ${files.length} 个备份文件`)
+      return { success: true, files }
+    } catch (error: any) {
+      console.error('[BackupService] 获取备份文件失败:', error)
+      return { success: false, error: error.message }
+    }
+  }
+
+  async deleteBackupFile(fileName: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const filePath = path.join(this.backupDir, fileName)
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath)
+        console.log(`[BackupService] 已删除备份文件: ${fileName}`)
+        return { success: true }
+      }
+      return { success: false, error: '备份文件不存在' }
+    } catch (error: any) {
+      console.error('[BackupService] 删除备份文件失败:', error)
+      return { success: false, error: error.message }
+    }
+  }
+
+  private async getAllProjects(): Promise<any[]> {
+    try {
+      const projectsPath = path.join(app.getPath('userData'), 'projects')
+      if (!fs.existsSync(projectsPath)) {
+        return []
+      }
+
+      const files = fs.readdirSync(projectsPath)
+      const projects: any[] = []
+
+      for (const file of files) {
+        if (file.endsWith('.json')) {
+          const filePath = path.join(projectsPath, file)
+          const content = fs.readFileSync(filePath, 'utf-8')
+          projects.push(JSON.parse(content))
+        }
+      }
+
+      return projects
+    } catch (error) {
+      console.error('[BackupService] 获取项目失败:', error)
+      return []
+    }
+  }
+
+  private async getAllApiKeys(): Promise<any[]> {
+    try {
+      const apiKeysPath = path.join(app.getPath('userData'), 'api-keys.json')
+      if (!fs.existsSync(apiKeysPath)) {
+        return []
+      }
+
+      const content = fs.readFileSync(apiKeysPath, 'utf-8')
+      return JSON.parse(content)
+    } catch (error) {
+      console.error('[BackupService] 获取 API 密钥失败:', error)
+      return []
+    }
+  }
+
+  private async getSettings(): Promise<any> {
+    try {
+      const settingsPath = path.join(app.getPath('userData'), 'settings.json')
+      if (!fs.existsSync(settingsPath)) {
+        return {}
+      }
+
+      const content = fs.readFileSync(settingsPath, 'utf-8')
+      return JSON.parse(content)
+    } catch (error) {
+      console.error('[BackupService] 获取设置失败:', error)
+      return {}
+    }
+  }
+
+  private async restoreProject(project: any): Promise<void> {
+    const projectsPath = path.join(app.getPath('userData'), 'projects')
+    if (!fs.existsSync(projectsPath)) {
+      fs.mkdirSync(projectsPath, { recursive: true, mode: 0o700 })
+    }
+
+    const filePath = path.join(projectsPath, `${project.id}.json`)
+    fs.writeFileSync(filePath, JSON.stringify(project, null, 2), 'utf-8', { mode: 0o600 })
+  }
+
+  private async restoreApiKey(apiKey: any): Promise<void> {
+    const apiKeysPath = path.join(app.getPath('userData'), 'api-keys.json')
+    let apiKeys: any[] = []
+
+    if (fs.existsSync(apiKeysPath)) {
+      const content = fs.readFileSync(apiKeysPath, 'utf-8')
+      apiKeys = JSON.parse(content)
+    }
+
+    apiKeys.push(apiKey)
+    fs.writeFileSync(apiKeysPath, JSON.stringify(apiKeys, null, 2), 'utf-8', { mode: 0o600 })
+  }
+
+  private async restoreSettings(settings: any): Promise<void> {
+    const settingsPath = path.join(app.getPath('userData'), 'settings.json')
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8', { mode: 0o600 })
   }
 }
 

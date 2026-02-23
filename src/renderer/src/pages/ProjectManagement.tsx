@@ -1,6 +1,12 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { chatDataService, ChatSession } from '../services/ChatDataService'
+import FileTree, { FileNode } from '../components/FileTree'
+import CodeEditor from '../components/CodeEditor'
+import IDELayout from '../components/IDELayout'
+import '../components/FileTree.css'
+import '../components/CodeEditor.css'
+import '../components/IDELayout.css'
 
 interface Project {
   id: string
@@ -51,6 +57,14 @@ const ProjectManagement: React.FC = () => {
   const [butlerProblem, setButlerProblem] = useState('')
   const [butlerSolution, setButlerSolution] = useState<{ success: boolean; solution?: string; steps?: string[] } | null>(null)
   const [butlerLoading, setButlerLoading] = useState(false)
+  const [viewMode, setViewMode] = useState<'overview' | 'ide'>('overview')
+  const [fileTree, setFileTree] = useState<FileNode | null>(null)
+  const [selectedFile, setSelectedFile] = useState<string | null>(null)
+  const [fileContent, setFileContent] = useState<string>('')
+  const [fileLoading, setFileLoading] = useState(false)
+  const [openTabs, setOpenTabs] = useState<{ path: string; name: string; content: string; modified: boolean }[]>([])
+  const [activeEditorTab, setActiveEditorTab] = useState<string | null>(null)
+  const [projectsDir, setProjectsDir] = useState<string>('/Users/wangchao/Desktop/Octopus Agent/projects')
 
   useEffect(() => {
     loadProjects()
@@ -69,18 +83,199 @@ const ProjectManagement: React.FC = () => {
     }
   }
 
-  const loadFileSystemProjects = async () => {
+  const loadFileSystemProjects = async (dir?: string) => {
+    const targetDir = dir || projectsDir
     try {
-      const projectsDir = '/Users/wangchao/Desktop/Octopus Agent/projects'
-      const result = await window.electron.fs.scanProjectsDirectory(projectsDir)
+      const result = await window.electron.fs.scanProjectsDirectory(targetDir)
       if (result.success && result.projects) {
         setFileSystemProjects(result.projects)
+        if (dir) setProjectsDir(dir)
       } else {
         console.error('加载文件系统项目失败:', result.error)
+        setFileSystemProjects([])
       }
     } catch (error) {
       console.error('加载文件系统项目失败:', error)
+      setFileSystemProjects([])
     }
+  }
+
+  const selectProjectsDir = async () => {
+    try {
+      const result = await window.electron.dialog.showOpenDialog({
+        properties: ['openDirectory'],
+        title: '选择项目目录',
+        message: '请选择包含项目的目录'
+      })
+      
+      if (result.success && result.filePaths && result.filePaths.length > 0) {
+        await loadFileSystemProjects(result.filePaths[0])
+      }
+    } catch (error) {
+      console.error('选择目录失败:', error)
+    }
+  }
+
+  const buildFileTree = useCallback(async (projectPath: string): Promise<FileNode | null> => {
+    try {
+      const buildTree = async (dirPath: string, relativePath: string = ''): Promise<FileNode> => {
+        const entries = await window.electron.fs.listFiles(dirPath)
+        if (!entries.success || !entries.files) {
+          return {
+            name: dirPath.split('/').pop() || dirPath,
+            path: dirPath,
+            type: 'directory',
+            children: []
+          }
+        }
+
+        const children: FileNode[] = []
+        const ignorePatterns = ['node_modules', '.git', 'dist', 'build', '.next', '__pycache__', '.DS_Store', 'Thumbs.db']
+        
+        for (const entry of entries.files) {
+          if (ignorePatterns.some(pattern => entry.includes(pattern))) continue
+          
+          const fullPath = `${dirPath}/${entry}`
+          const existsResult = await window.electron.fs.exists(fullPath)
+          
+          if (existsResult.success && existsResult.exists) {
+            const isDirectory = !entry.includes('.')
+            if (isDirectory) {
+              const childNode = await buildTree(fullPath, `${relativePath}/${entry}`)
+              children.push(childNode)
+            } else {
+              const ext = entry.split('.').pop() || ''
+              children.push({
+                name: entry,
+                path: fullPath,
+                type: 'file',
+                extension: ext
+              })
+            }
+          }
+        }
+
+        children.sort((a, b) => {
+          if (a.type !== b.type) return a.type === 'directory' ? -1 : 1
+          return a.name.localeCompare(b.name)
+        })
+
+        return {
+          name: dirPath.split('/').pop() || dirPath,
+          path: dirPath,
+          type: 'directory',
+          children
+        }
+      }
+
+      return await buildTree(projectPath)
+    } catch (error) {
+      console.error('构建文件树失败:', error)
+      return null
+    }
+  }, [])
+
+  const handleFileSelect = useCallback(async (node: FileNode) => {
+    if (node.type === 'file') {
+      setSelectedFile(node.path)
+      setFileLoading(true)
+      
+      try {
+        const result = await window.electron.fs.readFile(node.path)
+        if (result.success && result.content !== undefined) {
+          setFileContent(result.content)
+          
+          const existingTab = openTabs.find(tab => tab.path === node.path)
+          if (!existingTab) {
+            setOpenTabs(prev => [...prev, {
+              path: node.path,
+              name: node.name,
+              content: result.content,
+              modified: false
+            }])
+          }
+          setActiveEditorTab(node.path)
+        }
+      } catch (error) {
+        console.error('读取文件失败:', error)
+      } finally {
+        setFileLoading(false)
+      }
+    }
+  }, [openTabs])
+
+  const handleFileContentChange = useCallback((content: string) => {
+    setFileContent(content)
+    setOpenTabs(prev => prev.map(tab => 
+      tab.path === activeEditorTab ? { ...tab, content, modified: true } : tab
+    ))
+  }, [activeEditorTab])
+
+  const handleFileSave = useCallback(async (content: string) => {
+    if (!activeEditorTab) return
+    
+    try {
+      const result = await window.electron.fs.writeFile(activeEditorTab, content)
+      if (result.success) {
+        setOpenTabs(prev => prev.map(tab => 
+          tab.path === activeEditorTab ? { ...tab, modified: false } : tab
+        ))
+      }
+    } catch (error) {
+      console.error('保存文件失败:', error)
+    }
+  }, [activeEditorTab])
+
+  const closeTab = useCallback((path: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setOpenTabs(prev => prev.filter(tab => tab.path !== path))
+    if (activeEditorTab === path) {
+      const remainingTabs = openTabs.filter(tab => tab.path !== path)
+      setActiveEditorTab(remainingTabs.length > 0 ? remainingTabs[0].path : null)
+    }
+  }, [activeEditorTab, openTabs])
+
+  const getLanguage = (filePath: string): string => {
+    const ext = filePath.split('.').pop()?.toLowerCase() || ''
+    const languageMap: Record<string, string> = {
+      'js': 'javascript',
+      'jsx': 'javascript',
+      'ts': 'typescript',
+      'tsx': 'typescript',
+      'py': 'python',
+      'rb': 'ruby',
+      'java': 'java',
+      'c': 'c',
+      'cpp': 'cpp',
+      'h': 'c',
+      'hpp': 'cpp',
+      'cs': 'csharp',
+      'go': 'go',
+      'rs': 'rust',
+      'php': 'php',
+      'swift': 'swift',
+      'kt': 'kotlin',
+      'scala': 'scala',
+      'r': 'r',
+      'sql': 'sql',
+      'html': 'html',
+      'css': 'css',
+      'scss': 'scss',
+      'less': 'less',
+      'json': 'json',
+      'xml': 'xml',
+      'yaml': 'yaml',
+      'yml': 'yaml',
+      'md': 'markdown',
+      'sh': 'shell',
+      'bash': 'shell',
+      'zsh': 'shell',
+      'vue': 'vue',
+      'svelte': 'svelte',
+      'dockerfile': 'dockerfile',
+      'makefile': 'makefile'
+    }
+    return languageMap[ext] || 'plaintext'
   }
 
   const loadProjectPlan = async (project: Project) => {
@@ -573,9 +768,29 @@ const ProjectManagement: React.FC = () => {
 
             {activeTab === 'filesystem' && (
               <>
-                <h2 style={{ margin: '0 0 16px 0', fontSize: '18px', fontWeight: 600, color: '#333' }}>
-                  文件系统项目列表
-                </h2>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: '#333' }}>
+                    文件系统项目列表
+                  </h2>
+                  <button
+                    onClick={selectProjectsDir}
+                    style={{
+                      padding: '6px 12px',
+                      backgroundColor: '#007AFF',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      fontWeight: 500
+                    }}
+                  >
+                    选择目录
+                  </button>
+                </div>
+                <div style={{ fontSize: '11px', color: '#999', marginBottom: '12px' }}>
+                  当前目录: {projectsDir}
+                </div>
                 {fileSystemProjects.length === 0 ? (
                   <div style={{
                     padding: '32px',
@@ -670,7 +885,47 @@ const ProjectManagement: React.FC = () => {
                     版本 {selectedFsProject.version} · {selectedFsProject.fileCount} 个文件
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', backgroundColor: '#f0f0f0', borderRadius: '6px', padding: '2px' }}>
+                    <button
+                      onClick={() => setViewMode('overview')}
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: viewMode === 'overview' ? '#007AFF' : 'transparent',
+                        color: viewMode === 'overview' ? 'white' : '#333',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        fontWeight: 500,
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      概览
+                    </button>
+                    <button
+                      onClick={async () => {
+                        setViewMode('ide')
+                        if (!fileTree) {
+                          const tree = await buildFileTree(selectedFsProject.path)
+                          setFileTree(tree)
+                        }
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: viewMode === 'ide' ? '#007AFF' : 'transparent',
+                        color: viewMode === 'ide' ? 'white' : '#333',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        fontWeight: 500,
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      IDE模式
+                    </button>
+                  </div>
                   <button
                     onClick={async () => {
                       const commonScripts = ['dev', 'start', 'serve', 'run']
@@ -732,6 +987,26 @@ const ProjectManagement: React.FC = () => {
                   </button>
                 </div>
               </div>
+              
+              {viewMode === 'ide' ? (
+                <IDELayout
+                  projectName={selectedFsProject.name}
+                  projectPath={selectedFsProject.path}
+                  projectVersion={selectedFsProject.version}
+                  scripts={selectedFsProject.scripts}
+                  onRunScript={async (scriptName) => {
+                    const result = await window.electron.fs.runNpmScript(selectedFsProject.path, scriptName)
+                    if (result.success) {
+                      alert(result.message)
+                    } else {
+                      alert(`执行失败: ${result.error}`)
+                    }
+                  }}
+                  onOpenInVSCode={() => window.electron.tools.openPath(selectedFsProject.path)}
+                  onOpenInFinder={() => window.electron.system.openExternal(`file://${selectedFsProject.path}`)}
+                  onBack={() => setViewMode('overview')}
+                />
+              ) : (
               <div style={{ flex: 1, padding: '24px', overflow: 'auto', backgroundColor: '#f5f5f5' }}>
                 <div style={{ backgroundColor: 'white', borderRadius: '8px', padding: '24px', marginBottom: '16px' }}>
                   <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', fontWeight: 600, color: '#333' }}>
@@ -941,6 +1216,7 @@ const ProjectManagement: React.FC = () => {
                   )}
                 </div>
               </div>
+              )}
             </>
           ) : (
             <>

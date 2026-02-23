@@ -59,6 +59,17 @@ export function registerApiHandlers() {
     }
   })
 
+  // 获取 Token 使用量统计
+  ipcMain.handle('api:getTokenUsage', () => {
+    try {
+      const summary = llmService.getTokenUsageSummary()
+      return { success: true, data: summary }
+    } catch (error: any) {
+      console.error('获取 Token 使用量失败:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
   // 读取文件
   ipcMain.handle('api:readFile', (_, filePath: string) => {
     try {

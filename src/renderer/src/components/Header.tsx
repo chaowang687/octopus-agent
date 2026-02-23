@@ -53,7 +53,9 @@ const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
       padding: '0 20px',
       height: '60px',
       background: '#fff',
-      borderBottom: '1px solid #e0e0e0'
+      borderBottom: '1px solid #e0e0e0',
+      position: 'relative',
+      zIndex: 10
     }}>
       <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#333', display: 'flex', alignItems: 'center', gap: '10px' }}>
         Octopus Agent

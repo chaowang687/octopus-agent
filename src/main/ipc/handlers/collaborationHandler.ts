@@ -20,11 +20,12 @@ export interface CollaborationRequest {
   title: string
   description: string
   content: any              // 当前阶段的方案内容
-  alternatives?: string[]   // 考虑的替代方案
+  alternatives?: string[]   // 考虑的替代方案（方向选项）
   editableParams?: string[] // 用户可编辑的参数
   timestamp: number
   status: 'pending' | 'approved' | 'rejected' | 'modified'
   userResponse?: string     // 用户的反馈
+  approvedOption?: string   // 用户批准时选择的选项
   modifiedParams?: any      // 用户修改的参数
 }
 
@@ -98,6 +99,11 @@ class CollaborationManager {
     if (request) {
       request.status = 'approved'
       request.userResponse = response || '用户已确认方案'
+      
+      // 解析用户选择的选项
+      if (response && response.startsWith('用户选择方向: ')) {
+        request.approvedOption = response.replace('用户选择方向: ', '')
+      }
       
       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
         this.mainWindow.webContents.send('collaboration:response', request)
