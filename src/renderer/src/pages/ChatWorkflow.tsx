@@ -21,8 +21,9 @@ const ChatWorkflow: React.FC = () => {
   // Load settings on mount
   useEffect(() => {
     if (window.electron && window.electron.agent) {
-      window.electron.agent.getWorkflowSettings().then((settings: any) => {
-        if (settings) {
+      window.electron.agent.getWorkflowSettings().then((result: any) => {
+        if (result && result.success && result.settings) {
+          const settings = result.settings
           if (settings.todoList) {
             setTodoListIDE(settings.todoList.ide)
             setTodoListSOLO(settings.todoList.solo)

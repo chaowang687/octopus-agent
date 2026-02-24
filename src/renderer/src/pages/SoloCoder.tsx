@@ -17,9 +17,9 @@ const SoloHub: React.FC = () => {
 
   useEffect(() => {
     if (window.electron && window.electron.agent) {
-      window.electron.agent.getToolState().then((state: any) => {
-        if (state) {
-          setEnabledTools(state)
+      window.electron.agent.getToolState().then((result: any) => {
+        if (result && result.success && result.state) {
+          setEnabledTools(result.state)
         }
       }).catch((err: any) => console.error('Failed to load tool state:', err))
     }
@@ -47,9 +47,9 @@ const SoloHub: React.FC = () => {
   const handleCancel = () => {
     // Reload state
     if (window.electron && window.electron.agent) {
-        window.electron.agent.getToolState().then((state: any) => {
-          if (state) {
-            setEnabledTools(state)
+        window.electron.agent.getToolState().then((result: any) => {
+          if (result && result.success && result.state) {
+            setEnabledTools(result.state)
           }
         })
       }

@@ -18,6 +18,7 @@ import Multimodal from './pages/Multimodal'
 import ProjectManagement from './pages/ProjectManagement'
 import Library from './pages/Library'
 import OmniAgent from './pages/OmniAgent'
+import WorkflowDesigner from './pages/WorkflowDesigner'
 import { Login } from './pages/Login'
 import { UserManagement } from './pages/UserManagement'
 import { BackupManager } from './components/BackupManager'
@@ -197,6 +198,7 @@ function App() {
                         <Route path="/library" element={<Library />} />
                         <Route path="/omni-agent" element={<OmniAgent />} />
                         <Route path="/backup" element={<BackupManager />} />
+                        <Route path="/workflow" element={<WorkflowDesigner />} />
                         <Route 
                           path="/user-management" 
                           element={

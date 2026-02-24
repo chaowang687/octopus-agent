@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
+import './Sidebar.css'
 
 const Sidebar: React.FC = () => {
   const [currentMode, setCurrentMode] = useState<'ide' | 'solo'>('ide')
@@ -103,14 +104,14 @@ const Sidebar: React.FC = () => {
             </NavLink>
           </li>
           <li>
-            <NavLink to="/solocoder" className="sidebar-nav-link" title="SOLO Hub">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                <circle cx="9" cy="7" r="4"></circle>
-                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-              </svg>
-            </NavLink>
+            <NavLink to="/workflow" className="sidebar-nav-link" title="工作流设计器">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="7" height="7" rx="2" ry="2"></rect>
+                  <rect x="14" y="3" width="7" height="7" rx="2" ry="2"></rect>
+                  <rect x="14" y="14" width="7" height="7" rx="2" ry="2"></rect>
+                  <rect x="3" y="14" width="7" height="7" rx="2" ry="2"></rect>
+                </svg>
+              </NavLink>
           </li>
           <li>
             <NavLink to="/multimodal" className="sidebar-nav-link" title="多模态工具">
@@ -124,12 +125,13 @@ const Sidebar: React.FC = () => {
             </NavLink>
           </li>
           <li>
-            <NavLink to="/memory" className="sidebar-nav-link" title="记忆管理">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
-              </svg>
-            </NavLink>
-          </li>
+              <NavLink to="/solocoder" className="sidebar-nav-link" title="SOLO Hub">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+              </NavLink>
+            </li>
           <li>
             <NavLink to="/omni-agent" className="sidebar-nav-link" title="全能智能管家">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -151,48 +153,41 @@ const Sidebar: React.FC = () => {
         </ul>
       </nav>
       
-      <div className="sidebar-footer" style={{ display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center', paddingBottom: '16px' }}>
+      <div className="sidebar-footer">
         {/* Mode Switcher */}
         <div 
           onClick={toggleMode}
           title={`Switch to ${currentMode === 'ide' ? 'SOLO' : 'IDE'} Mode`}
           style={{
-            width: '36px',
-            height: '20px',
-            backgroundColor: 'var(--bg-tertiary)',
-            borderRadius: '10px',
+            width: '40px',
+            height: '22px',
+            backgroundColor: '#333333',
+            borderRadius: '11px',
             position: 'relative',
             cursor: 'pointer',
-            border: '1px solid var(--border-color)',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center'
+            justifyContent: 'center',
+            transition: 'background-color 0.2s'
           }}
+          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#3a3a3a'}
+          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#333333'}
         >
           <div style={{
-            position: 'absolute',
-            fontSize: '10px',
-            fontWeight: 'bold',
-            color: 'var(--text-secondary)',
-            left: currentMode === 'ide' ? '20px' : '4px',
-            opacity: 0.8
-          }}>
-            {currentMode === 'ide' ? 'S' : 'I'}
-          </div>
-          <div style={{
-            width: '16px',
-            height: '16px',
-            backgroundColor: currentMode === 'ide' ? '#3b82f6' : '#8b5cf6',
+            width: '18px',
+            height: '18px',
+            backgroundColor: '#00a1d6',
             borderRadius: '50%',
             position: 'absolute',
-            left: currentMode === 'ide' ? '2px' : '18px',
+            left: currentMode === 'ide' ? '2px' : '20px',
             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-            boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             color: 'white',
-            fontSize: '10px'
+            fontSize: '10px',
+            fontWeight: '600'
           }}>
             {currentMode === 'ide' ? 'I' : 'S'}
           </div>

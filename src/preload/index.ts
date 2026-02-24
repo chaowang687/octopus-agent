@@ -295,7 +295,10 @@ contextBridge.exposeInMainWorld('electron', {
   // 智能体设置
   agent: {
     getWorkflowSettings: () => ipcRenderer.invoke('agent:getWorkflowSettings'),
-    setWorkflowSettings: (settings: any) => ipcRenderer.invoke('agent:setWorkflowSettings', settings),
+    updateWorkflowSettings: (settings: any) => ipcRenderer.invoke('agent:updateWorkflowSettings', settings),
+    executeWorkflow: (workflow: any) => ipcRenderer.invoke('agent:executeWorkflow', workflow),
+    saveWorkflow: (workflow: any) => ipcRenderer.invoke('agent:saveWorkflow', workflow),
+    loadWorkflows: () => ipcRenderer.invoke('agent:loadWorkflows'),
     getAvailableAgents: () => ipcRenderer.invoke('agent:getAvailableAgents'),
     getAgentConfig: (agentId: string) => ipcRenderer.invoke('agent:getAgentConfig', agentId),
     setAgentConfig: (agentId: string, config: any) => ipcRenderer.invoke('agent:setAgentConfig', agentId, config),

@@ -297,6 +297,7 @@ const MainContent: React.FC = () => {
     try {
       // @ts-ignore
       const res = await window.electron.tools.executeToolCommand('search_web', 'handler', [{ query: query }])
+      console.log('[MainContent] Search response:', res)
       if (res.success && res.output && res.output.results) {
         updateHomeState(activeTabId, { searched: true, results: res.output.results })
       } else {
@@ -1022,6 +1023,9 @@ const MainContent: React.FC = () => {
                                 el.addEventListener('console-message', (e: any) => {
                                     if (e.level >= 2) console.log('Webview console:', e.message)
                                 })
+                                el.addEventListener('did-fail-load', (e: any) => {
+                                    console.error('[Webview] Failed to load:', e.errorCode, e.errorDescription)
+                                })
                                 el.dataset.listenersAttached = 'true'
                             }
                         }
@@ -1031,22 +1035,13 @@ const MainContent: React.FC = () => {
                     allowpopups
                     webpreferences="
                         contextIsolation=no,
-                        nodeIntegration=yes,
+                        nodeIntegration=no,
                         webSecurity=no,
                         allowRunningInsecureContent=yes,
                         enableWebSQL=yes,
-                        enableWidevine=yes,
-                        proxyBypassRules=,
-                        proxyType=system,
                         spellcheck=yes,
-                        webrtcStemmer=yes,
-                        chromeAPIs=yes,
-                        pinchEnabled=yes,
-                        useMultipleSecureProxy=yes,
                         allowFileAccessFromFiles=yes,
-                        allowUniversalAccessFromFileURLs=yes,
-                        experimentalFeatures=yes,
-                        enableBlinkFeatures=*
+                        allowUniversalAccessFromFileURLs=yes
                     "
                 />
                 )}

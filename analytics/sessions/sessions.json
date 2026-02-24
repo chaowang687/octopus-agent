@@ -853,5 +853,32 @@
     "appVersion": "0.1.1",
     "events": 0,
     "errors": 0
+  },
+  {
+    "id": "503ebe38-0544-48af-987e-8cae3cac4005",
+    "startTime": 1771881402238,
+    "userAgent": "",
+    "platform": "darwin",
+    "appVersion": "0.1.1",
+    "events": 0,
+    "errors": 0
+  },
+  {
+    "id": "401f2386-5ae1-4741-8681-9f9e2b5f52ae",
+    "startTime": 1771881963145,
+    "userAgent": "",
+    "platform": "darwin",
+    "appVersion": "0.1.1",
+    "events": 0,
+    "errors": 0
+  },
+  {
+    "id": "621b7daa-0fdf-48bd-94b5-e2ce7b158e1b",
+    "startTime": 1771884185116,
+    "userAgent": "",
+    "platform": "darwin",
+    "appVersion": "0.1.1",
+    "events": 0,
+    "errors": 0
   }
 ]

@@ -61,10 +61,22 @@ export function registerToolsHandlers() {
   // 执行工具
   ipcMain.handle('tools:execute', async (_, toolName: string, command: string, args: any[]) => {
     try {
+      console.log('[ToolsHandler] Executing tool:', toolName, 'command:', command, 'args:', args)
       const tool = toolRegistry.getTool(toolName)
       if (tool) {
-        const result = await tool.handler({ command, args })
-        return { success: true, result }
+        // 正确处理参数：如果 args 是数组且只有一个对象，直接传递该对象
+        let params: any
+        if (Array.isArray(args) && args.length === 1 && typeof args[0] === 'object') {
+          params = args[0]
+        } else if (Array.isArray(args)) {
+          params = { args }
+        } else {
+          params = args
+        }
+        console.log('[ToolsHandler] Passing params to tool:', params)
+        const result = await tool.handler(params)
+        console.log('[ToolsHandler] Tool result:', result)
+        return { success: true, output: result }
       }
       return { success: false, error: 'Tool not found' }
     } catch (error: any) {

@@ -2,10 +2,10 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background-color: #0a0a0a;
+  background-color: #181818;
   color: #ffffff;
-  font-family: 'JetBrains Mono', 'SF Mono', Monaco, 'Courier New', monospace;
-  font-size: 13px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  font-size: 14px;
   overflow: hidden;
 }
 
@@ -13,10 +13,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 32px;
-  background-color: #0f0f0f;
-  border-bottom: 1px solid #1a1a1a;
-  padding: 0 12px;
+  height: 50px;
+  background-color: #232323;
+  padding: 0 16px;
 }
 
 .ide-header-left {
@@ -31,26 +30,29 @@
   justify-content: center;
   background: transparent;
   border: none;
-  color: #ffffff;
+  color: #e0e0e0;
   cursor: pointer;
-  padding: 0;
-  font-size: 16px;
+  padding: 8px;
+  font-size: 20px;
   line-height: 1;
+  border-radius: 6px;
+  transition: background-color 0.2s;
 }
 
 .ide-back-btn:hover {
+  background-color: #3a3a3a;
   color: #ffffff;
 }
 
 .ide-project-name {
   font-weight: 500;
   color: #ffffff;
-  font-size: 12px;
+  font-size: 15px;
 }
 
 .ide-project-version {
-  font-size: 11px;
-  color: #9ca3af;
+  font-size: 12px;
+  color: #888888;
 }
 
 .ide-header-center {
@@ -58,46 +60,60 @@
   align-items: center;
   flex: 1;
   justify-content: center;
-  gap: 4px;
+  gap: 0;
   overflow: hidden;
-  padding: 0 16px;
+  padding: 0 20px;
 }
 
 .ide-tab {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
-  background-color: #0a0a0a;
-  border: 1px solid #1a1a1a;
-  border-radius: 4px 4px 0 0;
+  gap: 8px;
+  padding: 8px 16px;
+  background-color: transparent;
   cursor: pointer;
   white-space: nowrap;
-  font-size: 12px;
-  color: #9ca3af;
+  font-size: 13px;
+  color: #999999;
+  position: relative;
+  transition: color 0.2s;
+}
+
+.ide-tab:hover {
+  color: #cccccc;
 }
 
 .ide-tab.active {
-  background-color: #0a0a0a;
-  border-color: #1a1a1a;
-  border-bottom-color: #0a0a0a;
   color: #ffffff;
 }
 
+.ide-tab.active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #00a1d6, #00d4ff);
+}
+
 .ide-tab .tab-modified {
-  color: #22c55e;
-  font-size: 10px;
+  color: #00a1d6;
+  font-size: 12px;
+  font-weight: bold;
 }
 
 .ide-tab .tab-close {
   display: none;
   background: none;
   border: none;
-  color: #4b5563;
+  color: #666666;
   cursor: pointer;
-  padding: 0;
+  padding: 2px;
   font-size: 14px;
   line-height: 1;
+  border-radius: 4px;
+  transition: all 0.2s;
 }
 
 .ide-tab:hover .tab-close {
@@ -105,13 +121,14 @@
 }
 
 .ide-tab .tab-close:hover {
-  color: #9ca3af;
+  color: #ffffff;
+  background-color: #444444;
 }
 
 .ide-header-right {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
 }
 
 .ide-toggle-terminal {
@@ -120,13 +137,16 @@
   justify-content: center;
   background: transparent;
   border: none;
-  color: #ffffff;
+  color: #cccccc;
   cursor: pointer;
-  padding: 4px 8px;
-  font-size: 12px;
+  padding: 8px 12px;
+  font-size: 14px;
+  border-radius: 6px;
+  transition: all 0.2s;
 }
 
 .ide-toggle-terminal:hover {
+  background-color: #3a3a3a;
   color: #ffffff;
 }
 
@@ -139,32 +159,32 @@
 .ide-sidebar {
   display: flex;
   flex-direction: column;
-  background-color: #0f0f0f;
-  border-right: 1px solid #1a1a1a;
+  background-color: #1f1f1f;
   position: relative;
-  min-width: 180px;
-  max-width: 400px;
+  min-width: 200px;
+  max-width: 450px;
 }
 
 .ide-sidebar-header {
-  padding: 8px 12px;
-  font-size: 10px;
+  padding: 16px 16px 8px;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 1px;
-  color: #9ca3af;
-  border-bottom: 1px solid #1a1a1a;
+  letter-spacing: 1.5px;
+  color: #888888;
+  text-transform: uppercase;
 }
 
 .ide-sidebar-content {
   flex: 1;
   overflow: auto;
+  padding: 4px 0;
 }
 
 .ide-loading {
-  padding: 16px;
+  padding: 24px 16px;
   text-align: center;
-  color: #9ca3af;
-  font-size: 12px;
+  color: #666666;
+  font-size: 13px;
 }
 
 .ide-sidebar-resize {
@@ -178,8 +198,8 @@
 }
 
 .ide-sidebar-resize:hover {
-  background-color: #22c55e;
-  opacity: 0.3;
+  background-color: #00a1d6;
+  opacity: 0.5;
 }
 
 .ide-content {
@@ -187,13 +207,13 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background-color: #181818;
 }
 
 .ide-editor {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-bottom: 1px solid #1a1a1a;
 }
 
 .ide-welcome {
@@ -207,24 +227,25 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
 }
 
 .ide-welcome-text span:first-child {
-  font-size: 12px;
-  color: #9ca3af;
-  letter-spacing: 1px;
+  font-size: 13px;
+  color: #888888;
+  letter-spacing: 2px;
+  text-transform: uppercase;
 }
 
 .ide-welcome-sub {
-  font-size: 11px;
-  color: #6b7280;
+  font-size: 12px;
+  color: #555555;
 }
 
 .ide-terminal-panel {
   display: flex;
   flex-direction: column;
-  background-color: #0a0a0a;
+  background-color: #1f1f1f;
   position: relative;
 }
 
@@ -239,13 +260,13 @@
 }
 
 .ide-terminal-resize:hover {
-  background-color: #22c55e;
-  opacity: 0.3;
+  background-color: #00a1d6;
+  opacity: 0.5;
 }
 
 .ide-terminal-output {
   flex: 1;
-  padding: 12px 16px;
+  padding: 16px 20px;
   overflow-y: auto;
   font-family: 'JetBrains Mono', 'SF Mono', Monaco, 'Courier New', monospace;
   font-size: 13px;
@@ -258,46 +279,46 @@
 }
 
 .terminal-line.input {
-  color: #22c55e;
+  color: #00a1d6;
 }
 
 .terminal-line.output {
-  color: #ffffff;
+  color: #e0e0e0;
 }
 
 .terminal-line.error {
-  color: #ef4444;
+  color: #ff6b6b;
 }
 
 .terminal-line.info {
-  color: #9ca3af;
+  color: #888888;
 }
 
 .ide-terminal-input-line {
   display: flex;
   align-items: center;
-  padding: 12px 16px;
-  border-top: 1px solid #1a1a1a;
-  background-color: #0f0f0f;
+  padding: 12px 20px;
+  background-color: #232323;
 }
 
 .terminal-prompt {
-  color: #22c55e;
-  margin-right: 8px;
+  color: #00a1d6;
+  margin-right: 12px;
   font-family: 'JetBrains Mono', 'SF Mono', Monaco, 'Courier New', monospace;
   font-size: 13px;
+  font-weight: 600;
 }
 
 .ide-terminal-input-line input {
   flex: 1;
   background: transparent;
   border: none;
-  color: #ffffff;
+  color: #e0e0e0;
   font-family: 'JetBrains Mono', 'SF Mono', Monaco, 'Courier New', monospace;
   font-size: 13px;
   outline: none;
 }
 
 .ide-terminal-input-line input::placeholder {
-  color: #374151;
+  color: #444444;
 }
