@@ -120,7 +120,12 @@ export interface ElectronAPI {
     getWorkflowSettings: () => Promise<any>
     updateWorkflowSettings: (settings: any) => Promise<any>
     executeWorkflow: (workflow: any) => Promise<any>
+    pauseWorkflow: () => Promise<any>
+    resumeWorkflow: () => Promise<any>
+    getWorkflowStatus: () => Promise<any>
     saveWorkflow: (workflow: any) => Promise<any>
+    saveWorkflowAsFile: (workflow: any) => Promise<any>
+    loadWorkflowFromFile: () => Promise<any>
     loadWorkflows: () => Promise<any>
     loadCurrentWorkflow: () => Promise<any>
     getAvailableAgents: () => Promise<any>
@@ -131,6 +136,8 @@ export interface ElectronAPI {
     openFolder: () => Promise<any>
     openFile: (path: string) => Promise<any>
     selectFile: () => Promise<any>
+    readFile: (path: string) => Promise<any>
+    writeFile: (path: string, content: string) => Promise<any>
   }
   auth: {
     login: (username: string, password: string) => Promise<any>

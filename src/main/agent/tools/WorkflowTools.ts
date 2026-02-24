@@ -1,5 +1,7 @@
 import { ToolDefinition, toolRegistry } from '../ToolRegistry'
 import { LLMService } from '../../services/LLMService'
+import fs from 'fs'
+import path from 'path'
 
 const llmService = new LLMService()
 
@@ -247,17 +249,192 @@ const functionalTesterTool: ToolDefinition = {
   }
 }
 
-// 框节点（容器）
+// 框智能体（多端口专业文档生成器）
 const boxNodeTool: ToolDefinition = {
   name: 'box_node',
-  description: '框节点：内容物容器，用于组织和分组',
+  description: '框智能体：接收通用需求，智能生成UI设计师、架构师、前端工程师、后端工程师、测试工程师的五份专业文档',
   parameters: [
     { name: 'title', type: 'string', description: '容器标题', required: false },
-    { name: 'description', type: 'string', description: '容器描述', required: false }
+    { name: 'processingRule', type: 'string', description: '内容物处理规则/指令', required: false },
+    { name: 'inputFiles', type: 'array', description: '输入文件路径数组', required: false },
+    { name: 'outputDir', type: 'string', description: '输出目录路径', required: false },
+    { name: 'model', type: 'string', description: '使用的模型', required: false }
   ],
   handler: async (args: any) => {
-    const { title = '项目容器', description } = args
-    return `框节点容器：${title}\n${description ? `描述：${description}` : ''}`
+    const { 
+      title = '框智能体', 
+      processingRule = '你是一个全栈产品技术专家，精通产品设计、UI/UX、系统架构、前后端开发、软件测试。请根据以下产品需求，分别生成给UI设计师、架构师、前端工程师、后端工程师、测试工程师的五份专业文档。', 
+      inputFiles = [], 
+      outputDir,
+      model = 'qwen3'
+    } = args
+    
+    let inputContents: string[] = []
+    const generatedDocs: any = {}
+    
+    try {
+      // 1. 读取所有输入文件
+      for (const filePath of inputFiles) {
+        if (filePath && fs.existsSync(filePath)) {
+          try {
+            const content = fs.readFileSync(filePath, 'utf-8')
+            inputContents.push(`=== 文件: ${path.basename(filePath)} ===\n${content}`)
+          } catch (e) {
+            console.error('读取文件失败:', filePath, e)
+          }
+        }
+      }
+      
+      const inputText = inputContents.length > 0 ? inputContents.join('\n\n') : '请生成一份通用产品开发需求文档'
+      
+      // 2. 定义各个角色的生成指令
+      const rolePrompts = {
+        uiDesigner: {
+          name: 'UI设计师',
+          system: '你是一位资深的UI/UX设计师，擅长创建美观、易用的界面设计',
+          prompt: `请根据以下需求，生成UI设计师专用的设计文档：
+${inputText}
+
+请生成：
+1. 产品定位与用户画像
+2. 核心功能列表
+3. 信息架构设计
+4. 页面流程图
+5. 关键页面线框图描述
+6. 设计风格建议（配色、字体、图标等）
+7. 交互设计原则
+8. 响应式设计考虑
+9. 可访问性设计要点`
+        },
+        architect: {
+          name: '架构师',
+          system: '你是一位资深的系统架构师，擅长设计高可用、可扩展的系统架构',
+          prompt: `请根据以下需求，生成架构师专用的系统架构设计文档：
+${inputText}
+
+请生成：
+1. 系统整体架构图（文字描述）
+2. 技术选型建议（前端、后端、数据库、中间件等）
+3. 模块划分与职责定义
+4. 接口设计原则
+5. 数据库表结构设计要点
+6. 缓存策略
+7. 消息队列使用场景
+8. 部署架构
+9. 扩展性设计
+10. 安全考虑`
+        },
+        frontend: {
+          name: '前端工程师',
+          system: '你是一位资深的前端工程师，擅长创建优秀的用户界面和交互体验',
+          prompt: `请根据以下需求，生成前端工程师专用的实现文档：
+${inputText}
+
+请生成：
+1. 技术栈选型建议
+2. 项目目录结构
+3. 核心组件设计
+4. 状态管理方案
+5. 路由设计
+6. API接口封装
+7. 关键页面实现思路
+8. 性能优化建议
+9. 代码规范
+10. 测试策略`
+        },
+        backend: {
+          name: '后端工程师',
+          system: '你是一位资深的后端工程师，擅长构建稳定高效的服务端系统',
+          prompt: `请根据以下需求，生成后端工程师专用的实现文档：
+${inputText}
+
+请生成：
+1. 技术栈选型建议
+2. 项目目录结构
+3. API接口设计（RESTful）
+4. 数据库表结构设计
+5. 核心业务逻辑实现思路
+6. 中间件设计
+7. 安全方案（认证、授权、加密等）
+8. 异常处理策略
+9. 日志设计
+10. 测试策略`
+        },
+        qa: {
+          name: '测试工程师',
+          system: '你是一位资深的测试工程师，擅长设计全面的测试方案',
+          prompt: `请根据以下需求，生成测试工程师专用的测试文档：
+${inputText}
+
+请生成：
+1. 测试策略
+2. 功能测试用例
+3. 界面测试用例
+4. 接口测试用例
+5. 性能测试要点
+6. 安全测试清单
+7. 兼容性测试要点
+8. 验收标准
+9. 测试环境要求
+10. 缺陷管理流程`
+        }
+      }
+      
+      // 3. 逐个生成各角色的文档
+      const roles = Object.entries(rolePrompts)
+      for (const [key, config] of roles) {
+        console.log(`正在生成${config.name}文档...`)
+        
+        const response = await llmService.chat(model, [
+          { role: 'system', content: config.system },
+          { role: 'user', content: config.prompt }
+        ], {})
+        
+        if (response.success && response.content) {
+          generatedDocs[key] = response.content
+          console.log(`${config.name}文档生成完成`)
+        } else {
+          generatedDocs[key] = `生成失败: ${response.error || '未知错误'}`
+        }
+      }
+      
+      // 4. 如果指定了输出目录，保存所有文档
+      if (outputDir) {
+        try {
+          if (!fs.existsSync(outputDir)) {
+            fs.mkdirSync(outputDir, { recursive: true })
+          }
+          
+          for (const [key, content] of Object.entries(generatedDocs)) {
+            const roleName = rolePrompts[key as keyof typeof rolePrompts].name
+            const outputPath = path.join(outputDir, `${roleName}_${Date.now()}.md`)
+            fs.writeFileSync(outputPath, content, 'utf-8')
+            console.log(`已保存: ${outputPath}`)
+          }
+        } catch (e) {
+          console.error('保存文件失败:', e)
+        }
+      }
+      
+      // 5. 返回结果
+      return {
+        success: true,
+        message: '框智能体处理完成',
+        uiDoc: generatedDocs.uiDesigner,
+        architectDoc: generatedDocs.architect,
+        frontendDoc: generatedDocs.frontend,
+        backendDoc: generatedDocs.backend,
+        qaDoc: generatedDocs.qa
+      }
+      
+    } catch (error: any) {
+      console.error('框智能体处理失败:', error)
+      return {
+        success: false,
+        message: `框智能体处理失败: ${error.message}`,
+        error: error.message
+      }
+    }
   }
 }
 

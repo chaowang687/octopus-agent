@@ -1,209 +1,98 @@
 .file-tree {
-  display: flex;
-  flex-direction: column;
   height: 100%;
-  background: transparent;
+  background-color: #1e1e1e;
   color: #cccccc;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
-  font-size: 13px;
-  user-select: none;
-}
-
-.file-tree-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 16px;
-  background: transparent;
-}
-
-.header-title {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 1.5px;
-  color: #888888;
-}
-
-.header-actions {
-  display: flex;
-  gap: 4px;
-}
-
-.action-btn {
-  width: 24px;
-  height: 24px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  opacity: 0.6;
-  transition: all 0.2s;
-}
-
-.action-btn:hover {
-  background: #3a3a3a;
-  opacity: 1;
-}
-
-.file-tree-content {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 4px 0;
-}
-
-.file-tree-content::-webkit-scrollbar {
-  width: 6px;
-}
-
-.file-tree-content::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.file-tree-content::-webkit-scrollbar-thumb {
-  background: #444444;
-  border-radius: 3px;
-}
-
-.file-tree-content::-webkit-scrollbar-thumb:hover {
-  background: #555555;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
 }
 
 .file-tree-node {
-  outline: none;
-}
-
-.file-tree-item {
   display: flex;
   align-items: center;
-  height: 28px;
-  padding: 0 16px 0 0;
+  padding: 4px 8px;
   cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.15s;
+  fontSize: 12px;
+  border-radius: 2px;
+  transition: background-color 0.2s;
 }
 
-.file-tree-item:hover {
-  background: #2a2a2a;
+.file-tree-node:hover {
+  background-color: #3a3a3d;
 }
 
-.file-tree-item.selected {
-  background: #333333;
+.file-tree-node.file {
+  color: #cccccc;
 }
 
-.file-tree-item.selected:hover {
-  background: #333333;
+.file-tree-node.directory {
+  color: #9cdcfe;
 }
 
-.expand-icon {
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  color: #999999;
-  flex-shrink: 0;
+.file-tree-toggle {
+  margin-right: 4px;
   cursor: pointer;
-  border-radius: 4px;
-  transition: all 0.15s;
-  margin-left: 4px;
+  color: #888888;
+  transition: color 0.2s;
 }
 
-.expand-icon:hover {
-  background: #333333;
+.file-tree-toggle:hover {
   color: #ffffff;
 }
 
-.expand-icon.placeholder {
-  cursor: default;
-}
-
-.expand-icon.placeholder:hover {
-  background: transparent;
-}
-
-.file-icon {
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
+.file-tree-icon {
+  margin-right: 8px;
+  color: #888888;
   flex-shrink: 0;
-  margin-right: 6px;
 }
 
-.file-name {
+.file-tree-name {
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
-  line-height: 28px;
-  font-size: 13px;
+  white-space: nowrap;
 }
 
-.file-tree-children {
-  outline: none;
+.git-status {
+  margin-left: 8px;
+  fontSize: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  color: #000000;
+  font-weight: 500;
 }
 
-.file-tree-loading,
-.file-tree-error,
-.file-tree-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: #666666;
-  font-size: 13px;
-  gap: 12px;
-  padding: 24px 16px;
+.git-status.modified {
+  background-color: #ffcc00;
 }
 
-.loading-spinner {
-  font-size: 24px;
-  animation: spin 1s linear infinite;
+.git-status.added {
+  background-color: #4caf50;
 }
 
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+.git-status.deleted {
+  background-color: #f44336;
 }
 
-.file-tree-error {
-  color: #ff6b6b;
+.git-status.untracked {
+  background-color: #ff9800;
 }
 
-.file-tree-item.drag-over {
-  background: #333333;
-  border: 1px dashed #00a1d6;
+.git-status.unchanged {
+  background-color: #999999;
 }
 
-.file-tree-item.dragging {
-  opacity: 0.5;
+.file-tree::-webkit-scrollbar {
+  width: 6px;
 }
 
-.file-tree-item.context-menu-open {
-  background: #333333;
+.file-tree::-webkit-scrollbar-track {
+  background: #1e1e1e;
 }
 
-.file-tree-item .file-modified {
-  color: #00a1d6;
+.file-tree::-webkit-scrollbar-thumb {
+  background: #3e3e42;
+  border-radius: 3px;
 }
 
-.file-tree-item .file-added {
-  color: #00d4ff;
-}
-
-.file-tree-item .file-deleted {
-  color: #ff6b6b;
-}
-
-.file-tree-item .file-renamed {
-  color: #00d4ff;
+.file-tree::-webkit-scrollbar-thumb:hover {
+  background: #4a4a4e;
 }

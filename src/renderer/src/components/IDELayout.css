@@ -1,324 +1,766 @@
+/* IDE 布局样式 */
 .ide-layout {
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  background-color: #181818;
-  color: #ffffff;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
-  font-size: 14px;
+  height: calc(100vh - 40px); /* 减去顶栏高度 */
+  background-color: #1e1e1e;
+  color: #d4d4d4;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   overflow: hidden;
 }
 
-.ide-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 50px;
-  background-color: #232323;
-  padding: 0 16px;
-}
-
-.ide-header-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.ide-back-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  color: #e0e0e0;
-  cursor: pointer;
-  padding: 8px;
-  font-size: 20px;
-  line-height: 1;
-  border-radius: 6px;
-  transition: background-color 0.2s;
-}
-
-.ide-back-btn:hover {
-  background-color: #3a3a3a;
-  color: #ffffff;
-}
-
-.ide-project-name {
-  font-weight: 500;
-  color: #ffffff;
-  font-size: 15px;
-}
-
-.ide-project-version {
-  font-size: 12px;
-  color: #888888;
-}
-
-.ide-header-center {
-  display: flex;
-  align-items: center;
-  flex: 1;
-  justify-content: center;
-  gap: 0;
-  overflow: hidden;
-  padding: 0 20px;
-}
-
-.ide-tab {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  background-color: transparent;
-  cursor: pointer;
-  white-space: nowrap;
-  font-size: 13px;
-  color: #999999;
-  position: relative;
-  transition: color 0.2s;
-}
-
-.ide-tab:hover {
-  color: #cccccc;
-}
-
-.ide-tab.active {
-  color: #ffffff;
-}
-
-.ide-tab.active::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, #00a1d6, #00d4ff);
-}
-
-.ide-tab .tab-modified {
-  color: #00a1d6;
-  font-size: 12px;
-  font-weight: bold;
-}
-
-.ide-tab .tab-close {
-  display: none;
-  background: none;
-  border: none;
-  color: #666666;
-  cursor: pointer;
-  padding: 2px;
-  font-size: 14px;
-  line-height: 1;
-  border-radius: 4px;
-  transition: all 0.2s;
-}
-
-.ide-tab:hover .tab-close {
-  display: block;
-}
-
-.ide-tab .tab-close:hover {
-  color: #ffffff;
-  background-color: #444444;
-}
-
-.ide-header-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.ide-toggle-terminal {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  color: #cccccc;
-  cursor: pointer;
-  padding: 8px 12px;
-  font-size: 14px;
-  border-radius: 6px;
-  transition: all 0.2s;
-}
-
-.ide-toggle-terminal:hover {
-  background-color: #3a3a3a;
-  color: #ffffff;
-}
-
-.ide-main {
+/* 主内容区域 */
+.ide-content {
   display: flex;
   flex: 1;
   overflow: hidden;
+}
+
+/* 左侧文件树 */
+.ide-sidebar-container {
+  display: flex;
+  flex-direction: row;
 }
 
 .ide-sidebar {
+  background-color: #252526;
+  border-left: 1px solid #3e3e42;
   display: flex;
   flex-direction: column;
-  background-color: #1f1f1f;
-  position: relative;
-  min-width: 200px;
-  max-width: 450px;
+  transition: width 0.3s ease;
+  overflow: hidden;
 }
 
-.ide-sidebar-header {
-  padding: 16px 16px 8px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 1.5px;
-  color: #888888;
-  text-transform: uppercase;
+.ide-sidebar.collapsed {
+  width: 50px;
 }
 
-.ide-sidebar-content {
-  flex: 1;
-  overflow: auto;
-  padding: 4px 0;
-}
-
-.ide-loading {
-  padding: 24px 16px;
-  text-align: center;
-  color: #666666;
-  font-size: 13px;
-}
-
-.ide-sidebar-resize {
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
+/* 拖拽调整宽度的手柄 */
+.sidebar-resizer {
   width: 4px;
-  cursor: ew-resize;
-  background: transparent;
+  background-color: transparent;
+  cursor: col-resize;
+  transition: background-color 0.2s ease;
 }
 
-.ide-sidebar-resize:hover {
-  background-color: #00a1d6;
-  opacity: 0.5;
+.sidebar-resizer:hover {
+  background-color: #0e639c;
 }
 
-.ide-content {
-  flex: 1;
+.sidebar-resizer:active {
+  background-color: #0e639c;
+}
+
+.sidebar-header {
   display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background-color: #181818;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid #3e3e42;
 }
 
-.ide-editor {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+.sidebar-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
 }
 
-.ide-welcome {
+.sidebar-toggle {
+  background: none;
+  border: none;
+  color: #cccccc;
+  font-size: 16px;
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100%;
+  border-radius: 4px;
+  transition: all 0.2s ease;
 }
 
-.ide-welcome-text {
+.sidebar-toggle:hover {
+  background-color: #3a3a3d;
+  color: #ffffff;
+}
+
+.file-tree {
+  flex: 1;
+  padding: 8px 0;
+  overflow-y: auto;
+}
+
+.tree-item {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  padding: 4px 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-radius: 4px;
+  margin: 2px 8px;
 }
 
-.ide-welcome-text span:first-child {
-  font-size: 13px;
-  color: #888888;
-  letter-spacing: 2px;
-  text-transform: uppercase;
+.tree-item:hover {
+  background-color: #3a3a3d;
 }
 
-.ide-welcome-sub {
-  font-size: 12px;
-  color: #555555;
+.tree-item.active {
+  background-color: #0e639c;
+  color: #ffffff;
 }
 
-.ide-terminal-panel {
+.tree-icon {
+  font-size: 14px;
+  width: 16px;
+  text-align: center;
+}
+
+.tree-label {
+  font-size: 14px;
+  flex: 1;
+}
+
+.tree-file-type {
+  font-size: 10px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  background-color: #3a3a3d;
+  color: #cccccc;
+  margin-left: auto;
+}
+
+.tree-file-type:nth-child(3) {
+  margin-left: auto;
+}
+
+.tree-children {
+  margin-left: 24px;
+  margin-top: 4px;
+}
+
+.tree-expand {
+  font-size: 10px;
+  width: 12px;
+  text-align: center;
+  transition: transform 0.2s ease;
+}
+
+.tree-expand.expanded {
+  transform: rotate(0deg);
+}
+
+.sidebar-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.sidebar-action-btn {
+  background: none;
+  border: none;
+  color: #cccccc;
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.sidebar-action-btn:hover {
+  background-color: #3a3a3d;
+  color: #ffffff;
+}
+
+.sidebar-footer {
+  border-top: 1px solid #3e3e42;
+  padding: 8px 0;
+  margin-top: auto;
+}
+
+.sidebar-footer .tree-item {
+  padding: 4px 16px;
+}
+
+.sidebar-footer .tree-item:hover {
+  background-color: #3a3a3d;
+}
+
+/* 中间编辑区域 */
+.ide-editor {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  background-color: #1f1f1f;
+  background-color: #1e1e1e;
+  overflow: hidden;
+}
+
+/* 浏览器模式下编辑器占满宽度 */
+.ide-editor.full-width {
+  width: 100%;
+}
+
+/* 浏览器容器 */
+.browser {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 代码变更容器 */
+.changes {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: #1e1e1e;
+}
+
+.editor-header {
+  background-color: #252526;
+  border-bottom: 1px solid #3e3e42;
+  padding: 0 16px;
+}
+
+.editor-tabs {
+  display: flex;
+  gap: 2px;
+  height: 40px;
+  align-items: center;
+  background-color: #252526;
+  border-bottom: 1px solid #3e3e42;
+  padding: 0 8px;
+  overflow-x: auto;
+}
+
+.editor-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  height: 32px;
+  background-color: #2d2d30;
+  border: none;
+  border-radius: 4px 4px 0 0;
+  color: #cccccc;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.editor-tab:hover {
+  background-color: #3a3a3d;
+  color: #ffffff;
+}
+
+.editor-tab.active {
+  background-color: #1e1e1e;
+  color: #ffffff;
+  border-bottom: 1px solid #1e1e1e;
+}
+
+.tab-title {
+  font-size: 13px;
+}
+
+.tab-close {
+  background: none;
+  border: none;
+  color: #888888;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px;
+  transition: all 0.2s ease;
+}
+
+.tab-close:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.editor-tab.add-tab {
+  background-color: transparent;
+  color: #888888;
+  font-size: 18px;
+  width: 32px;
+  justify-content: center;
+  padding: 0;
+}
+
+.editor-tab.add-tab:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+/* 问题/日志/终端视窗 */
+.ide-console {
+  height: 200px;
+  background-color: #1e1e1e;
+  border-top: 1px solid #3e3e42;
+  display: flex;
+  flex-direction: column;
+}
+
+.console-tabs {
+  display: flex;
+  gap: 2px;
+  height: 32px;
+  background-color: #252526;
+  border-bottom: 1px solid #3e3e42;
+  padding: 0 8px;
+}
+
+.console-tab {
+  padding: 0 12px;
+  height: 30px;
+  background-color: #2d2d30;
+  border: none;
+  border-radius: 4px 4px 0 0;
+  color: #cccccc;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.console-tab:hover {
+  background-color: #3a3a3d;
+  color: #ffffff;
+}
+
+.console-tab.active {
+  background-color: #1e1e1e;
+  color: #ffffff;
+  border-bottom: 1px solid #1e1e1e;
+}
+
+.console-content {
+  flex: 1;
+  overflow: auto;
+  padding: 8px;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.problems-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.problem-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid #2d2d30;
+}
+
+.problem-icon {
+  font-size: 14px;
+  margin-top: 1px;
+}
+
+.problem-message {
+  flex: 1;
+  color: #d4d4d4;
+}
+
+.problem-file {
+  color: #888888;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.output-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.output-line {
+  color: #cccccc;
+}
+
+.debug-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.debug-line {
+  color: #cccccc;
+}
+
+.editor-content {
+  flex: 1;
+  overflow: hidden;
   position: relative;
 }
 
-.ide-terminal-resize {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
-  cursor: ns-resize;
-  background: transparent;
+/* 代码编辑器 */
+.code-editor {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
-.ide-terminal-resize:hover {
-  background-color: #00a1d6;
-  opacity: 0.5;
+.code-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid #3e3e42;
+  background-color: #252526;
 }
 
-.ide-terminal-output {
+.code-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.code-body {
   flex: 1;
-  padding: 16px 20px;
+  padding: 16px;
+  overflow: auto;
+}
+
+.code-text {
+  margin: 0;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #d4d4d4;
+  white-space: pre-wrap;
+}
+
+/* 终端 */
+.terminal {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: #000000;
+}
+
+.terminal-header {
+  padding: 8px 16px;
+  background-color: #252526;
+  border-bottom: 1px solid #3e3e42;
+}
+
+.terminal-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.terminal-content {
+  flex: 1;
+  padding: 16px;
   overflow-y: auto;
-  font-family: 'JetBrains Mono', 'SF Mono', Monaco, 'Courier New', monospace;
-  font-size: 13px;
-  line-height: 1.6;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 .terminal-line {
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-
-.terminal-line.input {
-  color: #00a1d6;
-}
-
-.terminal-line.output {
-  color: #e0e0e0;
-}
-
-.terminal-line.error {
-  color: #ff6b6b;
-}
-
-.terminal-line.info {
-  color: #888888;
-}
-
-.ide-terminal-input-line {
   display: flex;
   align-items: center;
-  padding: 12px 20px;
-  background-color: #232323;
+  gap: 8px;
+  margin-bottom: 4px;
 }
 
-.terminal-prompt {
-  color: #00a1d6;
-  margin-right: 12px;
-  font-family: 'JetBrains Mono', 'SF Mono', Monaco, 'Courier New', monospace;
-  font-size: 13px;
+.prompt {
+  color: #00ff00;
   font-weight: 600;
+  min-width: 20px;
 }
 
-.ide-terminal-input-line input {
+.command {
+  color: #ffffff;
+}
+
+.output {
+  color: #cccccc;
   flex: 1;
-  background: transparent;
-  border: none;
-  color: #e0e0e0;
-  font-family: 'JetBrains Mono', 'SF Mono', Monaco, 'Courier New', monospace;
-  font-size: 13px;
-  outline: none;
 }
 
-.ide-terminal-input-line input::placeholder {
-  color: #444444;
+.terminal-input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: #ffffff;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+/* 右侧面板 */
+.ide-right-panel {
+  width: 300px;
+  background-color: #252526;
+  border-left: 1px solid #3e3e42;
+  display: flex;
+  flex-direction: column;
+  transition: width 0.3s ease;
+  overflow: hidden;
+}
+
+.ide-right-panel.collapsed {
+  width: 50px;
+}
+
+.right-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid #3e3e42;
+}
+
+.right-panel-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.panel-toggle {
+  background: none;
+  border: none;
+  color: #cccccc;
+  font-size: 16px;
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.panel-toggle:hover {
+  background-color: #3a3a3d;
+  color: #ffffff;
+}
+
+.right-panel-content {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.tool-section {
+  margin-bottom: 24px;
+}
+
+.tool-section h4 {
+  margin: 0 0 12px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #888888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.change-item {
+  background-color: #2d2d30;
+  border-radius: 4px;
+  padding: 12px;
+  margin-bottom: 8px;
+}
+
+.change-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.change-file {
+  font-size: 14px;
+  font-weight: 500;
+  color: #ffffff;
+}
+
+.change-status {
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background-color: #d7ba7d;
+  color: #1e1e1e;
+}
+
+.change-diff {
+  background-color: #1e1e1e;
+  border-radius: 3px;
+  padding: 8px;
+  overflow-x: auto;
+}
+
+.diff-text {
+  margin: 0;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #d4d4d4;
+}
+
+.git-status {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background-color: #2d2d30;
+  border-radius: 4px;
+  padding: 12px;
+}
+
+.git-branch {
+  font-size: 14px;
+  font-weight: 500;
+  color: #ffffff;
+}
+
+.git-changes {
+  font-size: 14px;
+  color: #d7ba7d;
+}
+
+/* 底部状态栏 */
+.ide-status-bar {
+  height: 24px;
+  background-color: #252526;
+  border-top: 1px solid #3e3e42;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  font-size: 12px;
+  color: #cccccc;
+}
+
+.status-left,
+.status-center,
+.status-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: color 0.2s ease;
+}
+
+.status-item:hover {
+  color: #ffffff;
+}
+
+.status-icon {
+  font-size: 12px;
+}
+
+/* 滚动条样式 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #252526;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #4a4a4e;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #5a5a5e;
+}
+
+/* 响应式设计 */
+@media (max-width: 1200px) {
+  .ide-sidebar {
+    width: 200px;
+  }
+  
+  .ide-right-panel {
+    width: 250px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .ide-sidebar {
+    width: 180px;
+  }
+  
+  .ide-right-panel {
+    width: 200px;
+  }
+  
+  .header-tabs {
+    max-width: 600px;
+  }
+  
+  .header-tab {
+    padding: 0 12px;
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 768px) {
+  .ide-content {
+    flex-direction: column;
+  }
+  
+  .ide-sidebar {
+    width: 100%;
+    height: 200px;
+    border-right: none;
+    border-bottom: 1px solid #3e3e42;
+  }
+  
+  .ide-right-panel {
+    width: 100%;
+    height: 200px;
+    border-left: none;
+    border-top: 1px solid #3e3e42;
+  }
+  
+  .ide-editor {
+    flex: 1;
+  }
+  
+  .header-tabs {
+    max-width: 400px;
+  }
+  
+  .header-tab {
+    padding: 0 8px;
+    font-size: 12px;
+  }
+  
+  .status-left,
+  .status-center,
+  .status-right {
+    gap: 8px;
+  }
+  
+  .status-item {
+    font-size: 11px;
+  }
 }

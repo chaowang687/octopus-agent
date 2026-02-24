@@ -1,327 +1,329 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect } from 'react'
 import './FileTree.css'
 
-export interface FileNode {
+interface FileNode {
+  id: string
   name: string
   path: string
   type: 'file' | 'directory'
   children?: FileNode[]
-  extension?: string
-  size?: number
-  modifiedAt?: number
+  isExpanded?: boolean
+  gitStatus?: 'modified' | 'added' | 'deleted' | 'untracked' | 'unchanged'
 }
 
 interface FileTreeProps {
-  rootPath: string
-  onFileSelect: (file: FileNode) => void
-  onFileDoubleClick?: (file: FileNode) => void
-  selectedPath?: string
-  expandedPaths?: Set<string>
-  onExpandChange?: (path: string, expanded: boolean) => void
+  onFileClick?: (filePath: string) => void
+  onDirectoryClick?: (directoryPath: string) => void
 }
 
-const getFileIcon = (node: FileNode): string => {
-  if (node.type === 'directory') return '📁'
-  
-  const ext = node.extension || ''
-  const iconMap: Record<string, string> = {
-    '.ts': '📘',
-    '.tsx': '⚛️',
-    '.js': '📒',
-    '.jsx': '⚛️',
-    '.json': '📋',
-    '.md': '📝',
-    '.css': '🎨',
-    '.scss': '🎨',
-    '.html': '🌐',
-    '.py': '🐍',
-    '.go': '🐹',
-    '.rs': '🦀',
-    '.java': '☕',
-    '.cpp': '⚙️',
-    '.c': '⚙️',
-    '.h': '📄',
-    '.sh': '📜',
-    '.yml': '⚙️',
-    '.yaml': '⚙️',
-    '.toml': '⚙️',
-    '.env': '🔐',
-    '.gitignore': '📝',
-    '.dockerignore': '🐳',
-    '.png': '🖼️',
-    '.jpg': '🖼️',
-    '.jpeg': '🖼️',
-    '.gif': '🖼️',
-    '.svg': '🎨',
-    '.ico': '🖼️',
-    '.woff': '🔤',
-    '.woff2': '🔤',
-    '.ttf': '🔤',
-    '.eot': '🔤',
-  }
-  
-  return iconMap[ext] || '📄'
-}
+const FolderIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+  </svg>
+)
 
-const FileTreeNode: React.FC<{
-  node: FileNode
-  level: number
-  onFileSelect: (file: FileNode) => void
-  onFileDoubleClick?: (file: FileNode) => void
-  selectedPath?: string
-  expandedPaths: Set<string>
-  onToggleExpand: (path: string) => void
-  loadDirectory: (path: string) => Promise<FileNode[]>
-}> = ({ 
-  node, 
-  level, 
-  onFileSelect, 
-  onFileDoubleClick, 
-  selectedPath, 
-  expandedPaths, 
-  onToggleExpand,
-  loadDirectory 
-}) => {
-  const [children, setChildren] = useState<FileNode[]>(node.children || [])
-  const [loading, setLoading] = useState(false)
-  const isExpanded = expandedPaths.has(node.path)
-  const isSelected = selectedPath === node.path
-  
-  useEffect(() => {
-    if (node.children) {
-      setChildren(node.children)
-    }
-  }, [node.children])
-  
-  const handleClick = useCallback(() => {
-    onFileSelect(node)
-  }, [node, onFileSelect])
-  
-  const handleDoubleClick = useCallback(() => {
-    if (node.type === 'file' && onFileDoubleClick) {
-      onFileDoubleClick(node)
-    }
-  }, [node, onFileDoubleClick])
-  
-  const handleToggle = useCallback(async () => {
-    if (node.type === 'directory') {
-      onToggleExpand(node.path)
-      
-      if (!node.children && children.length === 0) {
-        setLoading(true)
-        try {
-          const loadedChildren = await loadDirectory(node.path)
-          setChildren(loadedChildren)
-        } catch (error) {
-          console.error('Failed to load directory:', error)
-        } finally {
-          setLoading(false)
-        }
-      }
-    }
-  }, [node, children.length, onToggleExpand, loadDirectory])
-  
-  const sortedChildren = [...children].sort((a, b) => {
-    if (a.type === 'directory' && b.type === 'file') return -1
-    if (a.type === 'file' && b.type === 'directory') return 1
-    return a.name.localeCompare(b.name)
-  })
-  
-  return (
-    <div className="file-tree-node">
-      <div 
-        className={`file-tree-item ${isSelected ? 'selected' : ''}`}
-        style={{ paddingLeft: `${level * 16 + 8}px` }}
-        onClick={handleClick}
-        onDoubleClick={handleDoubleClick}
-      >
-        {node.type === 'directory' ? (
-          <span className="expand-icon" onClick={handleToggle}>
-            {loading ? '⏳' : isExpanded ? '▼' : '▶'}
-          </span>
-        ) : (
-          <span className="expand-icon placeholder" />
-        )}
-        <span className="file-icon">{getFileIcon(node)}</span>
-        <span className="file-name" title={node.path}>
-          {node.name}
-        </span>
-      </div>
-      
-      {node.type === 'directory' && isExpanded && sortedChildren.length > 0 && (
-        <div className="file-tree-children">
-          {sortedChildren.map((child) => (
-            <FileTreeNode
-              key={child.path}
-              node={child}
-              level={level + 1}
-              onFileSelect={onFileSelect}
-              onFileDoubleClick={onFileDoubleClick}
-              selectedPath={selectedPath}
-              expandedPaths={expandedPaths}
-              onToggleExpand={onToggleExpand}
-              loadDirectory={loadDirectory}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
+const FileIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <polyline points="14 2 14 8 20 8" />
+    <line x1="16" y1="13" x2="8" y2="13" />
+    <line x1="16" y1="17" x2="8" y2="17" />
+    <polyline points="10 9 9 9 8 9" />
+  </svg>
+)
 
-const FileTree: React.FC<FileTreeProps> = ({
-  rootPath,
-  onFileSelect,
-  onFileDoubleClick,
-  selectedPath,
-  expandedPaths: externalExpandedPaths,
-  onExpandChange
-}) => {
-  const [rootNode, setRootNode] = useState<FileNode | null>(null)
+const ChevronDownIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="6 9 12 15 18 9" />
+  </svg>
+)
+
+const ChevronRightIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="9 18 15 12 9 6" />
+  </svg>
+)
+
+const FileTree: React.FC<FileTreeProps> = ({ onFileClick, onDirectoryClick }) => {
+  const [fileTree, setFileTree] = useState<FileNode[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [internalExpandedPaths, setInternalExpandedPaths] = useState<Set<string>>(new Set())
-  
-  const expandedPaths = externalExpandedPaths || internalExpandedPaths
-  
-  const loadDirectory = useCallback(async (dirPath: string): Promise<FileNode[]> => {
-    try {
-      const result = await window.electron.fs.readDirectory(dirPath)
-      if (result.success && result.entries) {
-        return result.entries.map((entry: any) => ({
-          name: entry.name,
-          path: entry.path,
-          type: entry.isDirectory ? 'directory' : 'file',
-          extension: entry.name.includes('.') ? '.' + entry.name.split('.').pop() : '',
-          size: entry.size,
-          modifiedAt: entry.modifiedAt
-        }))
+
+  useEffect(() => {
+    // 模拟文件树数据
+    const mockFileTree: FileNode[] = [
+      {
+        id: '1',
+        name: 'src',
+        path: '/src',
+        type: 'directory',
+        isExpanded: true,
+        children: [
+          {
+            id: '2',
+            name: 'main',
+            path: '/src/main',
+            type: 'directory',
+            isExpanded: true,
+            children: [
+              {
+                id: '3',
+                name: 'agent',
+                path: '/src/main/agent',
+                type: 'directory',
+                isExpanded: false,
+                children: [
+                  {
+                    id: '4',
+                    name: 'MultiAgentCoordinator.ts',
+                    path: '/src/main/agent/MultiAgentCoordinator.ts',
+                    type: 'file',
+                    gitStatus: 'modified'
+                  },
+                  {
+                    id: '5',
+                    name: 'OmniAgent.ts',
+                    path: '/src/main/agent/OmniAgent.ts',
+                    type: 'file'
+                  }
+                ]
+              },
+              {
+                id: '6',
+                name: 'services',
+                path: '/src/main/services',
+                type: 'directory',
+                isExpanded: false,
+                children: [
+                  {
+                    id: '7',
+                    name: 'BackupService.ts',
+                    path: '/src/main/services/BackupService.ts',
+                    type: 'file'
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            id: '8',
+            name: 'renderer',
+            path: '/src/renderer',
+            type: 'directory',
+            isExpanded: true,
+            children: [
+              {
+                id: '9',
+                name: 'src',
+                path: '/src/renderer/src',
+                type: 'directory',
+                isExpanded: true,
+                children: [
+                  {
+                    id: '10',
+                    name: 'components',
+                    path: '/src/renderer/src/components',
+                    type: 'directory',
+                    isExpanded: true,
+                    children: [
+                      {
+                        id: '11',
+                        name: 'Header.tsx',
+                        path: '/src/renderer/src/components/Header.tsx',
+                        type: 'file',
+                        gitStatus: 'modified'
+                      },
+                      {
+                        id: '12',
+                        name: 'IDELayout.tsx',
+                        path: '/src/renderer/src/components/IDELayout.tsx',
+                        type: 'file',
+                        gitStatus: 'added'
+                      },
+                      {
+                        id: '13',
+                        name: 'FileTree.tsx',
+                        path: '/src/renderer/src/components/FileTree.tsx',
+                        type: 'file',
+                        gitStatus: 'untracked'
+                      }
+                    ]
+                  },
+                  {
+                    id: '14',
+                    name: 'pages',
+                    path: '/src/renderer/src/pages',
+                    type: 'directory',
+                    isExpanded: false,
+                    children: [
+                      {
+                        id: '15',
+                        name: 'Chat.tsx',
+                        path: '/src/renderer/src/pages/Chat.tsx',
+                        type: 'file'
+                      },
+                      {
+                        id: '16',
+                        name: 'CodeEditor.tsx',
+                        path: '/src/renderer/src/pages/CodeEditor.tsx',
+                        type: 'file'
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: '17',
+        name: 'package.json',
+        path: '/package.json',
+        type: 'file'
+      },
+      {
+        id: '18',
+        name: 'tsconfig.json',
+        path: '/tsconfig.json',
+        type: 'file'
       }
-      return []
-    } catch (error) {
-      console.error('Failed to load directory:', error)
-      return []
-    }
+    ]
+
+    // 模拟加载
+    setTimeout(() => {
+      setFileTree(mockFileTree)
+      setLoading(false)
+    }, 500)
   }, [])
-  
-  const handleToggleExpand = useCallback((path: string) => {
-    if (externalExpandedPaths && onExpandChange) {
-      onExpandChange(path, !externalExpandedPaths.has(path))
-    } else {
-      setInternalExpandedPaths(prev => {
-        const next = new Set(prev)
-        if (next.has(path)) {
-          next.delete(path)
-        } else {
-          next.add(path)
+
+  const toggleDirectory = (node: FileNode) => {
+    const updateTree = (nodes: FileNode[]): FileNode[] => {
+      return nodes.map(n => {
+        if (n.id === node.id) {
+          return { ...n, isExpanded: !n.isExpanded }
         }
-        return next
+        if (n.children) {
+          return { ...n, children: updateTree(n.children) }
+        }
+        return n
       })
     }
-  }, [externalExpandedPaths, onExpandChange])
-  
-  useEffect(() => {
-    const loadRoot = async () => {
-      setLoading(true)
-      setError(null)
-      
-      try {
-        const pathParts = rootPath.split('/')
-        const rootName = pathParts[pathParts.length - 1] || rootPath
-        
-        const children = await loadDirectory(rootPath)
-        
-        setRootNode({
-          name: rootName,
-          path: rootPath,
-          type: 'directory',
-          children
-        })
-        
-        setInternalExpandedPaths(new Set([rootPath]))
-      } catch (err: any) {
-        setError(err.message || 'Failed to load directory')
-      } finally {
-        setLoading(false)
-      }
+    setFileTree(updateTree(fileTree))
+  }
+
+  const handleNodeClick = (node: FileNode) => {
+    if (node.type === 'file' && onFileClick) {
+      onFileClick(node.path)
+    } else if (node.type === 'directory' && onDirectoryClick) {
+      onDirectoryClick(node.path)
     }
-    
-    if (rootPath) {
-      loadRoot()
+  }
+
+  const renderFileNode = (node: FileNode, level: number = 0) => {
+    const indent = level * 16
+    const hasChildren = node.type === 'directory' && node.children && node.children.length > 0
+
+    return (
+      <div key={node.id} style={{ marginLeft: indent }}>
+        <div
+          className={`file-tree-node ${node.type} ${node.gitStatus || ''}`}
+          onClick={() => handleNodeClick(node)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            padding: '4px 8px',
+            cursor: 'pointer',
+            fontSize: '12px',
+            color: '#cccccc',
+            borderRadius: '2px',
+            transition: 'background-color 0.2s'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = '#3a3a3d'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent'
+          }}
+        >
+          {hasChildren && (
+            <div
+              className="file-tree-toggle"
+              onClick={(e) => {
+                e.stopPropagation()
+                toggleDirectory(node)
+              }}
+              style={{
+                marginRight: '4px',
+                cursor: 'pointer',
+                color: '#888888'
+              }}
+            >
+              {node.isExpanded ? <ChevronDownIcon /> : <ChevronRightIcon />}
+            </div>
+          )}
+          {!hasChildren && <div style={{ width: '12px', marginRight: '4px' }} />}
+          <div className="file-tree-icon" style={{ marginRight: '8px', color: '#888888' }}>
+            {node.type === 'directory' ? <FolderIcon /> : <FileIcon />}
+          </div>
+          <div className="file-tree-name" style={{ flex: 1 }}>
+            {node.name}
+          </div>
+          {node.gitStatus && (
+            <div
+              className={`git-status ${node.gitStatus}`}
+              style={{
+                marginLeft: '8px',
+                fontSize: '10px',
+                padding: '2px 6px',
+                borderRadius: '3px',
+                backgroundColor: getGitStatusColor(node.gitStatus),
+                color: '#000000'
+              }}
+            >
+              {getGitStatusText(node.gitStatus)}
+            </div>
+          )}
+        </div>
+        {node.isExpanded && node.children && node.children.map(child => renderFileNode(child, level + 1))}
+      </div>
+    )
+  }
+
+  const getGitStatusColor = (status: string): string => {
+    switch (status) {
+      case 'modified': return '#ffcc00'
+      case 'added': return '#4caf50'
+      case 'deleted': return '#f44336'
+      case 'untracked': return '#ff9800'
+      default: return '#999999'
     }
-  }, [rootPath, loadDirectory])
-  
+  }
+
+  const getGitStatusText = (status: string): string => {
+    switch (status) {
+      case 'modified': return 'M'
+      case 'added': return 'A'
+      case 'deleted': return 'D'
+      case 'untracked': return 'U'
+      default: return ''
+    }
+  }
+
   if (loading) {
     return (
-      <div className="file-tree-loading">
-        <span className="loading-spinner">⏳</span>
-        <span>加载中...</span>
+      <div style={{ padding: '16px', color: '#888888', fontSize: '12px' }}>
+        加载文件树...
       </div>
     )
   }
-  
-  if (error) {
-    return (
-      <div className="file-tree-error">
-        <span>❌ {error}</span>
-      </div>
-    )
-  }
-  
-  if (!rootNode) {
-    return (
-      <div className="file-tree-empty">
-        <span>请选择项目目录</span>
-      </div>
-    )
-  }
-  
+
   return (
-    <div className="file-tree">
-      <div className="file-tree-header">
-        <span className="header-title">资源管理器</span>
-        <div className="header-actions">
-          <button 
-            className="action-btn" 
-            title="新建文件"
-            onClick={() => {
-              // TODO: 新建文件功能
-            }}
-          >
-            📄
-          </button>
-          <button 
-            className="action-btn" 
-            title="新建文件夹"
-            onClick={() => {
-              // TODO: 新建文件夹功能
-            }}
-          >
-            📁
-          </button>
-          <button 
-            className="action-btn" 
-            title="刷新"
-            onClick={async () => {
-              const children = await loadDirectory(rootPath)
-              setRootNode(prev => prev ? { ...prev, children } : null)
-            }}
-          >
-            🔄
-          </button>
-        </div>
+    <div className="file-tree" style={{ height: '100%', overflowY: 'auto' }}>
+      <div style={{ padding: '12px 16px', borderBottom: '1px solid #3e3e42', fontSize: '12px', fontWeight: '600', color: '#ffffff' }}>
+        项目文件
       </div>
-      <div className="file-tree-content">
-        <FileTreeNode
-          node={rootNode}
-          level={0}
-          onFileSelect={onFileSelect}
-          onFileDoubleClick={onFileDoubleClick}
-          selectedPath={selectedPath}
-          expandedPaths={expandedPaths}
-          onToggleExpand={handleToggleExpand}
-          loadDirectory={loadDirectory}
-        />
+      <div style={{ padding: '8px 0' }}>
+        {fileTree.map(node => renderFileNode(node))}
       </div>
     </div>
   )

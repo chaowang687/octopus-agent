@@ -20,6 +20,7 @@ export interface Edge {
 export enum WorkflowStatus {
   PENDING = 'pending',
   RUNNING = 'running',
+  PAUSED = 'paused',
   COMPLETED = 'completed',
   FAILED = 'failed'
 }
@@ -45,6 +46,8 @@ export class WorkflowEngine {
   private executionResults: Record<string, any> = {}
   private status: WorkflowStatus = WorkflowStatus.PENDING
   private errors: string[] = []
+  private isPaused: boolean = false
+  private pausePromise: { resolve: () => void } | null = null
 
   constructor(nodes: Node[], edges: Edge[]) {
     this.nodes = nodes
@@ -86,6 +89,9 @@ export class WorkflowEngine {
 
   // 执行单个节点
   private async executeNode(node: Node): Promise<void> {
+    // 检查是否暂停
+    await this.checkPause()
+    
     const nodeData = node.data as any
     const toolName = this.getToolNameFromNodeType(nodeData.type)
     const tool = toolRegistry.getTool(toolName)
@@ -100,8 +106,23 @@ export class WorkflowEngine {
     console.log(`执行节点 ${node.id} (${toolName})，输入参数:`, inputs)
 
     try {
+      // 构建完整的参数
+      let toolArgs: any = { ...inputs }
+      
+      // 特殊处理框智能体节点
+      if (nodeData.type === 'boxNode') {
+        toolArgs = {
+          title: nodeData.label || '框智能体',
+          processingRule: nodeData.processingRule,
+          inputFiles: (nodeData.inputContent || []).map((item: any) => item.path).filter(Boolean),
+          outputDir: nodeData.outputDir,
+          model: nodeData.model || 'qwen3',
+          ...inputs
+        }
+      }
+
       // 调用工具
-      const result = await tool.handler(inputs)
+      const result = await tool.handler(toolArgs)
       this.executionResults[node.id] = result
       console.log(`节点 ${node.id} 执行成功，结果:`, result)
     } catch (error) {
@@ -109,6 +130,44 @@ export class WorkflowEngine {
       this.errors.push(errorMsg)
       console.error(errorMsg)
     }
+  }
+
+  // 检查是否暂停
+  private async checkPause(): Promise<void> {
+    if (this.isPaused) {
+      console.log('工作流已暂停，等待恢复...')
+      await new Promise<void>((resolve) => {
+        this.pausePromise = { resolve }
+      })
+      console.log('工作流已恢复')
+    }
+  }
+
+  // 暂停工作流
+  pause(): void {
+    if (this.status === WorkflowStatus.RUNNING) {
+      this.status = WorkflowStatus.PAUSED
+      this.isPaused = true
+      console.log('工作流已暂停')
+    }
+  }
+
+  // 恢复工作流
+  resume(): void {
+    if (this.status === WorkflowStatus.PAUSED) {
+      this.status = WorkflowStatus.RUNNING
+      this.isPaused = false
+      if (this.pausePromise) {
+        this.pausePromise.resolve()
+        this.pausePromise = null
+      }
+      console.log('工作流已恢复')
+    }
+  }
+
+  // 检查是否处于暂停状态
+  isPausedStatus(): boolean {
+    return this.status === WorkflowStatus.PAUSED
   }
 
   // 获取节点输入参数

@@ -1,0 +1,184 @@
+/* 终端组件样式 */
+.terminal-container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: #000000;
+  color: #ffffff;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+/* 终端标签栏 */
+.terminal-tabs {
+  display: flex;
+  background-color: #252526;
+  border-bottom: 1px solid #3e3e42;
+  padding: 0 8px;
+  gap: 4px;
+  height: 32px;
+  align-items: center;
+}
+
+.terminal-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  background-color: #2d2d30;
+  border: none;
+  border-radius: 4px 4px 0 0;
+  color: #cccccc;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  height: 24px;
+}
+
+.terminal-tab:hover {
+  background-color: #3a3a3d;
+  color: #ffffff;
+}
+
+.terminal-tab.active {
+  background-color: #000000;
+  color: #ffffff;
+  border-bottom: 2px solid #0e639c;
+}
+
+.terminal-tab-close {
+  font-size: 10px;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+}
+
+.terminal-tab-close:hover {
+  opacity: 1;
+}
+
+.terminal-new-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background-color: #2d2d30;
+  border: none;
+  border-radius: 4px;
+  color: #cccccc;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.terminal-new-tab:hover {
+  background-color: #3a3a3d;
+  color: #ffffff;
+}
+
+/* 终端内容区域 */
+.terminal-content {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.terminal-line {
+  margin-bottom: 4px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.terminal-prompt {
+  color: #00ff00;
+  font-weight: 600;
+  min-width: 20px;
+}
+
+.terminal-command {
+  color: #ffffff;
+  flex: 1;
+}
+
+.terminal-output {
+  color: #cccccc;
+  flex: 1;
+  white-space: pre-wrap;
+}
+
+.terminal-error {
+  color: #ff0000;
+  flex: 1;
+  white-space: pre-wrap;
+}
+
+/* 终端输入区域 */
+.terminal-input-area {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-top: 1px solid #3e3e42;
+  background-color: #252526;
+}
+
+.terminal-input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.terminal-input::placeholder {
+  color: #888888;
+}
+
+/* 滚动条样式 */
+.terminal-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.terminal-content::-webkit-scrollbar-track {
+  background: #252526;
+}
+
+.terminal-content::-webkit-scrollbar-thumb {
+  background: #4a4a4e;
+  border-radius: 4px;
+}
+
+.terminal-content::-webkit-scrollbar-thumb:hover {
+  background: #5a5a5e;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .terminal-tabs {
+    padding: 0 4px;
+    gap: 2px;
+  }
+  
+  .terminal-tab {
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+  
+  .terminal-content {
+    padding: 12px;
+    font-size: 12px;
+  }
+  
+  .terminal-input-area {
+    padding: 6px 12px;
+  }
+  
+  .terminal-input {
+    font-size: 12px;
+  }
+}

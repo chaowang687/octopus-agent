@@ -19,7 +19,10 @@ contextBridge.exposeInMainWorld('electron', {
   // 窗口操作
   window: {
     toggleDock: () => ipcRenderer.invoke('window:toggle-dock'),
-    isDocked: () => ipcRenderer.invoke('window:is-docked')
+    isDocked: () => ipcRenderer.invoke('window:is-docked'),
+    minimize: () => ipcRenderer.invoke('window:minimize'),
+    maximize: () => ipcRenderer.invoke('window:maximize'),
+    close: () => ipcRenderer.invoke('window:close')
   },
   dialog: {
     openFile: () => ipcRenderer.invoke('dialog:openFile'),
@@ -298,6 +301,8 @@ contextBridge.exposeInMainWorld('electron', {
     updateWorkflowSettings: (settings: any) => ipcRenderer.invoke('agent:updateWorkflowSettings', settings),
     executeWorkflow: (workflow: any) => ipcRenderer.invoke('agent:executeWorkflow', workflow),
     saveWorkflow: (workflow: any) => ipcRenderer.invoke('agent:saveWorkflow', workflow),
+    saveWorkflowAsFile: (workflow: any) => ipcRenderer.invoke('agent:saveWorkflowAsFile', workflow),
+    loadWorkflowFromFile: () => ipcRenderer.invoke('agent:loadWorkflowFromFile'),
     loadWorkflows: () => ipcRenderer.invoke('agent:loadWorkflows'),
     loadCurrentWorkflow: () => ipcRenderer.invoke('agent:loadCurrentWorkflow'),
     getAvailableAgents: () => ipcRenderer.invoke('agent:getAvailableAgents'),

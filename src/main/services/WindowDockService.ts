@@ -19,6 +19,8 @@ export class WindowDockService {
   private userDefinedWidth: number | null = null
   private resizeListener: (() => void) | null = null
   private dockAlignment: 'left' | 'center' | 'right' = 'center'
+  private expandTime: number | null = null
+  private expandCooldown: number = 30000 // 30秒冷却期
 
   constructor(window: BrowserWindow) {
     this.window = window
@@ -240,13 +242,15 @@ export class WindowDockService {
     const windowRight = windowLeft + expandedWidth
     const dockY = workArea.y
     
-    const isInHorizontalRange = mousePos.x >= windowLeft - 10 && mousePos.x <= windowRight + 10
-    const triggerHeight = this.isExpanded ? expandedHeight + 10 : 30
-    const isNearTop = mousePos.y <= dockY + triggerHeight && mousePos.y >= dockY - 10
+    // 检查鼠标是否在窗口的实际边界内
+    const isInWindowBounds = mousePos.x >= windowLeft && 
+                           mousePos.x <= windowRight && 
+                           mousePos.y >= dockY && 
+                           mousePos.y <= dockY + (this.isExpanded ? expandedHeight : 30)
 
-    if (isNearTop && isInHorizontalRange && !this.isExpanded) {
+    if (isInWindowBounds && !this.isExpanded) {
       this.expand()
-    } else if ((!isNearTop || !isInHorizontalRange) && this.isExpanded) {
+    } else if (!isInWindowBounds && this.isExpanded) {
       this.scheduleCollapse()
     }
   }
@@ -262,6 +266,7 @@ export class WindowDockService {
     if (this.isExpanded) return
 
     this.isExpanded = true
+    this.expandTime = Date.now() // 记录展开时间
 
     const primaryDisplay = screen.getPrimaryDisplay()
     const workArea = primaryDisplay.workArea
@@ -286,6 +291,14 @@ export class WindowDockService {
 
   private scheduleCollapse() {
     if (this.collapseTimer) return
+
+    // 检查是否在冷却期内
+    if (this.expandTime) {
+      const elapsed = Date.now() - this.expandTime
+      if (elapsed < this.expandCooldown) {
+        return // 冷却期内不收起
+      }
+    }
 
     this.collapseTimer = setTimeout(() => {
       this.collapse()

@@ -6,6 +6,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { configureSecurity, getRecommendedSecurityOptions } from './security/ElectronSecurity'
 import { securityManager } from './security/SecurityManager'
+import { TaskStateManager, createTaskStateManager } from './agent/TaskStateManager'
 
 const isDev = is.dev
 const securityOptions = getRecommendedSecurityOptions()
@@ -36,6 +37,9 @@ if (traeSandboxStoragePath) {
 // 全局窗口引用
 let mainWindow: BrowserWindow | null = null
 
+// 确保TaskStateManager被包含在构建中
+const taskStateManager = createTaskStateManager()
+
 // 导出mainWindow引用供其他模块使用
 export function getMainWindow(): BrowserWindow | null {
   return mainWindow
@@ -63,8 +67,11 @@ function createWindow() {
     width: 1200,
     height: 800,
     show: true,  // 立即显示
-    backgroundColor: '#ffffff',  // 白色背景
+    backgroundColor: '#1e1e1e',  // 深色背景，与 IDE 主题匹配
     autoHideMenuBar: true,
+    titleBarStyle: 'hiddenInset',  // macOS 风格的隐藏标题栏
+    trafficLightPosition: { x: 12, y: 12 },  // 交通灯位置调整
+    frame: false,  // 无框窗口
     ...(is.dev ? { webPreferences: { devTools: true } } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -167,31 +174,61 @@ app.whenReady().then(() => {
   
   ensureApiKeysFile()
   
+  // 检查是否在模拟模式（无API密钥）
+  const isMockMode = Object.keys(JSON.parse(fs.readFileSync(apiKeysPath, 'utf8'))).length === 0
+  console.log('应用模式:', isMockMode ? '模拟模式' : '正常模式')
+  
   // 初始化用户服务
   console.log('初始化用户服务...')
   userService.initialize()
   
-  // 初始化商业化服务
+  // 初始化商业化服务（模拟模式下减少初始化）
   console.log('初始化商业化服务...')
   backupService
-  analyticsService
-  licenseService
+  if (!isMockMode) {
+    analyticsService
+    licenseService
+  }
   
   // 注册所有IPC处理器
   console.log('注册所有IPC处理器...')
   registerAllHandlers()
   
+  // 窗口控制IPC处理器
+  ipcMain.handle('window:minimize', () => {
+    const window = BrowserWindow.getFocusedWindow()
+    if (window) window.minimize()
+  })
+  
+  ipcMain.handle('window:maximize', () => {
+    const window = BrowserWindow.getFocusedWindow()
+    if (window) {
+      if (window.isMaximized()) {
+        window.unmaximize()
+      } else {
+        window.maximize()
+      }
+    }
+  })
+  
+  ipcMain.handle('window:close', () => {
+    const window = BrowserWindow.getFocusedWindow()
+    if (window) window.close()
+  })
+  
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
   
-  // 初始化新增的服务
+  // 初始化新增的服务（模拟模式下减少初始化）
   console.log('App ready, initializing services...')
-  analyticsService.initialize()
-  licenseService.initialize()
-  
-  // 启动会话
-  analyticsService.startSession()
+  if (!isMockMode) {
+    analyticsService.initialize()
+    licenseService.initialize()
+    
+    // 启动会话
+    analyticsService.startSession()
+  }
   
   // 其他初始化逻辑
   createWindow()

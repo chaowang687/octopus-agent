@@ -5,6 +5,7 @@
 
 import * as fs from 'fs'
 import * as path from 'path'
+import { app } from 'electron'
 
 export type TaskStatus = 'pending' | 'running' | 'paused' | 'completed' | 'failed'
 
@@ -43,12 +44,18 @@ export interface TaskState {
   }>
 }
 
+// 导出一个函数，确保TaskStateManager被包含在构建中
+export function createTaskStateManager() {
+  return new TaskStateManager()
+}
+
 export class TaskStateManager {
   private stateDir: string
   private currentTask: TaskState | null = null
   
-  constructor(stateDir: string = path.join(process.cwd(), '.task-states')) {
-    this.stateDir = stateDir
+  constructor(stateDir?: string) {
+    // 确保使用用户数据目录，避免权限问题
+    this.stateDir = stateDir || path.join(app.getPath('userData'), '.task-states')
     this.ensureStateDir()
   }
   

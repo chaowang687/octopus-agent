@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'r
 import Header from './components/Header'
 import Sidebar from './components/Sidebar'
 import MainContent from './components/MainContent'
+import IDELayout from './components/IDELayout'
 import CollaborationDialog from './components/CollaborationDialog'
 import Tools from './pages/Tools'
 import ApiManagement from './pages/ApiManagement'
@@ -19,6 +20,9 @@ import ProjectManagement from './pages/ProjectManagement'
 import Library from './pages/Library'
 import OmniAgent from './pages/OmniAgent'
 import WorkflowDesigner from './pages/WorkflowDesigner'
+import Documents from './pages/Documents'
+import CodeEditor from './pages/CodeEditor'
+import CloudStorage from './pages/CloudStorage'
 import { Login } from './pages/Login'
 import { UserManagement } from './pages/UserManagement'
 import { BackupManager } from './components/BackupManager'
@@ -93,6 +97,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [currentUser, setCurrentUser] = useState<User | null>(null)
+  const [activeToolTab, setActiveToolTab] = useState<'editor' | 'terminal' | 'changes' | 'browser'>('editor')
 
   useEffect(() => {
     const initApp = async () => {
@@ -179,10 +184,10 @@ function App() {
                 <div className="app">
                   <Sidebar />
                   <div className="main-wrapper">
-                    <Header currentUser={currentUser} onLogout={handleLogout} />
+                    <Header currentUser={currentUser} onLogout={handleLogout} activeToolTab={activeToolTab} setActiveToolTab={setActiveToolTab} />
                     <div className="page-content">
                       <Routes>
-                        <Route path="/" element={<MainContent />} />
+                        <Route path="/" element={<IDELayout activeToolTab={activeToolTab} setActiveToolTab={setActiveToolTab} />} />
                         <Route path="/tools" element={<Tools />} />
                         <Route path="/api" element={<ApiManagement />} />
                         <Route path="/console" element={<Console />} />
@@ -199,6 +204,10 @@ function App() {
                         <Route path="/omni-agent" element={<OmniAgent />} />
                         <Route path="/backup" element={<BackupManager />} />
                         <Route path="/workflow" element={<WorkflowDesigner />} />
+                        <Route path="/documents" element={<Documents />} />
+                        <Route path="/code-editor" element={<CodeEditor />} />
+                        <Route path="/code-editor/:id" element={<CodeEditor />} />
+                        <Route path="/cloud-storage" element={<CloudStorage />} />
                         <Route 
                           path="/user-management" 
                           element={

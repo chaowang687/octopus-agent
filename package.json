@@ -27,7 +27,6 @@
     },
     "files": [
       "dist/**/*",
-      "!dist/main/chunks",
       "!dist/main/bridge.js",
       "!dist/main/setup-sandbox.js"
     ],
@@ -93,6 +92,7 @@
     "@electron-toolkit/utils": "^4.0.0",
     "@monaco-editor/react": "^4.7.0",
     "@types/bcryptjs": "^2.4.6",
+    "ali-oss": "^6.23.0",
     "axios": "^1.6.0",
     "bcryptjs": "^3.0.3",
     "chart.js": "^4.5.1",
