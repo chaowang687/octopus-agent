@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { ipcMain, dialog, shell } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
 import { WorkflowEngine } from '../../agent/WorkflowEngine'
@@ -112,13 +112,25 @@ export function registerAgentHandlers() {
     }
   })
 
-  // 保存工作流
+  // 保存工作流（覆盖保存）
   ipcMain.handle('agent:saveWorkflow', (_, workflow: any) => {
     try {
       const preferences = readPreferences()
+      preferences.currentWorkflow = {
+        ...workflow,
+        savedAt: new Date().toISOString()
+      }
       preferences.savedWorkflows = preferences.savedWorkflows || []
-      preferences.savedWorkflows.push(workflow)
+      
+      const existingIndex = preferences.savedWorkflows.findIndex((w: any) => w.id === 'current')
+      if (existingIndex >= 0) {
+        preferences.savedWorkflows[existingIndex] = preferences.currentWorkflow
+      } else {
+        preferences.savedWorkflows.unshift({ ...preferences.currentWorkflow, id: 'current' })
+      }
+      
       writePreferences(preferences)
+      console.log('工作流已保存')
       return { success: true }
     } catch (error: any) {
       console.error('保存工作流失败:', error)
@@ -126,7 +138,19 @@ export function registerAgentHandlers() {
     }
   })
 
-  // 加载工作流
+  // 加载当前工作流
+  ipcMain.handle('agent:loadCurrentWorkflow', () => {
+    try {
+      const preferences = readPreferences()
+      const currentWorkflow = preferences.currentWorkflow || null
+      return { success: true, workflow: currentWorkflow }
+    } catch (error: any) {
+      console.error('加载当前工作流失败:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  // 加载所有工作流
   ipcMain.handle('agent:loadWorkflows', () => {
     try {
       const preferences = readPreferences()
@@ -159,6 +183,60 @@ export function registerAgentHandlers() {
       return { success: true }
     } catch (error: any) {
       console.error('更新工具状态失败:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  // 打开文件夹选择对话框
+  ipcMain.handle('agent:openFolder', async () => {
+    try {
+      const result = await dialog.showOpenDialog({
+        properties: ['openDirectory', 'createDirectory'],
+        title: '选择文件夹'
+      })
+      if (!result.canceled && result.filePaths.length > 0) {
+        return { success: true, path: result.filePaths[0] }
+      }
+      return { success: false, canceled: true }
+    } catch (error: any) {
+      console.error('打开文件夹失败:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  // 打开文件选择对话框
+  ipcMain.handle('agent:selectFile', async () => {
+    try {
+      const result = await dialog.showOpenDialog({
+        properties: ['openFile', 'multiSelections'],
+        title: '选择文件',
+        filters: [
+          { name: 'All Files', extensions: ['*'] },
+          { name: 'Documents', extensions: ['pdf', 'doc', 'docx', 'txt', 'md'] },
+          { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'svg'] },
+          { name: 'Code', extensions: ['js', 'ts', 'jsx', 'tsx', 'py', 'java', 'go', 'rs'] }
+        ]
+      })
+      if (!result.canceled && result.filePaths.length > 0) {
+        return { success: true, paths: result.filePaths }
+      }
+      return { success: false, canceled: true }
+    } catch (error: any) {
+      console.error('选择文件失败:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  // 打开文件/文件夹
+  ipcMain.handle('agent:openFile', async (_, filePath: string) => {
+    try {
+      if (filePath) {
+        await shell.openPath(filePath)
+        return { success: true }
+      }
+      return { success: false, error: '文件路径为空' }
+    } catch (error: any) {
+      console.error('打开文件失败:', error)
       return { success: false, error: error.message }
     }
   })

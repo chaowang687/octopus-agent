@@ -116,6 +116,22 @@ export interface ElectronAPI {
     healthCheck: () => Promise<any>
     subscribe: (eventType: string) => void
   }
+  agent: {
+    getWorkflowSettings: () => Promise<any>
+    updateWorkflowSettings: (settings: any) => Promise<any>
+    executeWorkflow: (workflow: any) => Promise<any>
+    saveWorkflow: (workflow: any) => Promise<any>
+    loadWorkflows: () => Promise<any>
+    loadCurrentWorkflow: () => Promise<any>
+    getAvailableAgents: () => Promise<any>
+    getAgentConfig: (agentId: string) => Promise<any>
+    setAgentConfig: (agentId: string, config: any) => Promise<any>
+    getToolState: () => Promise<any>
+    updateToolState: (state: any) => Promise<any>
+    openFolder: () => Promise<any>
+    openFile: (path: string) => Promise<any>
+    selectFile: () => Promise<any>
+  }
   auth: {
     login: (username: string, password: string) => Promise<any>
     logout: (token: string) => Promise<any>

@@ -299,11 +299,15 @@ contextBridge.exposeInMainWorld('electron', {
     executeWorkflow: (workflow: any) => ipcRenderer.invoke('agent:executeWorkflow', workflow),
     saveWorkflow: (workflow: any) => ipcRenderer.invoke('agent:saveWorkflow', workflow),
     loadWorkflows: () => ipcRenderer.invoke('agent:loadWorkflows'),
+    loadCurrentWorkflow: () => ipcRenderer.invoke('agent:loadCurrentWorkflow'),
     getAvailableAgents: () => ipcRenderer.invoke('agent:getAvailableAgents'),
     getAgentConfig: (agentId: string) => ipcRenderer.invoke('agent:getAgentConfig', agentId),
     setAgentConfig: (agentId: string, config: any) => ipcRenderer.invoke('agent:setAgentConfig', agentId, config),
     getToolState: () => ipcRenderer.invoke('agent:getToolState'),
-    updateToolState: (state: any) => ipcRenderer.invoke('agent:updateToolState', state)
+    updateToolState: (state: any) => ipcRenderer.invoke('agent:updateToolState', state),
+    openFolder: () => ipcRenderer.invoke('agent:openFolder'),
+    openFile: (path: string) => ipcRenderer.invoke('agent:openFile', path),
+    selectFile: () => ipcRenderer.invoke('agent:selectFile')
   },
   // 用户认证
   auth: {

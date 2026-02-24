@@ -142,8 +142,17 @@ export class WorkflowEngine {
       'marketResearch': 'market_research',
       'productManager': 'product_manager',
       'uiDesigner': 'ui_designer',
-      'developer': 'developer',
-      'qaTester': 'qa_tester'
+      'architect': 'architect',
+      'frontendEngineer': 'frontend_engineer',
+      'backendEngineer': 'backend_engineer',
+      'uiTester': 'ui_tester',
+      'functionalTester': 'functional_tester',
+      'boxNode': 'box_node',
+      'productDoc': 'product_doc',
+      'designDoc': 'design_doc',
+      'uiInterface': 'ui_interface',
+      'codeFile': 'code_file',
+      'projectSpec': 'project_spec'
     }
     return typeMap[nodeType] || nodeType
   }

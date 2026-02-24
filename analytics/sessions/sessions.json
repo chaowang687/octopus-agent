@@ -880,5 +880,23 @@
     "appVersion": "0.1.1",
     "events": 0,
     "errors": 0
+  },
+  {
+    "id": "8106df62-0526-4df6-b398-97010bdf3af6",
+    "startTime": 1771892458765,
+    "userAgent": "",
+    "platform": "darwin",
+    "appVersion": "0.1.1",
+    "events": 0,
+    "errors": 0
+  },
+  {
+    "id": "9f26e741-d04c-48e9-8cf4-88f2bad527c1",
+    "startTime": 1771892937636,
+    "userAgent": "",
+    "platform": "darwin",
+    "appVersion": "0.1.1",
+    "events": 0,
+    "errors": 0
   }
 ]
