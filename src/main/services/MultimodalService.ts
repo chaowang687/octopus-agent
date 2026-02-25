@@ -61,14 +61,33 @@ export interface ScreenCaptureOptions {
 export class MultimodalService extends EventEmitter {
   private capabilities: Set<MultimodalCapability> = new Set()
   private apiKeys: Record<string, string> = {}
-  private tempDir: string
+  private tempDir: string = ''
+  private isInitialized: boolean = false
 
   constructor() {
     super()
-    this.tempDir = path.join(app.getPath('temp'), 'multimodal')
-    this.ensureTempDir()
-    this.initializeCapabilities()
-    this.loadApiKeys()
+  }
+  
+  /**
+   * 初始化多模态服务
+   */
+  initialize(): void {
+    if (!this.isInitialized && app) {
+      this.tempDir = path.join(app.getPath('temp'), 'multimodal')
+      this.ensureTempDir()
+      this.initializeCapabilities()
+      this.loadApiKeys()
+      this.isInitialized = true
+    }
+  }
+  
+  /**
+   * 检查是否已初始化
+   */
+  private checkInitialized(): void {
+    if (!this.isInitialized) {
+      throw new Error('MultimodalService not initialized. Call initialize() first.')
+    }
   }
 
   /**
@@ -87,6 +106,7 @@ export class MultimodalService extends EventEmitter {
    * 检查并更新可用能力
    */
   private checkCapabilities(): void {
+    this.checkInitialized()
     const keysPath = path.join(app.getPath('userData'), 'apiKeys.json')
     
     try {
@@ -122,6 +142,7 @@ export class MultimodalService extends EventEmitter {
    * 加载API密钥
    */
   private loadApiKeys(): void {
+    this.checkInitialized()
     const keysPath = path.join(app.getPath('userData'), 'apiKeys.json')
     
     try {
@@ -137,6 +158,7 @@ export class MultimodalService extends EventEmitter {
    * 确保临时目录存在
    */
   private ensureTempDir(): void {
+    this.checkInitialized()
     if (!fs.existsSync(this.tempDir)) {
       fs.mkdirSync(this.tempDir, { recursive: true })
     }
@@ -323,6 +345,7 @@ export class MultimodalService extends EventEmitter {
       const localPaths: string[] = []
       for (let i = 0; i < images.length; i++) {
         try {
+          this.checkInitialized()
           const imageResponse = await axios.get(images[i], { responseType: 'arraybuffer' })
           const localPath = path.join(this.tempDir, `generated_${Date.now()}_${i}.png`)
           fs.writeFileSync(localPath, imageResponse.data)
@@ -349,14 +372,19 @@ export class MultimodalService extends EventEmitter {
 
     try {
       // 使用Electron的桌面捕获功能
-      const sources = await import('electron').then(m => 
-        (m as any).desktopCapturer.getSources({
-          types: ['screen'],
-          thumbnailSize: options?.width && options?.height 
-            ? { width: options.width, height: options.height }
-            : { width: 1920, height: 1080 }
-        })
-      )
+      const electronModule = await import('electron')
+      const desktopCapturer = (electronModule as any).desktopCapturer
+      
+      if (!desktopCapturer || !desktopCapturer.getSources) {
+        return { path: '', error: 'Desktop capturer not available' }
+      }
+      
+      const sources = await desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize: options?.width && options?.height 
+          ? { width: options.width, height: options.height }
+          : { width: 1920, height: 1080 }
+      })
 
       if (sources.length === 0) {
         return { path: '', error: 'No display sources available' }
@@ -370,6 +398,7 @@ export class MultimodalService extends EventEmitter {
       const format = options?.format || 'png'
       const quality = options?.quality || 100
       
+      this.checkInitialized()
       const outputPath = path.join(
         this.tempDir,
         `screen_capture_${Date.now()}.${format}`
@@ -480,6 +509,7 @@ export class MultimodalService extends EventEmitter {
         }
       )
 
+      this.checkInitialized()
       const outputPath = options.outputPath || path.join(
         this.tempDir,
         `speech_${Date.now()}.mp3`
@@ -539,6 +569,7 @@ export class MultimodalService extends EventEmitter {
 
     // 使用ffmpeg提取帧
     const { execSync } = require('child_process')
+    this.checkInitialized()
     const frameDir = path.join(this.tempDir, `video_frames_${Date.now()}`)
     fs.mkdirSync(frameDir, { recursive: true })
 
@@ -608,6 +639,7 @@ export class MultimodalService extends EventEmitter {
    * 获取临时目录路径
    */
   getTempDir(): string {
+    this.checkInitialized()
     return this.tempDir
   }
 
@@ -615,6 +647,7 @@ export class MultimodalService extends EventEmitter {
    * 清理临时文件
    */
   cleanupTempFiles(olderThanMs?: number): number {
+    this.checkInitialized()
     const threshold = olderThanMs || 24 * 60 * 60 * 1000 // 默认24小时
     const now = Date.now()
     let cleaned = 0

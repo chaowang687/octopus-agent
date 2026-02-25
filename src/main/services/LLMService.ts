@@ -94,8 +94,22 @@ export class LLMService {
   
   // 当前用户ID（用于用户级别的API密钥隔离）
   private currentUserId: string | null = null
+  // 应用是否已初始化
+  private isInitialized: boolean = false
 
   constructor() {
+  }
+  
+  // 初始化方法
+  public initialize(): void {
+    this.isInitialized = true
+  }
+  
+  // 检查应用是否已初始化
+  private checkInitialized(): void {
+    if (!this.isInitialized) {
+      throw new Error('LLMService not initialized. Call initialize() first.')
+    }
   }
   
   // 设置当前用户ID
@@ -112,6 +126,7 @@ export class LLMService {
   
   // 获取或创建备用加密密钥
   private getOrCreateFallbackKey(): Buffer {
+    this.checkInitialized()
     if (this.fallbackKey) {
       return this.fallbackKey
     }
@@ -139,6 +154,7 @@ export class LLMService {
 
   // 动态获取API密钥文件路径
   private get apiKeysPath(): string {
+    this.checkInitialized()
     if (this.currentUserId) {
       // 用户级别存储：userData/users/{userId}/apiKeys.json
       const userDir = path.join(app.getPath('userData'), 'users', this.currentUserId)
@@ -151,6 +167,7 @@ export class LLMService {
   
   // 确保用户API密钥目录存在
   private ensureUserApiKeyDir(): void {
+    this.checkInitialized()
     if (this.currentUserId) {
       const userDir = path.join(app.getPath('userData'), 'users', this.currentUserId)
       if (!fs.existsSync(userDir)) {
@@ -405,6 +422,7 @@ export class LLMService {
   
   // 迁移旧的全局API密钥到用户目录
   public migrateGlobalApiKeys(userId: string): void {
+    this.checkInitialized()
     try {
       const globalPath = path.join(app.getPath('userData'), 'apiKeys.json')
       if (!fs.existsSync(globalPath)) {
@@ -455,6 +473,7 @@ export class LLMService {
       
       // 模拟：创建文件夹
       if (lastMessage.includes('folder') || lastMessage.includes('directory') || lastMessage.includes('文件夹') || lastMessage.includes('目录')) {
+        this.checkInitialized()
         return {
           success: true,
           content: JSON.stringify({
@@ -479,6 +498,7 @@ export class LLMService {
       
       // 模拟：写文件
       if (lastMessage.includes('file') || lastMessage.includes('write') || lastMessage.includes('文件')) {
+        this.checkInitialized()
         return {
           success: true,
           content: JSON.stringify({

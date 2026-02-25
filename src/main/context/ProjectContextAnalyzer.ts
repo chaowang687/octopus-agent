@@ -1,5 +1,6 @@
 import * as fs from 'fs'
 import * as path from 'path'
+import { FileCache } from '../utils/FileCache'
 
 export interface ProjectContext {
   projectPath: string
@@ -35,23 +36,39 @@ export interface ProjectContext {
   lastUpdated: number
 }
 
+const IGNORE_DIRS = new Set([
+  'node_modules', 'dist', 'build', '.git', '.svn', '.hg',
+  '__pycache__', 'venv', '.venv', 'env', '.env',
+  '.next', '.nuxt', 'coverage', '.cache', 'tmp', 'temp'
+])
+
+const CONFIG_FILES = new Set([
+  'package.json', 'tsconfig.json', 'jsconfig.json',
+  '.eslintrc', '.eslintrc.json', '.eslintrc.js', 'eslint.config.js',
+  '.prettierrc', '.prettierrc.json', '.prettierrc.js',
+  'vite.config.ts', 'vite.config.js', 'webpack.config.js',
+  'rollup.config.js', 'electron.vite.config.ts'
+])
+
 export class ProjectContextAnalyzer {
   private contexts: Map<string, ProjectContext> = new Map()
   private contextCachePath: string
+  private fileCache: FileCache
 
   constructor(cachePath?: string) {
     this.contextCachePath = cachePath || path.join(process.cwd(), '.project-contexts.json')
+    this.fileCache = new FileCache(500, 50)
     this.loadContexts()
   }
 
   async analyzeProject(projectPath: string): Promise<ProjectContext> {
     const context = this.contexts.get(projectPath)
-    if (context && this.isContextValid(context)) {
-      console.log(`[ProjectContextAnalyzer] 使用缓存的上下文: ${projectPath}`)
+    if (context && await this.isContextValid(context, projectPath)) {
+      console.log(`[ProjectContextAnalyzer] Using cached context: ${projectPath}`)
       return context
     }
 
-    console.log(`[ProjectContextAnalyzer] 分析项目: ${projectPath}`)
+    console.log(`[ProjectContextAnalyzer] Analyzing project: ${projectPath}`)
     const newContext = await this.buildContext(projectPath)
     this.contexts.set(projectPath, newContext)
     this.saveContexts()
@@ -60,20 +77,21 @@ export class ProjectContextAnalyzer {
 
   private async buildContext(projectPath: string): Promise<ProjectContext> {
     const projectName = path.basename(projectPath)
-    const packageJsonPath = path.join(projectPath, 'package.json')
-    const packageJson = this.readJsonFile(packageJsonPath)
+    const packageJson = await this.readJsonFile(path.join(projectPath, 'package.json'))
 
-    const projectType = this.detectProjectType(projectPath, packageJson)
-    const language = this.detectLanguage(projectPath, packageJson)
-    const framework = this.detectFramework(projectPath, packageJson)
-    const buildSystem = this.detectBuildSystem(projectPath, packageJson)
-    const packageManager = this.detectPackageManager(projectPath)
-    const testFramework = this.detectTestFramework(projectPath, packageJson)
+    const [projectType, language, framework, buildSystem, packageManager, testFramework, structure] = await Promise.all([
+      this.detectProjectType(projectPath, packageJson),
+      this.detectLanguage(projectPath),
+      this.detectFramework(projectPath, packageJson),
+      this.detectBuildSystem(projectPath, packageJson),
+      this.detectPackageManager(projectPath),
+      this.detectTestFramework(projectPath, packageJson),
+      this.analyzeStructure(projectPath)
+    ])
 
-    const structure = await this.analyzeStructure(projectPath)
     const dependencies = this.extractDependencies(packageJson)
     const scripts = this.extractScripts(packageJson)
-    const conventions = this.analyzeConventions(projectPath, packageJson)
+    const conventions = await this.analyzeConventions(projectPath, packageJson)
     const metadata = this.extractMetadata(packageJson)
 
     return {
@@ -94,70 +112,79 @@ export class ProjectContextAnalyzer {
     }
   }
 
-  private detectProjectType(projectPath: string, _packageJson: any): string {
-    if (fs.existsSync(path.join(projectPath, 'electron.vite.config.ts'))) {
-      return 'electron'
-    }
-    if (fs.existsSync(path.join(projectPath, 'next.config.js'))) {
-      return 'nextjs'
-    }
-    if (fs.existsSync(path.join(projectPath, 'vite.config.ts'))) {
-      return 'vite'
-    }
-    if (fs.existsSync(path.join(projectPath, 'webpack.config.js'))) {
-      return 'webpack'
-    }
-    if (fs.existsSync(path.join(projectPath, 'angular.json'))) {
-      return 'angular'
-    }
-    if (fs.existsSync(path.join(projectPath, 'vue.config.js'))) {
-      return 'vue'
+  private async detectProjectType(projectPath: string, _packageJson: any): Promise<string> {
+    const checks = [
+      ['electron.vite.config.ts', 'electron'],
+      ['next.config.js', 'nextjs'],
+      ['next.config.mjs', 'nextjs'],
+      ['vite.config.ts', 'vite'],
+      ['vite.config.js', 'vite'],
+      ['webpack.config.js', 'webpack'],
+      ['angular.json', 'angular'],
+      ['vue.config.js', 'vue']
+    ]
+
+    for (const [file, type] of checks) {
+      if (fs.existsSync(path.join(projectPath, file))) {
+        return type
+      }
     }
     return 'unknown'
   }
 
-  private detectLanguage(projectPath: string, packageJson: any): string {
-    const tsFiles = this.findFiles(projectPath, '.ts', ['node_modules', 'dist', 'build'])
-    const jsFiles = this.findFiles(projectPath, '.js', ['node_modules', 'dist', 'build'])
-    const pyFiles = this.findFiles(projectPath, '.py', ['node_modules', '__pycache__', 'venv', '.venv'])
+  private async detectLanguage(projectPath: string): Promise<string> {
+    const counts = await this.countFileExtensions(projectPath, ['.ts', '.tsx', '.js', '.jsx', '.py'])
+    
+    const tsCount = counts['.ts'] + counts['.tsx']
+    const jsCount = counts['.js'] + counts['.jsx']
+    const pyCount = counts['.py']
 
-    if (tsFiles.length > jsFiles.length) return 'typescript'
-    if (jsFiles.length > 0) return 'javascript'
-    if (pyFiles.length > 0) return 'python'
+    if (tsCount > jsCount) return 'typescript'
+    if (jsCount > 0) return 'javascript'
+    if (pyCount > 0) return 'python'
 
-    return packageJson?.devDependencies?.typescript ? 'typescript' : 'javascript'
+    return 'unknown'
   }
 
-  private findFiles(dir: string, extension: string, ignoreDirs: string[] = []): string[] {
-    const files: string[] = []
-    
-    const walk = (currentPath: string) => {
+  private async countFileExtensions(dir: string, extensions: string[]): Promise<Record<string, number>> {
+    const counts: Record<string, number> = {}
+    for (const ext of extensions) {
+      counts[ext] = 0
+    }
+
+    const countInDir = async (currentPath: string): Promise<void> => {
       try {
-        const entries = fs.readdirSync(currentPath, { withFileTypes: true })
+        const entries = await fs.promises.readdir(currentPath, { withFileTypes: true })
+        
+        const promises: Promise<void>[] = []
         
         for (const entry of entries) {
+          if (IGNORE_DIRS.has(entry.name) || entry.name.startsWith('.')) {
+            continue
+          }
+
           const fullPath = path.join(currentPath, entry.name)
-          const relativePath = path.relative(dir, fullPath)
-          
+
           if (entry.isDirectory()) {
-            const shouldIgnore = ignoreDirs.some(ignoreDir => 
-              relativePath.startsWith(ignoreDir) || 
-              entry.name === ignoreDir
-            )
-            if (!shouldIgnore) {
-              walk(fullPath)
+            promises.push(countInDir(fullPath))
+          } else if (entry.isFile()) {
+            for (const ext of extensions) {
+              if (entry.name.endsWith(ext)) {
+                counts[ext]++
+                break
+              }
             }
-          } else if (entry.isFile() && entry.name.endsWith(extension)) {
-            files.push(fullPath)
           }
         }
+
+        await Promise.all(promises)
       } catch (error) {
-        console.error(`[ProjectContextAnalyzer] 读取目录失败 ${currentPath}:`, error)
+        console.error(`[ProjectContextAnalyzer] Error reading directory ${currentPath}:`, error)
       }
     }
-    
-    walk(dir)
-    return files
+
+    await countInDir(dir)
+    return counts
   }
 
   private detectFramework(_projectPath: string, packageJson: any): string {
@@ -165,29 +192,38 @@ export class ProjectContextAnalyzer {
 
     if (deps['react']) return 'react'
     if (deps['vue']) return 'vue'
-    if (deps['angular']) return 'angular'
+    if (deps['angular'] || deps['@angular/core']) return 'angular'
     if (deps['svelte']) return 'svelte'
     if (deps['express']) return 'express'
     if (deps['next']) return 'nextjs'
     if (deps['nuxt']) return 'nuxtjs'
+    if (deps['electron']) return 'electron'
 
     return 'none'
   }
 
   private detectBuildSystem(projectPath: string, _packageJson: any): string {
-    if (fs.existsSync(path.join(projectPath, 'vite.config.ts'))) return 'vite'
-    if (fs.existsSync(path.join(projectPath, 'webpack.config.js'))) return 'webpack'
-    if (fs.existsSync(path.join(projectPath, 'rollup.config.js'))) return 'rollup'
-    if (fs.existsSync(path.join(projectPath, 'tsconfig.json'))) return 'tsc'
+    const checks = [
+      ['vite.config.ts', 'vite'],
+      ['vite.config.js', 'vite'],
+      ['webpack.config.js', 'webpack'],
+      ['rollup.config.js', 'rollup'],
+      ['tsconfig.json', 'tsc']
+    ]
 
+    for (const [file, system] of checks) {
+      if (fs.existsSync(path.join(projectPath, file))) {
+        return system
+      }
+    }
     return 'none'
   }
 
-  private detectPackageManager(projectPath: string): string {
+  private async detectPackageManager(projectPath: string): Promise<string> {
     if (fs.existsSync(path.join(projectPath, 'yarn.lock'))) return 'yarn'
     if (fs.existsSync(path.join(projectPath, 'pnpm-lock.yaml'))) return 'pnpm'
+    if (fs.existsSync(path.join(projectPath, 'bun.lockb'))) return 'bun'
     if (fs.existsSync(path.join(projectPath, 'package-lock.json'))) return 'npm'
-
     return 'npm'
   }
 
@@ -199,6 +235,8 @@ export class ProjectContextAnalyzer {
     if (deps['mocha']) return 'mocha'
     if (deps['jasmine']) return 'jasmine'
     if (deps['@testing-library/react']) return 'testing-library'
+    if (deps['cypress']) return 'cypress'
+    if (deps['@playwright/test']) return 'playwright'
 
     return 'none'
   }
@@ -212,19 +250,26 @@ export class ProjectContextAnalyzer {
     const mainFiles: string[] = []
     const configFiles: string[] = []
 
-    const entries = fs.readdirSync(projectPath, { withFileTypes: true })
-    for (const entry of entries) {
-      if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules') {
-        directories.push(entry.name)
-      } else if (entry.isFile()) {
-        if (entry.name.endsWith('.config.ts') || entry.name.endsWith('.config.js')) {
-          configFiles.push(entry.name)
-        } else if (entry.name === 'package.json' || entry.name === 'tsconfig.json') {
-          configFiles.push(entry.name)
-        } else if (entry.name === 'index.ts' || entry.name === 'index.js' || entry.name === 'main.ts') {
-          mainFiles.push(entry.name)
+    try {
+      const entries = await fs.promises.readdir(projectPath, { withFileTypes: true })
+      
+      for (const entry of entries) {
+        if (entry.name.startsWith('.')) continue
+        
+        if (entry.isDirectory()) {
+          if (entry.name !== 'node_modules') {
+            directories.push(entry.name)
+          }
+        } else if (entry.isFile()) {
+          if (CONFIG_FILES.has(entry.name) || entry.name.endsWith('.config.ts') || entry.name.endsWith('.config.js')) {
+            configFiles.push(entry.name)
+          } else if (['index.ts', 'index.js', 'main.ts', 'main.js', 'app.ts', 'app.js'].includes(entry.name)) {
+            mainFiles.push(entry.name)
+          }
         }
       }
+    } catch (error) {
+      console.error(`[ProjectContextAnalyzer] Error analyzing structure:`, error)
     }
 
     return { directories, mainFiles, configFiles }
@@ -244,29 +289,22 @@ export class ProjectContextAnalyzer {
     return packageJson?.scripts || {}
   }
 
-  private analyzeConventions(projectPath: string, _packageJson: any): {
+  private async analyzeConventions(projectPath: string, _packageJson: any): Promise<{
     codeStyle: string
     fileNaming: string
     directoryStructure: string
     documentation: string
-  } {
-    const tsconfigPath = path.join(projectPath, 'tsconfig.json')
-    const tsconfig = this.readJsonFile(tsconfigPath)
+  }> {
+    const hasEslint = fs.existsSync(path.join(projectPath, '.eslintrc.json')) ||
+                      fs.existsSync(path.join(projectPath, '.eslintrc.js')) ||
+                      fs.existsSync(path.join(projectPath, 'eslint.config.js'))
+    
+    const hasPrettier = fs.existsSync(path.join(projectPath, '.prettierrc')) ||
+                        fs.existsSync(path.join(projectPath, '.prettierrc.json'))
 
-    const eslintPath = path.join(projectPath, '.eslintrc.json') ||
-                        path.join(projectPath, '.eslintrc.js') ||
-                        path.join(projectPath, 'eslint.config.js')
-    const hasEslint = fs.existsSync(eslintPath)
-
-    const prettierPath = path.join(projectPath, '.prettierrc') ||
-                         path.join(projectPath, '.prettierrc.json')
-    const hasPrettier = fs.existsSync(prettierPath)
-
-    const readmePath = path.join(projectPath, 'README.md')
-    const hasReadme = fs.existsSync(readmePath)
-
-    const docsPath = path.join(projectPath, 'docs')
-    const hasDocs = fs.existsSync(docsPath)
+    const tsconfig = await this.readJsonFile(path.join(projectPath, 'tsconfig.json'))
+    const hasReadme = fs.existsSync(path.join(projectPath, 'README.md'))
+    const hasDocs = fs.existsSync(path.join(projectPath, 'docs'))
 
     return {
       codeStyle: hasEslint ? 'eslint' : hasPrettier ? 'prettier' : 'none',
@@ -302,21 +340,33 @@ export class ProjectContextAnalyzer {
     }
   }
 
-  private readJsonFile(filePath: string): any {
+  private async readJsonFile(filePath: string): Promise<any> {
     try {
       if (fs.existsSync(filePath)) {
-        const content = fs.readFileSync(filePath, 'utf-8')
-        return JSON.parse(content)
+        return await this.fileCache.getOrLoad(filePath, async () => {
+          const content = await fs.promises.readFile(filePath, 'utf-8')
+          return JSON.parse(content)
+        })
       }
     } catch (error) {
-      console.error(`[ProjectContextAnalyzer] 读取 JSON 文件失败 ${filePath}:`, error)
+      console.error(`[ProjectContextAnalyzer] Failed to read JSON file ${filePath}:`, error)
     }
     return {}
   }
 
-  private isContextValid(context: ProjectContext): boolean {
+  private async isContextValid(context: ProjectContext, projectPath: string): Promise<boolean> {
     const maxAge = 24 * 60 * 60 * 1000
-    return Date.now() - context.lastUpdated < maxAge
+    if (Date.now() - context.lastUpdated >= maxAge) {
+      return false
+    }
+
+    const packageJsonPath = path.join(projectPath, 'package.json')
+    try {
+      const stat = await fs.promises.stat(packageJsonPath)
+      return stat.mtimeMs <= context.lastUpdated
+    } catch {
+      return true
+    }
   }
 
   private loadContexts(): void {
@@ -327,10 +377,10 @@ export class ProjectContextAnalyzer {
         for (const [projectPath, context] of Object.entries(data)) {
           this.contexts.set(projectPath, context as ProjectContext)
         }
-        console.log('[ProjectContextAnalyzer] 加载项目上下文缓存')
+        console.log('[ProjectContextAnalyzer] Loaded project context cache')
       }
     } catch (error) {
-      console.error('[ProjectContextAnalyzer] 加载上下文缓存失败:', error)
+      console.error('[ProjectContextAnalyzer] Failed to load context cache:', error)
     }
   }
 
@@ -338,9 +388,9 @@ export class ProjectContextAnalyzer {
     try {
       const data = Object.fromEntries(this.contexts)
       fs.writeFileSync(this.contextCachePath, JSON.stringify(data, null, 2))
-      console.log('[ProjectContextAnalyzer] 保存项目上下文缓存')
+      console.log('[ProjectContextAnalyzer] Saved project context cache')
     } catch (error) {
-      console.error('[ProjectContextAnalyzer] 保存上下文缓存失败:', error)
+      console.error('[ProjectContextAnalyzer] Failed to save context cache:', error)
     }
   }
 
@@ -349,46 +399,53 @@ export class ProjectContextAnalyzer {
   }
 
   generateProjectGuide(context: ProjectContext): string {
-    return `# 项目指南: ${context.projectName}
+    return `# Project Guide: ${context.projectName}
 
-## 项目信息
-- 项目路径: ${context.projectPath}
-- 项目类型: ${context.projectType}
-- 编程语言: ${context.language}
-- 框架: ${context.framework}
-- 构建系统: ${context.buildSystem}
-- 包管理器: ${context.packageManager}
-- 测试框架: ${context.testFramework}
+## Project Information
+- Path: ${context.projectPath}
+- Type: ${context.projectType}
+- Language: ${context.language}
+- Framework: ${context.framework}
+- Build System: ${context.buildSystem}
+- Package Manager: ${context.packageManager}
+- Test Framework: ${context.testFramework}
 
-## 项目结构
-主要目录: ${context.structure.directories.join(', ') || '无'}
-主要文件: ${context.structure.mainFiles.join(', ') || '无'}
-配置文件: ${context.structure.configFiles.join(', ') || '无'}
+## Project Structure
+Main Directories: ${context.structure.directories.join(', ') || 'None'}
+Main Files: ${context.structure.mainFiles.join(', ') || 'None'}
+Config Files: ${context.structure.configFiles.join(', ') || 'None'}
 
-## 依赖管理
-生产依赖: ${Object.keys(context.dependencies.production).slice(0, 10).join(', ') || '无'}
-开发依赖: ${Object.keys(context.dependencies.development).slice(0, 10).join(', ') || '无'}
+## Dependencies
+Production: ${Object.keys(context.dependencies.production).slice(0, 10).join(', ') || 'None'}
+Development: ${Object.keys(context.dependencies.development).slice(0, 10).join(', ') || 'None'}
 
-## 可用脚本
-${Object.entries(context.scripts).map(([name, script]) => `- ${name}: ${script}`).join('\n') || '无'}
+## Available Scripts
+${Object.entries(context.scripts).map(([name, script]) => `- ${name}: ${script}`).join('\n') || 'None'}
 
-## 代码规范
-- 代码风格: ${context.conventions.codeStyle}
-- 文件命名: ${context.conventions.fileNaming}
-- 目录结构: ${context.conventions.directoryStructure}
-- 文档: ${context.conventions.documentation}
+## Code Conventions
+- Code Style: ${context.conventions.codeStyle}
+- File Naming: ${context.conventions.fileNaming}
+- Directory Structure: ${context.conventions.directoryStructure}
+- Documentation: ${context.conventions.documentation}
 
-## 注意事项
-1. 使用 ${context.packageManager} 作为包管理器
-2. 运行 ${context.packageManager} install 安装依赖
-3. 使用 ${context.packageManager} run dev 启动开发服务器
-4. 使用 ${context.packageManager} run build 构建项目
-${context.testFramework !== 'none' ? `5. 使用 ${context.packageManager} test 运行测试` : ''}
+## Notes
+1. Use ${context.packageManager} as package manager
+2. Run ${context.packageManager} install to install dependencies
+3. Use ${context.packageManager} run dev to start development server
+4. Use ${context.packageManager} run build to build the project
+${context.testFramework !== 'none' ? `5. Use ${context.packageManager} test to run tests` : ''}
 `
   }
 
   invalidateContext(projectPath: string): void {
     this.contexts.delete(projectPath)
+    this.fileCache.invalidate(projectPath)
+    this.saveContexts()
+  }
+
+  clearCache(): void {
+    this.contexts.clear()
+    this.fileCache.clear()
     this.saveContexts()
   }
 }

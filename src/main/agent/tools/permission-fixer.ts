@@ -1,7 +1,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import * as os from 'os'
-import { app, dialog } from 'electron'
+import { app, MessageBoxReturnValue } from 'electron'
 import { toolRegistry } from '../ToolRegistry'
 
 /**
@@ -273,12 +273,12 @@ async function showPermissionFixDialog(title: string, messageLines: string[]): P
     }
     
     if (mainWindow) {
-      dialog.showMessageBox(mainWindow, options).then((response) => {
+      dialog.showMessageBox(mainWindow, options).then((response: MessageBoxReturnValue) => {
         resolve(response.response === 0)
       })
     } else {
       // 如果没有主窗口，使用无父窗口的弹窗
-      dialog.showMessageBox(options).then((response) => {
+      dialog.showMessageBox(options).then((response: MessageBoxReturnValue) => {
         resolve(response.response === 0)
       })
     }
@@ -293,7 +293,7 @@ async function runCommand(command: string, args: string[]): Promise<{ success: b
     
     console.log(`[PermissionFixer] 执行命令: ${fullCommand}`)
     
-    exec(fullCommand, (error: any, stdout: string, stderr: string) => {
+    exec(fullCommand, (error: any, stdout: string, _stderr: string) => {
       if (error) {
         console.error(`[PermissionFixer] 命令执行失败: ${error.message}`)
         resolve({ success: false, error: error.message })
@@ -313,13 +313,15 @@ toolRegistry.register({
   handler: async () => {
     try {
       const result = await checkAndFixPermissions()
+      const issues = result.issues || []
+      const fixes = result.fixes || []
       return {
         success: true,
-        issues: result.issues,
-        fixes: result.fixes,
-        hasIssues: result.hasIssues,
-        hasFixes: result.hasFixes,
-        summary: `发现 ${result.issues.length} 个权限问题，修复了 ${result.fixes.length} 个问题`
+        issues,
+        fixes,
+        hasIssues: issues.length > 0,
+        hasFixes: fixes.length > 0,
+        summary: `发现 ${issues.length} 个权限问题，修复了 ${fixes.length} 个问题`
       }
     } catch (error: any) {
       return { error: error.message }

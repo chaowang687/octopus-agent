@@ -1,0 +1,13 @@
+{
+  "id": "ide-module",
+  "name": "IDE Module",
+  "version": "1.0.0",
+  "description": "Integrated Development Environment",
+  "enabled": true,
+  "autoLoad": true,
+  "dependencies": [],
+  "permissions": ["file_system", "read_write"],
+  "entryPoint": "index.js",
+  "uiComponent": "ui.js",
+  "capabilityFile": "capabilities.json"
+}

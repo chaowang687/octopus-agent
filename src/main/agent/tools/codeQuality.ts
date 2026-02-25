@@ -1,7 +1,31 @@
 import * as fs from 'fs'
 import * as path from 'path'
-import { execSync } from 'child_process'
 import { toolRegistry } from '../ToolRegistry'
+import { executeAsync, ExecResult } from '../../utils/AsyncCommandExecutor'
+
+const DEFAULT_TIMEOUT = 60000
+const TEST_TIMEOUT = 120000
+const INTEGRATION_TEST_TIMEOUT = 300000
+
+interface ToolResult {
+  success?: boolean
+  error?: string
+  message?: string
+  output?: string
+}
+
+function handleResult(result: ExecResult): ToolResult {
+  if (result.success) {
+    return {
+      success: true,
+      output: result.stdout
+    }
+  }
+  return {
+    error: result.stderr || result.stdout || `Exit code: ${result.exitCode}`,
+    output: result.stdout
+  }
+}
 
 toolRegistry.register({
   name: 'format_code',
@@ -12,7 +36,7 @@ toolRegistry.register({
     { name: 'files', type: 'array', description: 'Specific files to format (optional)', required: false },
     { name: 'check', type: 'boolean', description: 'Only check formatting without modifying files', required: false }
   ],
-  handler: async (params: any) => {
+  handler: async (params: any): Promise<ToolResult> => {
     try {
       const projectPath = params?.projectPath
       if (!projectPath) return { error: 'Missing parameter: projectPath' }
@@ -52,18 +76,16 @@ toolRegistry.register({
         return { error: `Formatter '${formatter}' not found in project. Please install it first.` }
       }
       
-      const result = execSync(command, { 
-        cwd: projectPath, 
-        encoding: 'utf8',
-        stdio: 'pipe',
-        timeout: 60000
+      const result = await executeAsync(command, { 
+        cwd: projectPath,
+        timeout: DEFAULT_TIMEOUT
       })
       
-      return { 
-        success: true, 
-        message: isCheck ? 'Code formatting checked' : 'Code formatted successfully',
-        output: result 
+      const toolResult = handleResult(result)
+      if (toolResult.success) {
+        toolResult.message = isCheck ? 'Code formatting checked' : 'Code formatted successfully'
       }
+      return toolResult
     } catch (error: any) {
       return { error: error.message }
     }
@@ -79,7 +101,7 @@ toolRegistry.register({
     { name: 'fix', type: 'boolean', description: 'Auto-fix linting issues', required: false },
     { name: 'files', type: 'array', description: 'Specific files to lint (optional)', required: false }
   ],
-  handler: async (params: any) => {
+  handler: async (params: any): Promise<ToolResult> => {
     try {
       const projectPath = params?.projectPath
       if (!projectPath) return { error: 'Missing parameter: projectPath' }
@@ -119,18 +141,16 @@ toolRegistry.register({
         return { error: `Linter '${linter}' not found in project. Please install it first.` }
       }
       
-      const result = execSync(command, { 
-        cwd: projectPath, 
-        encoding: 'utf8',
-        stdio: 'pipe',
-        timeout: 60000
+      const result = await executeAsync(command, { 
+        cwd: projectPath,
+        timeout: DEFAULT_TIMEOUT
       })
       
-      return { 
-        success: true, 
-        message: shouldFix ? 'Linting completed with auto-fix' : 'Linting completed',
-        output: result 
+      const toolResult = handleResult(result)
+      if (toolResult.success) {
+        toolResult.message = shouldFix ? 'Linting completed with auto-fix' : 'Linting completed'
       }
+      return toolResult
     } catch (error: any) {
       return { error: error.message }
     }
@@ -145,13 +165,12 @@ toolRegistry.register({
     { name: 'watch', type: 'boolean', description: 'Run in watch mode', required: false },
     { name: 'noEmit', type: 'boolean', description: 'Only check types without emitting files', required: false }
   ],
-  handler: async (params: any) => {
+  handler: async (params: any): Promise<ToolResult> => {
     try {
       const projectPath = params?.projectPath
       if (!projectPath) return { error: 'Missing parameter: projectPath' }
       
       const isWatch = params?.watch || false
-      const noEmit = params?.noEmit !== false
       
       let command = 'npx tsc --noEmit'
       
@@ -159,18 +178,16 @@ toolRegistry.register({
         command = 'npx tsc --watch'
       }
       
-      const result = execSync(command, { 
-        cwd: projectPath, 
-        encoding: 'utf8',
-        stdio: 'pipe',
-        timeout: 60000
+      const result = await executeAsync(command, { 
+        cwd: projectPath,
+        timeout: DEFAULT_TIMEOUT
       })
       
-      return { 
-        success: true, 
-        message: 'Type checking completed',
-        output: result 
+      const toolResult = handleResult(result)
+      if (toolResult.success) {
+        toolResult.message = 'Type checking completed'
       }
+      return toolResult
     } catch (error: any) {
       return { error: error.message }
     }
@@ -187,7 +204,7 @@ toolRegistry.register({
     { name: 'coverage', type: 'boolean', description: 'Generate coverage report', required: false },
     { name: 'pattern', type: 'string', description: 'Test file pattern', required: false }
   ],
-  handler: async (params: any) => {
+  handler: async (params: any): Promise<ToolResult> => {
     try {
       const projectPath = params?.projectPath
       if (!projectPath) return { error: 'Missing parameter: projectPath' }
@@ -232,18 +249,16 @@ toolRegistry.register({
         return { error: `Test framework '${testFramework}' not found in project. Please install it first.` }
       }
       
-      const result = execSync(command, { 
-        cwd: projectPath, 
-        encoding: 'utf8',
-        stdio: 'pipe',
-        timeout: 120000
+      const result = await executeAsync(command, { 
+        cwd: projectPath,
+        timeout: TEST_TIMEOUT
       })
       
-      return { 
-        success: true, 
-        message: 'Unit tests completed',
-        output: result 
+      const toolResult = handleResult(result)
+      if (toolResult.success) {
+        toolResult.message = 'Unit tests completed'
       }
+      return toolResult
     } catch (error: any) {
       return { error: error.message }
     }
@@ -258,7 +273,7 @@ toolRegistry.register({
     { name: 'testFramework', type: 'string', description: 'Test framework (jest, cypress, playwright, auto)', required: false },
     { name: 'headless', type: 'boolean', description: 'Run tests in headless mode', required: false }
   ],
-  handler: async (params: any) => {
+  handler: async (params: any): Promise<ToolResult> => {
     try {
       const projectPath = params?.projectPath
       if (!projectPath) return { error: 'Missing parameter: projectPath' }
@@ -288,22 +303,20 @@ toolRegistry.register({
         return { error: `Test framework '${testFramework}' not found in project. Please install it first.` }
       }
       
-      const result = execSync(command, { 
-        cwd: projectPath, 
-        encoding: 'utf8',
-        stdio: 'pipe',
-        timeout: 300000
+      const result = await executeAsync(command, { 
+        cwd: projectPath,
+        timeout: INTEGRATION_TEST_TIMEOUT
       })
       
-      return { 
-        success: true, 
-        message: 'Integration tests completed',
-        output: result 
+      const toolResult = handleResult(result)
+      if (toolResult.success) {
+        toolResult.message = 'Integration tests completed'
       }
+      return toolResult
     } catch (error: any) {
       return { error: error.message }
     }
   }
 })
 
-console.log('[DevTools] Code quality tools loaded')
+console.log('[DevTools] Code quality tools loaded (async)')

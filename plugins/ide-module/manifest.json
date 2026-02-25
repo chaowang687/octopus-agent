@@ -1,0 +1,26 @@
+{
+  "id": "ide-module",
+  "name": "Integrated Development Environment",
+  "version": "1.0.0",
+  "description": "Provides code editing, file management, and development tools",
+  "author": "Trae Team",
+  "license": "MIT",
+  "main": "dist/IDEModule.js",
+  "dependencies": {},
+  "permissions": [
+    "file_system_access",
+    "read_write_files"
+  ],
+  "category": "ide",
+  "keywords": [
+    "ide",
+    "editor",
+    "code",
+    "development"
+  ],
+  "homepage": "https://github.com/trae/ide-module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/trae/ide-module.git"
+  }
+}

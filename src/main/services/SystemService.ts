@@ -164,22 +164,41 @@ export class SystemService {
   constructor() {
     this.lruCache = new LRUCache()
     this.semanticCache = new SemanticCache()
-    
+    this.knowledgeDistillationPath = ''
+    this.sharedContextPath = ''
+  }
+
+  /**
+   * 初始化系统服务
+   */
+  initialize(): void {
     try {
-      this.knowledgeDistillationPath = path.join(app.getPath('userData'), 'knowledge_distillation.json')
-      this.sharedContextPath = path.join(app.getPath('userData'), 'shared_context.json')
+      if (!this.knowledgeDistillationPath && app) {
+        this.knowledgeDistillationPath = path.join(app.getPath('userData'), 'knowledge_distillation.json')
+        this.sharedContextPath = path.join(app.getPath('userData'), 'shared_context.json')
+        
+        this.ensureKnowledgeDistillationFile()
+        this.ensureSharedContextFile()
+      }
     } catch (error) {
       console.warn('Failed to get userData path, using current directory:', error)
       this.knowledgeDistillationPath = path.join(process.cwd(), 'knowledge_distillation.json')
       this.sharedContextPath = path.join(process.cwd(), 'shared_context.json')
+      
+      this.ensureKnowledgeDistillationFile()
+      this.ensureSharedContextFile()
     }
-    
-    this.ensureKnowledgeDistillationFile()
-    this.ensureSharedContextFile()
   }
 
   private ensureKnowledgeDistillationFile(): void {
     try {
+      if (!this.knowledgeDistillationPath) {
+        if (app) {
+          this.knowledgeDistillationPath = path.join(app.getPath('userData'), 'knowledge_distillation.json')
+        } else {
+          this.knowledgeDistillationPath = path.join(process.cwd(), 'knowledge_distillation.json')
+        }
+      }
       // 确保目录存在
       const dir = path.dirname(this.knowledgeDistillationPath)
       if (!fs.existsSync(dir)) {
@@ -200,6 +219,13 @@ export class SystemService {
 
   private ensureSharedContextFile(): void {
     try {
+      if (!this.sharedContextPath) {
+        if (app) {
+          this.sharedContextPath = path.join(app.getPath('userData'), 'shared_context.json')
+        } else {
+          this.sharedContextPath = path.join(process.cwd(), 'shared_context.json')
+        }
+      }
       // 确保目录存在
       const dir = path.dirname(this.sharedContextPath)
       if (!fs.existsSync(dir)) {

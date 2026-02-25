@@ -77,13 +77,13 @@ function checkPathPermission(checkPath: string) {
     }
     
     // 检查读权限
-    const hasRead = fs.accessSync(checkPath, fs.constants.R_OK)
+    fs.accessSync(checkPath, fs.constants.R_OK)
     
     // 检查写权限
-    const hasWrite = fs.accessSync(checkPath, fs.constants.W_OK)
+    fs.accessSync(checkPath, fs.constants.W_OK)
     
     // 检查执行权限
-    const hasExec = fs.accessSync(checkPath, fs.constants.X_OK)
+    fs.accessSync(checkPath, fs.constants.X_OK)
     
     return 'full'
   } catch (error: any) {

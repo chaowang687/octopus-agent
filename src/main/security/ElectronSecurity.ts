@@ -1,5 +1,4 @@
 import { app } from 'electron'
-import { is } from '@electron-toolkit/utils'
 
 export interface ElectronSecurityOptions {
   enableGpu: boolean
@@ -44,7 +43,8 @@ export function configureSecurity(options: Partial<ElectronSecurityOptions> = {}
 }
 
 export function getRecommendedSecurityOptions(): ElectronSecurityOptions {
-  const isDev = is.dev
+  // 使用环境变量来检测开发模式
+  const isDev = process.env.NODE_ENV === 'development' || process.env.ELECTRON_IS_DEV === '1'
   
   return {
     enableGpu: false,

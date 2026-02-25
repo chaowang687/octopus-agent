@@ -7,8 +7,15 @@ import { EventEmitter } from 'events'
 import * as fs from 'fs'
 import * as path from 'path'
 import { app } from 'electron'
-import sharp from 'sharp'
 import axios from 'axios'
+
+// 动态导入 sharp 模块，处理加载失败的情况
+let sharp: any = null
+try {
+  sharp = require('sharp')
+} catch (error) {
+  console.warn('[ImageProcessor] sharp module not available, image processing features will be limited:', error.message)
+}
 
 // ============================================
 // 图像处理操作类型
@@ -153,24 +160,45 @@ export interface ImageAnalysisResult {
 // 增强图像处理引擎类
 // ============================================
 export class EnhancedImageProcessor extends EventEmitter {
-  private tempDir: string
+  private tempDir: string = ''
   private apiKeys: Record<string, string> = {}
   private cache: Map<string, ImageAnalysisResult> = new Map()
+  private isInitialized: boolean = false
 
   constructor() {
     super()
-    this.tempDir = path.join(app.getPath('temp'), 'image_processing')
-    this.ensureTempDir()
-    this.loadApiKeys()
+  }
+  
+  /**
+   * 初始化图像处理服务
+   */
+  initialize(): void {
+    if (!this.isInitialized && app) {
+      this.tempDir = path.join(app.getPath('temp'), 'image_processing')
+      this.ensureTempDir()
+      this.loadApiKeys()
+      this.isInitialized = true
+    }
+  }
+  
+  /**
+   * 检查是否已初始化
+   */
+  private checkInitialized(): void {
+    if (!this.isInitialized) {
+      throw new Error('EnhancedImageProcessor not initialized. Call initialize() first.')
+    }
   }
 
   private ensureTempDir(): void {
+    this.checkInitialized()
     if (!fs.existsSync(this.tempDir)) {
       fs.mkdirSync(this.tempDir, { recursive: true })
     }
   }
 
   private loadApiKeys(): void {
+    this.checkInitialized()
     const keysPath = path.join(app.getPath('userData'), 'apiKeys.json')
     try {
       if (fs.existsSync(keysPath)) {
@@ -198,6 +226,16 @@ export class EnhancedImageProcessor extends EventEmitter {
         originalPath: inputPath,
         operation,
         error: 'Input image not found',
+        durationMs: Date.now() - startTime
+      }
+    }
+
+    if (!sharp) {
+      return {
+        success: false,
+        originalPath: inputPath,
+        operation,
+        error: 'Image processing module not available (sharp)',
         durationMs: Date.now() - startTime
       }
     }
@@ -675,6 +713,17 @@ export class EnhancedImageProcessor extends EventEmitter {
       }
     }
 
+    if (!sharp) {
+      return {
+        success: false,
+        path: inputPath,
+        metadata: { width: 0, height: 0, format: '', size: 0, colorSpace: '', hasAlpha: false, dominantColors: [], brightness: 0, contrast: 0, sharpness: 0 },
+        content: {},
+        quality: { score: 0, issues: [], recommendations: [] },
+        error: 'Image processing module not available (sharp)'
+      }
+    }
+
     try {
       const image = sharp(inputPath)
       const metadata = await image.metadata()
@@ -882,6 +931,7 @@ export class EnhancedImageProcessor extends EventEmitter {
   // ============================================
 
   private generateOutputPath(inputPath: string, operation: ImageOperation): string {
+    this.checkInitialized()
     const timestamp = Date.now()
     const ext = path.extname(inputPath)
     const basename = path.basename(inputPath, ext)
@@ -889,6 +939,7 @@ export class EnhancedImageProcessor extends EventEmitter {
   }
 
   getTempDir(): string {
+    this.checkInitialized()
     return this.tempDir
   }
 
@@ -897,6 +948,7 @@ export class EnhancedImageProcessor extends EventEmitter {
   }
 
   cleanup(olderThanMs?: number): number {
+    this.checkInitialized()
     const threshold = olderThanMs || 24 * 60 * 60 * 1000
     const now = Date.now()
     let cleaned = 0

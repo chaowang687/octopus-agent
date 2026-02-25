@@ -1,6 +1,5 @@
 import * as fs from 'fs'
 import * as path from 'path'
-import * as fs from 'fs'
 import { spawn } from 'child_process'
 
 export interface VerificationResult {
@@ -59,8 +58,6 @@ export class VerificationEngine {
 
     // 综合结果
     const allPassed = results.every(r => r.success)
-    const allMessages = results.map(r => r.message).join('\n')
-
     return {
       success: allPassed,
       type: 'semantic',

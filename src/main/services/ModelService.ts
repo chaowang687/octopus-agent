@@ -99,13 +99,25 @@ class LocalModelService implements ModelService {
   ]
 
   constructor() {
-    this.modelsPath = path.join(app.getPath('userData'), 'models.json')
-    this.loadModels()
+    this.modelsPath = ''
+  }
+
+  /**
+   * 初始化模型服务
+   */
+  initialize(): void {
+    if (!this.modelsPath && app) {
+      this.modelsPath = path.join(app.getPath('userData'), 'models.json')
+      this.loadModels()
+    }
   }
 
   private loadModels() {
     try {
-      if (fs.existsSync(this.modelsPath)) {
+      if (!this.modelsPath && app) {
+        this.modelsPath = path.join(app.getPath('userData'), 'models.json')
+      }
+      if (this.modelsPath && fs.existsSync(this.modelsPath)) {
         const models = JSON.parse(fs.readFileSync(this.modelsPath, 'utf8'))
         if (Array.isArray(models)) {
           models.forEach(model => {
@@ -120,8 +132,13 @@ class LocalModelService implements ModelService {
 
   private saveModels() {
     try {
-      const models = Array.from(this.models.values())
-      fs.writeFileSync(this.modelsPath, JSON.stringify(models, null, 2))
+      if (!this.modelsPath && app) {
+        this.modelsPath = path.join(app.getPath('userData'), 'models.json')
+      }
+      if (this.modelsPath) {
+        const models = Array.from(this.models.values())
+        fs.writeFileSync(this.modelsPath, JSON.stringify(models, null, 2))
+      }
     } catch (error) {
       console.error('Failed to save models:', error)
     }

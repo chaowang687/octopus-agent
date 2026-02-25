@@ -1,6 +1,73 @@
 import { ipcMain } from 'electron'
 import { toolRegistry } from '../../agent/ToolRegistry'
 
+class ToolLimiter {
+  private active = 0
+  private queue: Array<() => void> = []
+
+  constructor(private readonly maxConcurrent: number) {}
+
+  async runWithMeta<T>(task: () => Promise<T>): Promise<{
+    result: T
+    queuedMs: number
+    startedAt: number
+    finishedAt: number
+  }> {
+    const queuedAt = Date.now()
+    await this.acquire()
+    const startedAt = Date.now()
+    try {
+      const result = await task()
+      const finishedAt = Date.now()
+      return {
+        result,
+        queuedMs: startedAt - queuedAt,
+        startedAt,
+        finishedAt
+      }
+    } finally {
+      this.release()
+    }
+  }
+
+  private acquire(): Promise<void> {
+    if (this.active < this.maxConcurrent) {
+      this.active += 1
+      return Promise.resolve()
+    }
+    return new Promise(resolve => {
+      this.queue.push(() => {
+        this.active += 1
+        resolve()
+      })
+    })
+  }
+
+  private release(): void {
+    this.active -= 1
+    const next = this.queue.shift()
+    if (next) next()
+  }
+}
+
+const toolLimiter = new ToolLimiter(4)
+const TOOL_EXEC_TIMEOUT_MS = 60_000
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), timeoutMs)
+    promise
+      .then(result => {
+        clearTimeout(timer)
+        resolve(result)
+      })
+      .catch(error => {
+        clearTimeout(timer)
+        reject(error)
+      })
+  })
+}
+
 // 工具相关的 IPC 处理器
 export function registerToolsHandlers() {
   // 查找工具路径
@@ -59,9 +126,8 @@ export function registerToolsHandlers() {
   })
 
   // 执行工具
-  ipcMain.handle('tools:execute', async (_, toolName: string, command: string, args: any[]) => {
+  ipcMain.handle('tools:execute', async (_, toolName: string, _command: string, args: any[]) => {
     try {
-      console.log('[ToolsHandler] Executing tool:', toolName, 'command:', command, 'args:', args)
       const tool = toolRegistry.getTool(toolName)
       if (tool) {
         // 正确处理参数：如果 args 是数组且只有一个对象，直接传递该对象
@@ -73,10 +139,16 @@ export function registerToolsHandlers() {
         } else {
           params = args
         }
-        console.log('[ToolsHandler] Passing params to tool:', params)
-        const result = await tool.handler(params)
-        console.log('[ToolsHandler] Tool result:', result)
-        return { success: true, output: result }
+        const { result, queuedMs, startedAt, finishedAt } = await toolLimiter.runWithMeta(() =>
+          withTimeout(tool.handler(params), TOOL_EXEC_TIMEOUT_MS, `Tool execution timed out after ${TOOL_EXEC_TIMEOUT_MS}ms`)
+        )
+        return {
+          success: true,
+          output: result,
+          queuedMs,
+          startedAt,
+          finishedAt
+        }
       }
       return { success: false, error: 'Tool not found' }
     } catch (error: any) {

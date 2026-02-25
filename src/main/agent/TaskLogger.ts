@@ -18,11 +18,21 @@ export class TaskLogger implements TaskLogStorage {
   private logEntries: TaskLogEntry[] = []
   
   constructor() {
+    this.logsDir = ''
+  }
+  
+  /**
+   * 初始化任务日志器
+   */
+  initialize(): void {
     this.logsDir = this.initLogsDir()
   }
   
   private initLogsDir(): string {
     try {
+      if (!app) {
+        return ''
+      }
       const logsDir = path.join(app.getPath('userData'), 'task-logs')
       if (!fs.existsSync(logsDir)) {
         fs.mkdirSync(logsDir, { recursive: true })
@@ -31,6 +41,9 @@ export class TaskLogger implements TaskLogStorage {
     } catch (error) {
       console.warn('[TaskLogger] 无法创建日志目录，使用备用目录:', error)
       // 使用应用数据目录下的子目录
+      if (!app) {
+        return ''
+      }
       const fallbackDir = path.join(app.getPath('temp'), 'octopus-agent-logs')
       try {
         if (!fs.existsSync(fallbackDir)) {
@@ -47,7 +60,10 @@ export class TaskLogger implements TaskLogStorage {
   
   private ensureLogsDir(): void {
     try {
-      if (!fs.existsSync(this.logsDir)) {
+      if (!this.logsDir) {
+        this.logsDir = this.initLogsDir()
+      }
+      if (this.logsDir && !fs.existsSync(this.logsDir)) {
         fs.mkdirSync(this.logsDir, { recursive: true })
       }
     } catch (error) {

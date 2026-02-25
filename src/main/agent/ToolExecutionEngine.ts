@@ -21,18 +21,31 @@ interface SafetyCheckResult {
 export class ToolExecutionEngine {
   private operationRecords: Map<string, OperationRecord[]> = new Map()
   private backupDir: string
+  private readonly maxRecordsPerTask = 200
   private dangerousCommands: Set<string> = new Set([
     'rm', 'rmdir', 'del', 'format', 'dd', 'shred', 'wipe',
     'sudo', 'su', 'chmod', 'chown', 'kill', 'reboot', 'shutdown'
   ])
 
   constructor() {
-    this.backupDir = path.join(app.getPath('userData'), 'backups')
-    this.ensureBackupDirectory()
+    this.backupDir = ''
+  }
+
+  /**
+   * 初始化工具执行引擎
+   */
+  initialize(): void {
+    if (!this.backupDir && app) {
+      this.backupDir = path.join(app.getPath('userData'), 'backups')
+      this.ensureBackupDirectory()
+    }
   }
 
   private ensureBackupDirectory() {
-    if (!fs.existsSync(this.backupDir)) {
+    if (!this.backupDir && app) {
+      this.backupDir = path.join(app.getPath('userData'), 'backups')
+    }
+    if (this.backupDir && !fs.existsSync(this.backupDir)) {
       fs.mkdirSync(this.backupDir, { recursive: true })
     }
   }
@@ -73,19 +86,21 @@ export class ToolExecutionEngine {
         const filePath = params.path || ''
         
         // 检查敏感目录
-        const sensitiveDirs = [
-          app.getPath('userData'),
-          app.getPath('appData'),
-          app.getPath('home')
-        ]
-        
-        for (const dir of sensitiveDirs) {
-          if (filePath.startsWith(dir)) {
-            result.safe = false
-            result.reason = 'Writing to sensitive directory'
-            result.severity = 'medium'
-            result.requiresApproval = true
-            break
+        if (app) {
+          const sensitiveDirs = [
+            app.getPath('userData'),
+            app.getPath('appData'),
+            app.getPath('home')
+          ]
+          
+          for (const dir of sensitiveDirs) {
+            if (filePath.startsWith(dir)) {
+              result.safe = false
+              result.reason = 'Writing to sensitive directory'
+              result.severity = 'medium'
+              result.requiresApproval = true
+              break
+            }
           }
         }
         break
@@ -130,7 +145,7 @@ export class ToolExecutionEngine {
       // 备份文件（如果是写操作）
       if (tool.name === 'write_file' && params.path) {
         const backupPath = await this.backupFile(params.path, taskId)
-        this.operationRecords.get(taskId)?.push({
+        this.addOperationRecord(taskId, {
           id: operationId,
           type: 'file_write',
           timestamp: Date.now(),
@@ -147,21 +162,24 @@ export class ToolExecutionEngine {
 
       // 记录成功的操作
       if (result.success !== false) {
-        this.operationRecords.get(taskId)?.push({
-          id: operationId,
-          type: this.getOperationType(tool.name),
-          timestamp: Date.now(),
-          details: {
-            tool: tool.name,
-            params: this.sanitizeParams(params)
-          }
-        })
+        // write_file 已在执行前记录了可回滚信息，避免重复记录导致内存增长
+        if (tool.name !== 'write_file') {
+          this.addOperationRecord(taskId, {
+            id: operationId,
+            type: this.getOperationType(tool.name),
+            timestamp: Date.now(),
+            details: {
+              tool: tool.name,
+              params: this.sanitizeParams(params)
+            }
+          })
+        }
       }
 
       return result
     } catch (error: any) {
       // 记录失败的操作
-      this.operationRecords.get(taskId)?.push({
+      this.addOperationRecord(taskId, {
         id: operationId,
         type: this.getOperationType(tool.name),
         timestamp: Date.now(),
@@ -173,6 +191,16 @@ export class ToolExecutionEngine {
       })
 
       throw error
+    }
+  }
+
+  private addOperationRecord(taskId: string, record: OperationRecord): void {
+    const records = this.operationRecords.get(taskId)
+    if (!records) return
+
+    records.push(record)
+    if (records.length > this.maxRecordsPerTask) {
+      records.splice(0, records.length - this.maxRecordsPerTask)
     }
   }
 

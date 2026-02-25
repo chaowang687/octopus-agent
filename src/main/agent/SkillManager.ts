@@ -152,43 +152,61 @@ export class SkillManager {
   private skillUsageStats: Map<string, { count: number; lastUsed: number; successRate: number }> = new Map()
 
   constructor() {
-    this.dataPath = path.join(app.getPath('userData'), 'cognitive', 'skill_manager')
-    this.retrievalHistoryPath = path.join(this.dataPath, 'retrieval_history.json')
-    this.skillUsageStatsPath = path.join(this.dataPath, 'skill_usage_stats.json')
-    
-    this.ensureDirectories()
-    this.loadUsageStats()
+    this.dataPath = ''
+    this.retrievalHistoryPath = ''
+    this.skillUsageStatsPath = ''
+  }
+
+  /**
+   * 初始化技能管理器
+   */
+  initialize(): void {
+    if (!this.dataPath && app) {
+      this.dataPath = path.join(app.getPath('userData'), 'cognitive', 'skill_manager')
+      this.retrievalHistoryPath = path.join(this.dataPath, 'retrieval_history.json')
+      this.skillUsageStatsPath = path.join(this.dataPath, 'skill_usage_stats.json')
+      
+      this.ensureDirectories()
+      this.loadUsageStats()
+    }
   }
 
   private ensureDirectories(): void {
     try {
-      const parentDir = path.dirname(this.dataPath)
-      if (!fs.existsSync(parentDir)) {
-        try {
-          fs.mkdirSync(parentDir, { recursive: true, mode: 0o755 })
-        } catch (error) {
-          console.warn('SkillManager: 无法创建父目录，将使用内存存储', error)
-        }
+      if (!this.dataPath && app) {
+        this.dataPath = path.join(app.getPath('userData'), 'cognitive', 'skill_manager')
+        this.retrievalHistoryPath = path.join(this.dataPath, 'retrieval_history.json')
+        this.skillUsageStatsPath = path.join(this.dataPath, 'skill_usage_stats.json')
       }
-      if (!fs.existsSync(this.dataPath)) {
-        try {
-          fs.mkdirSync(this.dataPath, { recursive: true, mode: 0o755 })
-        } catch (error) {
-          console.warn('SkillManager: 无法创建数据目录，将使用内存存储', error)
+      if (this.dataPath) {
+        const parentDir = path.dirname(this.dataPath)
+        if (!fs.existsSync(parentDir)) {
+          try {
+            fs.mkdirSync(parentDir, { recursive: true, mode: 0o755 })
+          } catch (error) {
+            console.warn('SkillManager: 无法创建父目录，将使用内存存储', error)
+          }
         }
-      }
-      if (!fs.existsSync(this.retrievalHistoryPath)) {
-        try {
-          fs.writeFileSync(this.retrievalHistoryPath, JSON.stringify({ history: [] }), { mode: 0o644 })
-        } catch (error) {
-          console.warn('SkillManager: 无法创建检索历史文件，将使用内存存储', error)
+        if (!fs.existsSync(this.dataPath)) {
+          try {
+            fs.mkdirSync(this.dataPath, { recursive: true, mode: 0o755 })
+          } catch (error) {
+            console.warn('SkillManager: 无法创建数据目录，将使用内存存储', error)
+          }
         }
-      }
-      if (!fs.existsSync(this.skillUsageStatsPath)) {
-        try {
-          fs.writeFileSync(this.skillUsageStatsPath, JSON.stringify({ stats: {} }), { mode: 0o644 })
-        } catch (error) {
-          console.warn('SkillManager: 无法创建使用统计文件，将使用内存存储', error)
+        if (this.retrievalHistoryPath && !fs.existsSync(this.retrievalHistoryPath)) {
+          try {
+            fs.writeFileSync(this.retrievalHistoryPath, JSON.stringify({ history: [] }), { mode: 0o644 })
+          } catch (error) {
+            console.warn('SkillManager: 无法创建检索历史文件，将使用内存存储', error)
+          }
+        }
+        if (this.skillUsageStatsPath && !fs.existsSync(this.skillUsageStatsPath)) {
+          try {
+            fs.writeFileSync(this.skillUsageStatsPath, JSON.stringify({ stats: {} }), { mode: 0o644 })
+          } catch (error) {
+            console.warn('SkillManager: 无法创建使用统计文件，将使用内存存储', error)
+          }
         }
       }
     } catch (error) {
@@ -198,14 +216,24 @@ export class SkillManager {
 
   private loadUsageStats(): void {
     try {
-      const data = JSON.parse(fs.readFileSync(this.skillUsageStatsPath, 'utf8'))
-      const stats = data.stats || {}
-      
-      for (const [skillId, stat] of Object.entries(stats)) {
-        this.skillUsageStats.set(skillId, stat as any)
+      if (!this.skillUsageStatsPath) {
+        if (app) {
+          this.dataPath = path.join(app.getPath('userData'), 'cognitive', 'skill_manager')
+          this.skillUsageStatsPath = path.join(this.dataPath, 'skill_usage_stats.json')
+        } else {
+          return
+        }
       }
-      
-      console.log(`SkillManager: 加载技能使用统计 ${this.skillUsageStats.size} 条`)
+      if (this.skillUsageStatsPath && fs.existsSync(this.skillUsageStatsPath)) {
+        const data = JSON.parse(fs.readFileSync(this.skillUsageStatsPath, 'utf8'))
+        const stats = data.stats || {}
+        
+        for (const [skillId, stat] of Object.entries(stats)) {
+          this.skillUsageStats.set(skillId, stat as any)
+        }
+        
+        console.log(`SkillManager: 加载技能使用统计 ${this.skillUsageStats.size} 条`)
+      }
     } catch (error) {
       console.error('SkillManager: 加载使用统计失败', error)
     }
@@ -213,12 +241,22 @@ export class SkillManager {
 
   private saveUsageStats(): void {
     try {
-      const stats: Record<string, any> = {}
-      this.skillUsageStats.forEach((value, key) => {
-        stats[key] = value
-      })
-      
-      fs.writeFileSync(this.skillUsageStatsPath, JSON.stringify({ stats }, null, 2))
+      if (!this.skillUsageStatsPath) {
+        if (app) {
+          this.dataPath = path.join(app.getPath('userData'), 'cognitive', 'skill_manager')
+          this.skillUsageStatsPath = path.join(this.dataPath, 'skill_usage_stats.json')
+        } else {
+          return
+        }
+      }
+      if (this.skillUsageStatsPath) {
+        const stats: Record<string, any> = {}
+        this.skillUsageStats.forEach((value, key) => {
+          stats[key] = value
+        })
+        
+        fs.writeFileSync(this.skillUsageStatsPath, JSON.stringify({ stats }, null, 2))
+      }
     } catch (error) {
       console.error('SkillManager: 保存使用统计失败', error)
     }

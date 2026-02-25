@@ -1,15 +1,27 @@
-import { Plan, PlanStep } from './Planner'
 import { toolRegistry } from './ToolRegistry'
 import { llmService } from '../services/LLMService'
 import type { ToolContext } from './ToolRegistry'
 import { enhancedReActEngine } from './EnhancedReActEngine'
-import { VerificationEngine, type VerificationResult, type TaskVerificationContext } from './VerificationEngine'
+import { VerificationEngine, type TaskVerificationContext } from './VerificationEngine'
 import * as path from 'path'
 import { PATHS } from '../config/paths'
 import { config } from '../config/config'
 import { ErrorHandler, ErrorCategory } from '../utils/ErrorHandler'
 
+export interface PlanStep {
+  id: string
+  description: string
+  tool: string
+  parameters?: Record<string, any>
+  acceptanceCriteria?: string[]
+  expectedFiles?: string[]
+  verified?: boolean
+  verificationMessage?: string
+}
 
+export interface Plan {
+  steps: PlanStep[]
+}
 
 export interface ExecutionResult {
   success: boolean

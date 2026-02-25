@@ -1,5 +1,3 @@
-import * as fs from 'fs'
-import * as path from 'path'
 import { DocumentManager, DocumentTemplate, DocumentMetadata } from './DocumentManager'
 import { toolRegistry } from '../ToolRegistry'
 
@@ -601,4 +599,3 @@ toolRegistry.register({
 })
 
 console.log('[DevTools] Document management tools loaded')
-

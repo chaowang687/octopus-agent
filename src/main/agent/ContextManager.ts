@@ -32,17 +32,28 @@ interface SearchResult {
 export class ContextManager {
   private sources: Map<string, ContextSource> = new Map()
   private chunks: Map<string, Chunk> = new Map()
-  private indexPath: string
+  private indexPath: string = ''
   private maxContextSize: number = 500000
 
   constructor() {
-    this.indexPath = path.join(app.getPath('userData'), 'context-index')
-    this.ensureIndexDirectory()
+  }
+
+  /**
+   * 初始化上下文管理器
+   */
+  initialize(): void {
+    if (!this.indexPath && app) {
+      this.indexPath = path.join(app.getPath('userData'), 'context-index')
+      this.ensureIndexDirectory()
+    }
   }
 
   private ensureIndexDirectory() {
     try {
-      if (!fs.existsSync(this.indexPath)) {
+      if (!this.indexPath && app) {
+        this.indexPath = path.join(app.getPath('userData'), 'context-index')
+      }
+      if (this.indexPath && !fs.existsSync(this.indexPath)) {
         try {
           fs.mkdirSync(this.indexPath, { recursive: true, mode: 0o755 })
         } catch (error) {

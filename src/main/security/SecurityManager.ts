@@ -1,3 +1,5 @@
+import * as path from 'path'
+
 export interface SecurityConfig {
   enableSandbox: boolean
   enableWebSecurity: boolean
@@ -88,7 +90,5 @@ export class SecurityManager {
     this.config = { ...this.config, ...updates }
   }
 }
-
-import * as path from 'path'
 
 export const securityManager = new SecurityManager()

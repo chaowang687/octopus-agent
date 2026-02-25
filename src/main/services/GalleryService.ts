@@ -14,16 +14,39 @@ export interface GalleryItem {
 }
 
 export class GalleryService {
+  private isInitialized: boolean = false
+  private rootDir: string = ''
+  private imagesDir: string = ''
+  private indexPath: string = ''
+
+  initialize(): void {
+    if (!this.isInitialized && app) {
+      this.rootDir = path.join(app.getPath('userData'), 'gallery')
+      this.imagesDir = path.join(this.rootDir, 'images')
+      this.indexPath = path.join(this.rootDir, 'index.json')
+      this.isInitialized = true
+    }
+  }
+
+  private checkInitialized(): void {
+    if (!this.isInitialized) {
+      throw new Error('GalleryService not initialized. Call initialize() first.')
+    }
+  }
+
   private getRootDir() {
-    return path.join(app.getPath('userData'), 'gallery')
+    this.checkInitialized()
+    return this.rootDir
   }
 
   private getImagesDir() {
-    return path.join(this.getRootDir(), 'images')
+    this.checkInitialized()
+    return this.imagesDir
   }
 
   private getIndexPath() {
-    return path.join(this.getRootDir(), 'index.json')
+    this.checkInitialized()
+    return this.indexPath
   }
 
   private ensure() {

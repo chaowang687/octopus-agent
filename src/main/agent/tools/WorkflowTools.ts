@@ -270,7 +270,7 @@ const boxNodeTool: ToolDefinition = {
     } = args
     
     let inputContents: string[] = []
-    const generatedDocs: any = {}
+    const generatedDocs: Record<string, string> = {}
     
     try {
       // 1. 读取所有输入文件
@@ -286,13 +286,14 @@ const boxNodeTool: ToolDefinition = {
       }
       
       const inputText = inputContents.length > 0 ? inputContents.join('\n\n') : '请生成一份通用产品开发需求文档'
+      const globalRulePrefix = `整体任务：${title}\n总体处理规则：${processingRule}\n\n`
       
       // 2. 定义各个角色的生成指令
       const rolePrompts = {
         uiDesigner: {
           name: 'UI设计师',
           system: '你是一位资深的UI/UX设计师，擅长创建美观、易用的界面设计',
-          prompt: `请根据以下需求，生成UI设计师专用的设计文档：
+          prompt: `${globalRulePrefix}请根据以下需求，生成UI设计师专用的设计文档：
 ${inputText}
 
 请生成：
@@ -309,7 +310,7 @@ ${inputText}
         architect: {
           name: '架构师',
           system: '你是一位资深的系统架构师，擅长设计高可用、可扩展的系统架构',
-          prompt: `请根据以下需求，生成架构师专用的系统架构设计文档：
+          prompt: `${globalRulePrefix}请根据以下需求，生成架构师专用的系统架构设计文档：
 ${inputText}
 
 请生成：
@@ -327,7 +328,7 @@ ${inputText}
         frontend: {
           name: '前端工程师',
           system: '你是一位资深的前端工程师，擅长创建优秀的用户界面和交互体验',
-          prompt: `请根据以下需求，生成前端工程师专用的实现文档：
+          prompt: `${globalRulePrefix}请根据以下需求，生成前端工程师专用的实现文档：
 ${inputText}
 
 请生成：
@@ -345,7 +346,7 @@ ${inputText}
         backend: {
           name: '后端工程师',
           system: '你是一位资深的后端工程师，擅长构建稳定高效的服务端系统',
-          prompt: `请根据以下需求，生成后端工程师专用的实现文档：
+          prompt: `${globalRulePrefix}请根据以下需求，生成后端工程师专用的实现文档：
 ${inputText}
 
 请生成：
@@ -363,7 +364,7 @@ ${inputText}
         qa: {
           name: '测试工程师',
           system: '你是一位资深的测试工程师，擅长设计全面的测试方案',
-          prompt: `请根据以下需求，生成测试工程师专用的测试文档：
+          prompt: `${globalRulePrefix}请根据以下需求，生成测试工程师专用的测试文档：
 ${inputText}
 
 请生成：
@@ -419,7 +420,7 @@ ${inputText}
       // 5. 返回结果
       return {
         success: true,
-        message: '框智能体处理完成',
+        message: `${title}处理完成`,
         uiDoc: generatedDocs.uiDesigner,
         architectDoc: generatedDocs.architect,
         frontendDoc: generatedDocs.frontend,

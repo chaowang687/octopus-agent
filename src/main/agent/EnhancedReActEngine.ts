@@ -4,7 +4,7 @@
  */
 
 import { EventEmitter } from 'events'
-import { ReActStep, ReActStepType, ReActTrace } from './ReActEngine'
+import { ReActStep, ReActTrace, ReActStepType } from './ReActEngine'
 
 // ============================================
 // 增强的反思结果

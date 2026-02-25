@@ -1,6 +1,79 @@
 import { ipcMain, dialog } from 'electron'
-import { execSync } from 'child_process'
 import * as si from 'systeminformation'
+import { executeAsync } from '../../utils/AsyncCommandExecutor'
+
+class CommandLimiter {
+  private active = 0
+  private queue: Array<() => void> = []
+
+  constructor(private readonly maxConcurrent: number) {}
+
+  async run<T>(task: () => Promise<T>): Promise<T> {
+    await this.acquire()
+    try {
+      return await task()
+    } finally {
+      this.release()
+    }
+  }
+
+  async runWithMeta<T>(task: () => Promise<T>): Promise<{
+    result: T
+    queuedMs: number
+    startedAt: number
+    finishedAt: number
+  }> {
+    const queuedAt = Date.now()
+    await this.acquire()
+    const startedAt = Date.now()
+    try {
+      const result = await task()
+      const finishedAt = Date.now()
+      return {
+        result,
+        queuedMs: startedAt - queuedAt,
+        startedAt,
+        finishedAt
+      }
+    } finally {
+      this.release()
+    }
+  }
+
+  private acquire(): Promise<void> {
+    if (this.active < this.maxConcurrent) {
+      this.active += 1
+      return Promise.resolve()
+    }
+
+    return new Promise(resolve => {
+      this.queue.push(() => {
+        this.active += 1
+        resolve()
+      })
+    })
+  }
+
+  private release(): void {
+    this.active -= 1
+    const next = this.queue.shift()
+    if (next) {
+      next()
+    }
+  }
+}
+
+const commandLimiter = new CommandLimiter(4)
+const MAX_COMMAND_OUTPUT = 200 * 1024
+
+function finalizeCommandOutput(raw: string): { text: string; truncated: boolean } {
+  if (raw.length <= MAX_COMMAND_OUTPUT) {
+    return { text: raw, truncated: false }
+  }
+
+  const text = `${raw.slice(0, MAX_COMMAND_OUTPUT)}\n\n[output truncated]`
+  return { text, truncated: true }
+}
 
 // 系统相关的 IPC 处理器
 export function registerSystemHandlers() {
@@ -20,6 +93,11 @@ export function registerSystemHandlers() {
   ipcMain.handle('system:captureScreen', async () => {
     try {
       const { desktopCapturer } = require('electron')
+      
+      if (!desktopCapturer || !desktopCapturer.getSources) {
+        return { success: false, error: 'Desktop capturer not available' }
+      }
+      
       const sources = await desktopCapturer.getSources({ types: ['screen'] })
       
       if (sources.length > 0) {
@@ -34,10 +112,33 @@ export function registerSystemHandlers() {
   })
 
   // 执行命令
-  ipcMain.handle('system:executeCommand', (_, command: string, args: string[]) => {
+  ipcMain.handle('system:executeCommand', async (_, command: string, args: string[]) => {
     try {
-      const result = execSync(`${command} ${args.join(' ')}`, { encoding: 'utf8' })
-      return { success: true, output: result }
+      const cmd = `${command} ${(args || []).join(' ')}`.trim()
+      const { result, queuedMs, startedAt, finishedAt } = await commandLimiter.runWithMeta(() =>
+        executeAsync(cmd, { timeout: 60000, maxBuffer: MAX_COMMAND_OUTPUT })
+      )
+      if (result.success) {
+        const finalized = finalizeCommandOutput(result.stdout)
+        return {
+          success: true,
+          output: finalized.text,
+          truncated: finalized.truncated,
+          queuedMs,
+          startedAt,
+          finishedAt
+        }
+      }
+      const finalized = finalizeCommandOutput(result.stderr || result.stdout)
+      return {
+        success: false,
+        error: finalized.text,
+        exitCode: result.exitCode,
+        truncated: finalized.truncated,
+        queuedMs,
+        startedAt,
+        finishedAt
+      }
     } catch (error: any) {
       console.error('执行命令失败:', error)
       return { success: false, error: error.message }
@@ -45,11 +146,33 @@ export function registerSystemHandlers() {
   })
 
   // 执行复杂命令
-  ipcMain.handle('system:executeComplexCommand', (_, command: string, options?: any) => {
+  ipcMain.handle('system:executeComplexCommand', async (_, command: string, options?: any) => {
     try {
-      const { cwd = process.cwd() } = options || {}
-      const result = execSync(command, { encoding: 'utf8', cwd })
-      return { success: true, output: result }
+      const { cwd = process.cwd(), timeout = 120000 } = options || {}
+      const { result, queuedMs, startedAt, finishedAt } = await commandLimiter.runWithMeta(() =>
+        executeAsync(command, { cwd, timeout, maxBuffer: MAX_COMMAND_OUTPUT })
+      )
+      if (result.success) {
+        const finalized = finalizeCommandOutput(result.stdout)
+        return {
+          success: true,
+          output: finalized.text,
+          truncated: finalized.truncated,
+          queuedMs,
+          startedAt,
+          finishedAt
+        }
+      }
+      const finalized = finalizeCommandOutput(result.stderr || result.stdout)
+      return {
+        success: false,
+        error: finalized.text,
+        exitCode: result.exitCode,
+        truncated: finalized.truncated,
+        queuedMs,
+        startedAt,
+        finishedAt
+      }
     } catch (error: any) {
       console.error('执行复杂命令失败:', error)
       return { success: false, error: error.message }
@@ -57,10 +180,36 @@ export function registerSystemHandlers() {
   })
 
   // 执行 Shell 脚本
-  ipcMain.handle('system:executeShellScript', (_, script: string, cwd?: string) => {
+  ipcMain.handle('system:executeShellScript', async (_, script: string, cwd?: string) => {
     try {
-      const result = execSync(script, { encoding: 'utf8', cwd: cwd || process.cwd() })
-      return { success: true, output: result }
+      const { result, queuedMs, startedAt, finishedAt } = await commandLimiter.runWithMeta(() =>
+        executeAsync(script, {
+          cwd: cwd || process.cwd(),
+          timeout: 120000,
+          maxBuffer: MAX_COMMAND_OUTPUT
+        })
+      )
+      if (result.success) {
+        const finalized = finalizeCommandOutput(result.stdout)
+        return {
+          success: true,
+          output: finalized.text,
+          truncated: finalized.truncated,
+          queuedMs,
+          startedAt,
+          finishedAt
+        }
+      }
+      const finalized = finalizeCommandOutput(result.stderr || result.stdout)
+      return {
+        success: false,
+        error: finalized.text,
+        exitCode: result.exitCode,
+        truncated: finalized.truncated,
+        queuedMs,
+        startedAt,
+        finishedAt
+      }
     } catch (error: any) {
       console.error('执行脚本失败:', error)
       return { success: false, error: error.message }

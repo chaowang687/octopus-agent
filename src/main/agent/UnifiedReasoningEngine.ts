@@ -4,7 +4,7 @@
  */
 
 import { EventEmitter } from 'events'
-import { ReActStepType, ReActTrace, ReActOptions } from './ReActEngine'
+import { ReActOptions, ReActTrace, ReActStepType } from './ReActEngine'
 import { EnhancedReActEngine, EnhancedReflection } from './EnhancedReActEngine'
 import { ThoughtTreeEngine, ThoughtTree, ToTOptions } from './ThoughtTreeEngine'
 
@@ -279,7 +279,7 @@ export class UnifiedReasoningEngine extends EventEmitter {
     
     return {
       mode: ReasoningMode.REACT,
-      success: trace.success,
+      success: !!trace.success,
       answer: trace.finalAnswer,
       trace,
       confidence: trace.success ? 0.7 : 0.3,
@@ -334,7 +334,7 @@ export class UnifiedReasoningEngine extends EventEmitter {
     
     return {
       mode: ReasoningMode.ENHANCED_REACT,
-      success: trace.success,
+      success: !!trace.success,
       answer: trace.finalAnswer,
       trace,
       reflections,

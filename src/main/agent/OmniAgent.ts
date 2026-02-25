@@ -224,9 +224,20 @@ class ProjectContextManager {
   private contextFile: string
 
   constructor() {
+    this.contextFile = ''
+  }
+
+  /**
+   * 初始化项目上下文管理器
+   */
+  initialize(): void {
     let userDataPath
     try {
-      userDataPath = app.getPath('userData')
+      if (app) {
+        userDataPath = app.getPath('userData')
+      } else {
+        userDataPath = process.cwd()
+      }
     } catch (error) {
       console.warn('Failed to get userData path for ProjectContextManager, using current directory:', error)
       userDataPath = process.cwd()
@@ -237,7 +248,10 @@ class ProjectContextManager {
 
   private loadProjects(): void {
     try {
-      if (fs.existsSync(this.contextFile)) {
+      if (!this.contextFile) {
+        this.initialize()
+      }
+      if (this.contextFile && fs.existsSync(this.contextFile)) {
         const data = fs.readFileSync(this.contextFile, 'utf8')
         const projects = JSON.parse(data)
         this.projects = new Map(Object.entries(projects))
@@ -249,8 +263,13 @@ class ProjectContextManager {
 
   private saveProjects(): void {
     try {
-      const projects = Object.fromEntries(this.projects)
-      fs.writeFileSync(this.contextFile, JSON.stringify(projects, null, 2))
+      if (!this.contextFile) {
+        this.initialize()
+      }
+      if (this.contextFile) {
+        const projects = Object.fromEntries(this.projects)
+        fs.writeFileSync(this.contextFile, JSON.stringify(projects, null, 2))
+      }
     } catch (error) {
       console.error('[ProjectContextManager] 保存项目上下文失败:', error)
     }

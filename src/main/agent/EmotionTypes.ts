@@ -175,17 +175,39 @@ export class EmotionProcessor {
   // ]
 
   constructor() {
+    this.dataPath = ''
+  }
+
+  /**
+   * 初始化情绪处理器
+   */
+  initialize(): void {
     try {
-      this.dataPath = path.join(app.getPath('userData'), 'cognitive', 'emotion')
+      if (!this.dataPath && app) {
+        this.dataPath = path.join(app.getPath('userData'), 'cognitive', 'emotion')
+        this.ensureDirectories()
+      }
     } catch (error) {
       console.warn('Failed to get userData path for EmotionProcessor, using current directory:', error)
       this.dataPath = path.join(process.cwd(), 'cognitive', 'emotion')
+      this.ensureDirectories()
     }
-    this.ensureDirectories()
   }
 
   private ensureDirectories(): void {
-    if (!fs.existsSync(this.dataPath)) {
+    if (!this.dataPath) {
+      try {
+        if (app) {
+          this.dataPath = path.join(app.getPath('userData'), 'cognitive', 'emotion')
+        } else {
+          this.dataPath = path.join(process.cwd(), 'cognitive', 'emotion')
+        }
+      } catch (error) {
+        console.warn('Failed to get data path for EmotionProcessor, using current directory:', error)
+        this.dataPath = path.join(process.cwd(), 'cognitive', 'emotion')
+      }
+    }
+    if (this.dataPath && !fs.existsSync(this.dataPath)) {
       fs.mkdirSync(this.dataPath, { recursive: true })
     }
   }

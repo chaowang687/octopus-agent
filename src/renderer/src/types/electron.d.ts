@@ -122,7 +122,21 @@ export interface ElectronAPI {
     executeWorkflow: (workflow: any) => Promise<any>
     pauseWorkflow: () => Promise<any>
     resumeWorkflow: () => Promise<any>
+    stopWorkflow: () => Promise<any>
     getWorkflowStatus: () => Promise<any>
+    executeWorkflowWithHistory: (workflow: any) => Promise<any>
+    getExecutionHistory: () => Promise<any>
+    getExecutionHistoryDetail: (executionId: string) => Promise<any>
+    clearExecutionHistory: () => Promise<any>
+    rerunWorkflow: (executionId: string) => Promise<any>
+    onNodeProgress: (callback: (status: {
+      nodeId: string
+      status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped'
+      progress: number
+      message?: string
+      startTime?: number
+      endTime?: number
+    }) => void) => () => void
     saveWorkflow: (workflow: any) => Promise<any>
     saveWorkflowAsFile: (workflow: any) => Promise<any>
     loadWorkflowFromFile: () => Promise<any>

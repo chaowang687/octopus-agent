@@ -1,6 +1,5 @@
 import { toolRegistry } from './ToolRegistry'
 import { taskLogger } from './TaskLogger'
-import { LLMService } from '../services/LLMService'
 
 // 类型定义，避免直接依赖reactflow
 export interface Node {
@@ -50,59 +49,96 @@ export class EnhancedWorkflowEngine {
   private errors: string[] = []
   private isPaused: boolean = false
   private pausePromise: { resolve: () => void } | null = null
-  private llmService: LLMService
 
   constructor(nodes: Node[], edges: Edge[]) {
     this.nodes = nodes
     this.edges = edges
-    this.llmService = new LLMService()
   }
 
   // 执行工作流
   async execute(taskId: string = `workflow_${Date.now()}`): Promise<WorkflowResult> {
+    // 确保数组和对象正确初始化
+    this.executionResults = this.executionResults || {}
+    this.errors = this.errors || []
     this.status = WorkflowStatus.RUNNING
-    this.executionResults = {}
-    this.errors = []
 
     try {
+      console.log(`[EnhancedWorkflowEngine] 开始执行工作流，节点数: ${this.nodes?.length || 0}, 边数: ${this.edges?.length || 0}`)
+
+      if (!this.nodes || this.nodes.length === 0) {
+        throw new Error('工作流没有节点')
+      }
+
       // 记录工作流开始
-      taskLogger.startTask({
-        taskId,
-        projectName: 'Workflow Execution',
-        instruction: 'Workflow execution initiated',
-        originalInstruction: 'Workflow execution initiated',
-        taskDir: './temp'
-      })
+      try {
+        taskLogger.startTask({
+          taskId,
+          projectName: 'Workflow Execution',
+          instruction: 'Workflow execution initiated',
+          originalInstruction: 'Workflow execution initiated',
+          taskDir: './temp'
+        })
+      } catch (e) {
+        console.warn('[EnhancedWorkflowEngine] 记录日志失败:', e)
+      }
 
       // 按拓扑顺序执行节点
       const executionOrder = this.getExecutionOrder()
+      console.log(`[EnhancedWorkflowEngine] 执行顺序: ${executionOrder.join(' -> ')}`)
 
       for (const nodeId of executionOrder) {
         const node = this.nodes.find(n => n.id === nodeId)
-        if (!node) continue
+        if (!node) {
+          console.warn(`[EnhancedWorkflowEngine] 跳过未找到的节点: ${nodeId}`)
+          continue
+        }
 
-        await this.executeNode(node)
+        try {
+          await this.executeNode(node)
+        } catch (nodeError) {
+          console.error(`[EnhancedWorkflowEngine] 节点 ${node.id} 执行失败:`, nodeError)
+          // 继续执行而不是中断
+          this.errors = this.errors || []
+          this.errors.push(`节点 ${node.id} 执行失败: ${(nodeError as Error).message}`)
+        }
       }
 
-      this.status = WorkflowStatus.COMPLETED
+      this.status = this.errors && this.errors.length > 0 ? WorkflowStatus.FAILED : WorkflowStatus.COMPLETED
+      
+      console.log(`[EnhancedWorkflowEngine] 工作流执行完成，状态: ${this.status}, 错误数: ${this.errors?.length || 0}`)
       
       // 记录工作流完成
-      taskLogger.endTask('completed')
+      try {
+        taskLogger.endTask(this.status === WorkflowStatus.COMPLETED ? 'completed' : 'failed')
+      } catch (e) {
+        console.warn('[EnhancedWorkflowEngine] 记录日志失败:', e)
+      }
       
       return {
         status: this.status,
-        outputs: this.executionResults
+        outputs: this.executionResults || {},
+        errors: this.errors
       }
     } catch (error) {
       this.status = WorkflowStatus.FAILED
-      this.errors.push((error as Error).message)
+      const errorMsg = (error as Error).message
+      
+      // 确保errors数组存在
+      this.errors = this.errors || []
+      this.errors.push(errorMsg)
+      
+      console.error('[EnhancedWorkflowEngine] 工作流执行失败:', error)
       
       // 记录工作流失败
-      taskLogger.endTask('failed')
+      try {
+        taskLogger.endTask('failed')
+      } catch (e) {
+        console.warn('[EnhancedWorkflowEngine] 记录日志失败:', e)
+      }
       
       return {
         status: this.status,
-        outputs: this.executionResults,
+        outputs: this.executionResults || {},
         errors: this.errors
       }
     }
@@ -110,40 +146,46 @@ export class EnhancedWorkflowEngine {
 
   // 执行单个节点
   private async executeNode(node: Node): Promise<void> {
+    // 确保errors数组存在
+    this.errors = this.errors || []
+    
     // 检查是否暂停
     await this.checkPause()
     
     const nodeData = node.data as any
     const toolName = this.getToolNameFromNodeType(nodeData.type)
+    
+    console.log(`[EnhancedWorkflowEngine] 执行节点: ${node.id}, 类型: ${nodeData.type}, 工具: ${toolName}`)
+    
     const tool = toolRegistry.getTool(toolName)
 
     if (!tool) {
       const errorMsg = `工具 ${toolName} 未注册`
       this.errors.push(errorMsg)
-      taskLogger.addLog({
-        type: 'error',
-        level: 'error',
-        category: 'workflow',
-        message: errorMsg,
-        details: { nodeId: node.id, toolName }
-      })
+      console.error(`[EnhancedWorkflowEngine] ${errorMsg}`)
+      try {
+        taskLogger.logError(errorMsg, { nodeId: node.id, toolName })
+      } catch (e) {
+        console.warn('[EnhancedWorkflowEngine] 记录日志失败:', e)
+      }
       return
     }
 
     // 获取输入参数
     const inputs = this.getNodeInputs(node.id)
-    
+    console.log(`[EnhancedWorkflowEngine] 节点输入参数:`, inputs)
+
     // 记录节点开始执行
-    taskLogger.startAgent({
-      agentId: node.id,
-      agentName: nodeData.label || node.id,
-      agentType: nodeData.type,
-      inputs: inputs,
-      context: {
-        nodeType: nodeData.type,
-        nodePosition: node.position
-      }
-    })
+    try {
+      taskLogger.startAgent({
+        agentId: node.id,
+        agentName: nodeData.label || node.id,
+        agentRole: nodeData.type || node.type || 'workflow_node',
+        iterationNumber: 1
+      })
+    } catch (e) {
+      console.warn('[EnhancedWorkflowEngine] 记录日志失败:', e)
+    }
 
     console.log(`执行节点 ${node.id} (${toolName})，输入参数:`, inputs)
 
@@ -163,22 +205,20 @@ export class EnhancedWorkflowEngine {
         }
       }
 
-      // 特殊处理prompt节点，记录大模型调用
+      // 特殊处理prompt节点
       if (nodeData.type === 'prompt') {
-        // 如果prompt节点涉及大模型调用，记录相关信息
-        if (nodeData.input) {
-          taskLogger.logLLMCall({
-            model: nodeData.model || 'qwen3',
-            latency: 0, // 实际延迟会在调用后记录
-            success: true,
-            promptTokens: nodeData.input.length,
-            completionTokens: 0
-          })
+        toolArgs = {
+          input: nodeData.input || '',
+          model: nodeData.model || 'qwen3',
+          systemPrompt: nodeData.systemPrompt || '',
+          ...inputs
         }
+        console.log(`[EnhancedWorkflowEngine] Prompt节点参数:`, { model: toolArgs.model, inputLength: toolArgs.input.length })
       }
 
       // 调用工具
       const startTime = Date.now()
+      console.log(`[EnhancedWorkflowEngine] 开始执行工具: ${toolName}`)
       const result = await tool.handler(toolArgs)
       const endTime = Date.now()
       const latency = endTime - startTime
@@ -186,23 +226,29 @@ export class EnhancedWorkflowEngine {
       this.executionResults[node.id] = result
       
       // 记录节点执行成功
-      taskLogger.endAgent(node.id, 'completed', {
-        outputs: result,
-        duration: latency,
-        success: true
-      })
+      try {
+        const normalizedResult = typeof result === 'string' ? result : JSON.stringify(result)
+        taskLogger.endAgent(node.id, 'completed', {
+          messages: [`latency=${latency}ms`, normalizedResult]
+        })
+      } catch (e) {
+        console.warn('[EnhancedWorkflowEngine] 记录日志失败:', e)
+      }
       
-      console.log(`节点 ${node.id} 执行成功，结果:`, result)
+      console.log(`节点 ${node.id} 执行成功，结果:`, typeof result === 'string' ? result.substring(0, 100) + '...' : result)
     } catch (error) {
       const errorMsg = `节点 ${node.id} 执行失败: ${(error as Error).message}`
       this.errors.push(errorMsg)
-      console.error(errorMsg)
+      console.error(`[EnhancedWorkflowEngine] ${errorMsg}`, error)
       
       // 记录节点执行失败
-      taskLogger.endAgent(node.id, 'failed', {
-        error: (error as Error).message,
-        success: false
-      })
+      try {
+        taskLogger.endAgent(node.id, 'failed', {
+          messages: [(error as Error).message]
+        })
+      } catch (e) {
+        console.warn('[EnhancedWorkflowEngine] 记录日志失败:', e)
+      }
     }
   }
 
@@ -289,9 +335,19 @@ export class EnhancedWorkflowEngine {
       case 'functionalTester':
         return 'functional_tester'
       case 'boxNode':
-        return 'box_agent'
+        return 'box_node'
       case 'prompt':
-        return 'prompt_tool' // 假设存在这样的工具
+        return 'prompt_node'
+      case 'productDoc':
+        return 'product_doc'
+      case 'designDoc':
+        return 'design_doc'
+      case 'uiInterface':
+        return 'ui_interface'
+      case 'codeFile':
+        return 'code_file'
+      case 'projectSpec':
+        return 'project_spec'
       default:
         return nodeType
     }

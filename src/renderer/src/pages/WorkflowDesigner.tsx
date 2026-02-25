@@ -97,6 +97,10 @@ interface CustomNodeData {
     docLabel: string
     status: 'waiting' | 'received'
   }[]
+  // 执行状态
+  status?: 'pending' | 'running' | 'completed' | 'failed' | 'skipped'
+  progress?: number
+  statusMessage?: string
 }
 
 // 节点模板
@@ -201,10 +205,31 @@ const CustomNode = ({ data, selected, onOutputDocClick, onAutoConnect, connected
             justifyContent: 'center',
             gap: '8px'
           }}
-          onClick={handlePromptOutputClick}  // 添加点击事件以输出markdown内容
+          onClick={handlePromptOutputClick}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             💬 {data.label}
+            {/* 执行状态指示器 */}
+            {data.status && data.status !== 'pending' && (
+              <span style={{
+                fontSize: '10px',
+                padding: '2px 6px',
+                borderRadius: '8px',
+                backgroundColor: data.status === 'running' ? '#f59e0b' : 
+                               data.status === 'completed' ? '#10b981' : 
+                               data.status === 'failed' ? '#ef4444' : '#6b7280',
+                color: 'white',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '2px'
+              }}>
+                {data.status === 'running' && '⚡'}
+                {data.status === 'completed' && '✓'}
+                {data.status === 'failed' && '✗'}
+                {data.status === 'skipped' && '⏭'}
+                {data.status === 'running' ? `${data.progress || 0}%` : ''}
+              </span>
+            )}
             {connectedOutputs && connectedOutputs.length > 0 && (
               <span style={{ fontSize: '12px', opacity: 0.8 }}> ({connectedOutputs.length}) </span>
             )}
@@ -552,7 +577,37 @@ const CustomNode = ({ data, selected, onOutputDocClick, onAutoConnect, connected
         justifyContent: 'center',
         gap: '8px'
       }}>
-        {data.label}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {data.label}
+          {/* 执行状态指示器 */}
+          {data.status && data.status !== 'pending' && (
+            <span style={{
+              fontSize: '12px',
+              padding: '2px 8px',
+              borderRadius: '10px',
+              backgroundColor: data.status === 'running' ? '#f59e0b' : 
+                             data.status === 'completed' ? '#10b981' : 
+                             data.status === 'failed' ? '#ef4444' : '#6b7280',
+              color: 'white',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}>
+              {data.status === 'running' && '⚡'}
+              {data.status === 'completed' && '✓'}
+              {data.status === 'failed' && '✗'}
+              {data.status === 'skipped' && '⏭'}
+              {data.status === 'running' ? `${data.progress || 0}%` : data.status}
+            </span>
+          )}
+          {/* Running状态下的加载动画 */}
+          {data.status === 'running' && (
+            <span style={{
+              animation: 'spin 1s linear infinite',
+              fontSize: '14px'
+            }}>🔄</span>
+          )}
+        </div>
         
         {/* 智能体节点的内容物状态显示 */}
         {data.incomingContent && data.incomingContent.length > 0 && (
@@ -647,6 +702,66 @@ const WorkflowDesignerInner = () => {
   const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false)
   const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(false)
 
+  // 添加日志
+  const addLog = (type: 'info' | 'success' | 'error', message: string) => {
+    setLogs(prev => [...prev, { type, message, timestamp: Date.now() }])
+  }
+
+  // 节点执行进度状态
+  const [nodeProgress, setNodeProgress] = useState<Record<string, {
+    status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped'
+    progress: number
+    message?: string
+  }>>({})
+
+  // 监听节点执行进度
+  useEffect(() => {
+    const unsubscribe = window.electron.agent.onNodeProgress((status) => {
+      console.log('[WorkflowDesigner] 节点进度更新:', status)
+      setNodeProgress(prev => ({
+        ...prev,
+        [status.nodeId]: {
+          status: status.status,
+          progress: status.progress,
+          message: status.message
+        }
+      }))
+      
+      // 更新对应节点的显示状态
+      setNodes((nds) =>
+        nds.map((node) => {
+          if (node.id === status.nodeId) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                status: status.status,
+                progress: status.progress,
+                statusMessage: status.message
+              }
+            }
+          }
+          return node
+        })
+      )
+      
+      // 根据状态添加日志
+      if (status.status === 'running') {
+        addLog('info', `节点 "${status.nodeId}" 开始执行...`)
+      } else if (status.status === 'completed') {
+        addLog('success', `节点 "${status.nodeId}" 执行完成`)
+      } else if (status.status === 'failed') {
+        addLog('error', `节点 "${status.nodeId}" 执行失败: ${status.message}`)
+      } else if (status.status === 'skipped') {
+        addLog('info', `节点 "${status.nodeId}" 已跳过`)
+      }
+    })
+    
+    return () => {
+      unsubscribe()
+    }
+  }, [setNodes, addLog])
+
   // 监听edges变化，更新智能体节点的内容物状态
   useEffect(() => {
     // 文档类型映射
@@ -696,11 +811,6 @@ const WorkflowDesignerInner = () => {
       content: docContent
     })
   }, [])
-
-  // 添加日志
-  const addLog = (type: 'info' | 'success' | 'error', message: string) => {
-    setLogs(prev => [...prev, { type, message, timestamp: Date.now() }])
-  }
 
   // 处理自动连接
   const handleAutoConnect = useCallback((docKey: string, nodePosition: { x: number, y: number }) => {
@@ -1215,6 +1325,28 @@ const WorkflowDesignerInner = () => {
     }
   }
 
+  // 停止工作流
+  const handleStopWorkflow = async () => {
+    try {
+      const result = await window.electron.agent.stopWorkflow()
+      if (result.success) {
+        setIsExecuting(false)
+        setIsPaused(false)
+        addLog('info', '工作流已停止')
+        // 更新节点状态
+        setNodes((nds) => nds.map((node) => ({
+          ...node,
+          data: { ...node.data, status: 'stopped' }
+        })))
+      } else {
+        addLog('error', `停止失败: ${result.error}`)
+      }
+    } catch (error) {
+      console.error('停止工作流失败:', error)
+      addLog('error', `停止工作流失败: ${error}`)
+    }
+  }
+
   // 手动保存工作流
   const handleSaveWorkflow = async () => {
     try {
@@ -1516,6 +1648,21 @@ const WorkflowDesignerInner = () => {
               }}
             >
               恢复
+            </button>
+            <button 
+              onClick={handleStopWorkflow}
+              disabled={!isExecuting}
+              style={{ 
+                padding: '8px 16px',
+                backgroundColor: isExecuting ? '#ef4444' : '#fca5a5',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: !isExecuting ? 'not-allowed' : 'pointer',
+                fontSize: '14px'
+              }}
+            >
+              停止
             </button>
             <button 
               onClick={handleLoadWorkflow}

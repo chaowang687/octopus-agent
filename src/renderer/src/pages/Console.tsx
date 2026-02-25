@@ -21,6 +21,16 @@ interface OpenFile {
   language: string
 }
 
+interface CommandExecResult {
+  success: boolean
+  output?: string
+  error?: string
+  queuedMs?: number
+  startedAt?: number
+  finishedAt?: number
+  truncated?: boolean
+}
+
 interface ConsoleTab {
   id: string
   name: string
@@ -388,8 +398,14 @@ const Console: React.FC = () => {
           } else {
             const execCmd = args[1]
             const execArgs = args.slice(2)
-            const res = await window.electron.system.executeCommand(execCmd, execArgs)
-            addOutput('output', res.success ? res.output : 'Error: ' + res.error)
+            const res = await window.electron.system.executeCommand(execCmd, execArgs) as CommandExecResult
+            if (typeof res.queuedMs === 'number') {
+              addOutput('info', `⏱ queue ${res.queuedMs}ms`)
+            }
+            addOutput('output', res.success ? (res.output || '') : 'Error: ' + (res.error || 'unknown'))
+            if (res.truncated) {
+              addOutput('info', 'Output truncated to protect UI performance.')
+            }
           }
           break
         case 'search':
@@ -1171,9 +1187,9 @@ const Console: React.FC = () => {
                 whiteSpace: 'pre-wrap', 
                 marginBottom: '4px', 
                 lineHeight: '1.5',
-                color: (line.type === 'input' ? '#22c55e' : 
+                color: line.type === 'input' ? '#22c55e' : 
                        line.type === 'error' ? '#ef4444' : 
-                       line.type === 'info' ? '#6b7280' : '#d1d5db') as const
+                       line.type === 'info' ? '#6b7280' : '#d1d5db'
               }}
             >
               {line.content}

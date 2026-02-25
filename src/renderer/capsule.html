@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>悬浮胶囊</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    .capsule-container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      user-select: none;
+      -webkit-app-region: drag;
+    }
+
+    .capsule {
+      width: 80%;
+      height: 80%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .capsule:hover {
+      transform: scale(1.1);
+      box-shadow: 0 6px 30px rgba(0, 0, 0, 0.4);
+    }
+
+    .capsule::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.1) 50%, transparent 70%);
+      animation: shimmer 3s infinite;
+    }
+
+    @keyframes shimmer {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+
+    .capsule-icon {
+      width: 60%;
+      height: 60%;
+      background: white;
+      mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z'/%3E%3C/svg%3E") center/contain no-repeat;
+      -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z'/%3E%3C/svg%3E") center/contain no-repeat;
+      z-index: 1;
+    }
+
+    .input-panel {
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 300px;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+      padding: 20px;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.3s ease;
+      z-index: 1000;
+    }
+
+    .input-panel.visible {
+      opacity: 1;
+      visibility: visible;
+      top: calc(100% + 10px);
+    }
+
+    .input-field {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #e1e5e9;
+      border-radius: 8px;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.3s ease;
+    }
+
+    .input-field:focus {
+      border-color: #667eea;
+    }
+
+    .voice-button {
+      width: 100%;
+      padding: 12px;
+      background: #667eea;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+      margin-top: 10px;
+      transition: background 0.3s ease;
+    }
+
+    .voice-button:hover {
+      background: #5a6fd8;
+    }
+  </style>
+</head>
+<body>
+  <div class="capsule-container">
+    <div class="capsule" id="capsule">
+      <div class="capsule-icon"></div>
+    </div>
+    
+    <div class="input-panel" id="inputPanel">
+      <input type="text" class="input-field" id="inputField" placeholder="输入指令..." />
+      <button class="voice-button" id="voiceButton">🎤 语音输入</button>
+    </div>
+  </div>
+
+  <script>
+    const capsule = document.getElementById('capsule')
+    const inputPanel = document.getElementById('inputPanel')
+    const inputField = document.getElementById('inputField')
+    const voiceButton = document.getElementById('voiceButton')
+
+    let isInputVisible = false
+
+    // 胶囊点击事件
+    capsule.addEventListener('click', (e) => {
+      e.stopPropagation()
+      toggleInputPanel()
+    })
+
+    // 切换输入面板
+    function toggleInputPanel() {
+      isInputVisible = !isInputVisible
+      
+      if (isInputVisible) {
+        inputPanel.classList.add('visible')
+        inputField.focus()
+      } else {
+        inputPanel.classList.remove('visible')
+      }
+    }
+
+    // 输入框事件
+    inputField.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const command = inputField.value.trim()
+        if (command) {
+          // 发送指令到主进程
+          window.electronAPI?.sendCommand?.(command)
+          inputField.value = ''
+          toggleInputPanel()
+        }
+      } else if (e.key === 'Escape') {
+        toggleInputPanel()
+      }
+    })
+
+    // 语音按钮事件
+    voiceButton.addEventListener('click', () => {
+      // 语音输入功能
+      window.electronAPI?.startVoiceInput?.()
+    })
+
+    // 点击其他地方隐藏输入面板
+    document.addEventListener('click', (e) => {
+      if (isInputVisible && !capsule.contains(e.target) && !inputPanel.contains(e.target)) {
+        toggleInputPanel()
+      }
+    })
+
+    // 防止输入面板内的点击事件冒泡
+    inputPanel.addEventListener('click', (e) => {
+      e.stopPropagation()
+    })
+  </script>
+</body>
+</html>

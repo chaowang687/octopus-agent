@@ -23,7 +23,7 @@ export function registerTaskHandlers() {
         } else if (!model || model === 'auto') {
           model = 'doubao-seed-2-0-lite-260215'
         }
-        const result = await taskEngine.executeTask(instruction, model, options)
+        const result = await taskEngine.executeTaskWithModel(instruction, model, options)
         return result
       } catch (error: any) {
         console.error('执行任务失败:', error)

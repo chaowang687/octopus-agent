@@ -70,7 +70,6 @@ export class MemoryService extends EventEmitter {
 
   constructor(options: MemoryServiceOptions = {}) {
     super()
-    
     this.options = {
       maxEntries: options.maxEntries || 10000,
       embeddingDimension: options.embeddingDimension || 1536,
@@ -79,16 +78,28 @@ export class MemoryService extends EventEmitter {
       retentionDays: options.retentionDays || 90
     }
 
-    this.storagePath = path.join(app.getPath('userData'), 'memory')
-    this.ensureStorageDir()
-    this.load()
+    this.storagePath = ''
+  }
+
+  /**
+   * 初始化内存服务
+   */
+  async initialize(): Promise<void> {
+    if (!this.storagePath && app) {
+      this.storagePath = path.join(app.getPath('userData'), 'memory')
+      this.ensureStorageDir()
+      await this.load()
+    }
   }
 
   /**
    * 确保存储目录存在
    */
   private ensureStorageDir(): void {
-    if (!fs.existsSync(this.storagePath)) {
+    if (!this.storagePath && app) {
+      this.storagePath = path.join(app.getPath('userData'), 'memory')
+    }
+    if (this.storagePath && !fs.existsSync(this.storagePath)) {
       fs.mkdirSync(this.storagePath, { recursive: true })
     }
   }

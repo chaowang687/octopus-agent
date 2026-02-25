@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import { licenseService, LicenseConfig, License, LicenseValidationResult, SeatAssignment } from '../../services/LicenseService'
+import { licenseService, LicenseConfig } from '../../services/LicenseService'
 
 export function registerLicenseHandlers() {
   console.log('[LicenseHandler] 注册许可证处理器...')
@@ -26,7 +26,7 @@ export function registerLicenseHandlers() {
 
   ipcMain.handle('license:get-current', async () => {
     try {
-      const license = licenseService.getCurrentLicense()
+      const license = licenseService.getLicenseInfo()
       return { success: true, license }
     } catch (error: any) {
       console.error('获取当前许可证失败:', error)
@@ -46,7 +46,7 @@ export function registerLicenseHandlers() {
 
   ipcMain.handle('license:has-feature', async (_event, feature: string) => {
     try {
-      const hasFeature = licenseService.hasFeature(feature)
+      const hasFeature = licenseService.checkFeatureAccess(feature)
       return { success: true, hasFeature }
     } catch (error: any) {
       console.error('检查功能权限失败:', error)
@@ -56,7 +56,9 @@ export function registerLicenseHandlers() {
 
   ipcMain.handle('license:can-create-project', async (_event, currentProjects: number) => {
     try {
-      const canCreate = licenseService.canCreateProject(currentProjects)
+      const info = licenseService.getLicenseInfo()
+      const maxProjects = info?.restrictions?.maxProjects
+      const canCreate = typeof maxProjects === 'number' ? currentProjects < maxProjects : true
       return { success: true, canCreate }
     } catch (error: any) {
       console.error('检查项目创建权限失败:', error)
@@ -66,7 +68,9 @@ export function registerLicenseHandlers() {
 
   ipcMain.handle('license:can-add-user', async (_event, currentUsers: number) => {
     try {
-      const canAdd = licenseService.canAddUser(currentUsers)
+      const info = licenseService.getLicenseInfo()
+      const maxUsers = info?.restrictions?.maxUsers
+      const canAdd = typeof maxUsers === 'number' ? currentUsers < maxUsers : true
       return { success: true, canAdd }
     } catch (error: any) {
       console.error('检查用户添加权限失败:', error)
@@ -76,7 +80,7 @@ export function registerLicenseHandlers() {
 
   ipcMain.handle('license:assign-seat', async (_event, userId: string, username: string, email: string) => {
     try {
-      const assignment = licenseService.assignSeat(userId, username, email)
+      const assignment = licenseService.assignSeat(userId, username || email || userId)
       return { success: !!assignment, assignment }
     } catch (error: any) {
       console.error('分配席位失败:', error)
@@ -84,9 +88,9 @@ export function registerLicenseHandlers() {
     }
   })
 
-  ipcMain.handle('license:release-seat', async (_event, userId: string) => {
+  ipcMain.handle('license:release-seat', async (_event, seatId: string) => {
     try {
-      const released = licenseService.releaseSeat(userId)
+      const released = licenseService.revokeSeat(seatId)
       return { success: released }
     } catch (error: any) {
       console.error('释放席位失败:', error)
@@ -94,9 +98,9 @@ export function registerLicenseHandlers() {
     }
   })
 
-  ipcMain.handle('license:get-seat-assignments', async (_event, licenseId?: string) => {
+  ipcMain.handle('license:get-seat-assignments', async (_event, _licenseId?: string) => {
     try {
-      const assignments = licenseService.getSeatAssignments(licenseId)
+      const assignments = licenseService.getSeatAssignments()
       return { success: true, assignments }
     } catch (error: any) {
       console.error('获取席位分配失败:', error)
@@ -139,7 +143,7 @@ export function registerLicenseHandlers() {
     try {
       const results = features.map(feature => ({
         feature,
-        allowed: licenseService.hasFeature(feature)
+        allowed: licenseService.checkFeatureAccess(feature)
       }))
       return { success: true, results }
     } catch (error: any) {

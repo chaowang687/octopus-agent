@@ -1,6 +1,5 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react'
 import Editor, { Monaco, OnMount } from '@monaco-editor/react'
-import * as monacoEditor from 'monaco-editor/esm/vs/editor/editor.api'
 import './CodeEditor.css'
 
 export interface CodeEditorProps {
@@ -11,7 +10,7 @@ export interface CodeEditorProps {
   readOnly?: boolean
   onChange?: (value: string) => void
   onSave?: (value: string) => void
-  onEditorMount?: (editor: monacoEditor.editor.IStandaloneCodeEditor, monaco: Monaco) => void
+  onEditorMount?: (editor: any, monaco: Monaco) => void
 }
 
 const getLanguageFromPath = (path: string): string => {
@@ -67,7 +66,7 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
   onSave,
   onEditorMount
 }) => {
-  const editorRef = useRef<monacoEditor.editor.IStandaloneCodeEditor | null>(null)
+  const editorRef = useRef<any>(null)
   const monacoRef = useRef<Monaco | null>(null)
   const [isModified, setIsModified] = useState(false)
   const [originalContent, setOriginalContent] = useState(content)

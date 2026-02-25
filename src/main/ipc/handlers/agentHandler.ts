@@ -1,7 +1,7 @@
 import { ipcMain, dialog, shell, app } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
-import { WorkflowEngine } from '../../agent/WorkflowEngine'
+import { UnifiedWorkflowEngine } from '../../agent/workflow/UnifiedWorkflowEngine'
 import { registerWorkflowTools } from '../../agent/tools/WorkflowTools'
 import { getMainWindow } from '../../index'
 
@@ -123,14 +123,48 @@ export function registerAgentHandlers() {
   })
 
   // 存储当前工作流引擎实例
-  let currentWorkflowEngine: WorkflowEngine | null = null
+  let currentWorkflowEngine: UnifiedWorkflowEngine | null = null
+  let currentExecutionId: string | null = null
+
+  const createWorkflowEngine = (workflow: any) => {
+    const nodes = workflow?.nodes || []
+    const edges = workflow?.edges || []
+    const workflowId = workflow?.id || `workflow_${Date.now()}`
+
+    const engine = new UnifiedWorkflowEngine()
+    engine.registerWorkflow({
+      id: workflowId,
+      name: workflow?.name || workflowId,
+      nodes,
+      edges,
+      variables: {}
+    })
+
+    // 兼容前端进度事件通道
+    engine.on('node:execute', (status: any) => {
+      const mainWindow = getMainWindow()
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('workflow:nodeProgress', status)
+      }
+    })
+
+    return { engine, workflowId, nodes, edges }
+  }
+
+  const getWorkflowStatus = () => {
+    if (!currentWorkflowEngine || !currentExecutionId) return 'idle'
+    const execution = currentWorkflowEngine.getExecution(currentExecutionId)
+    return execution?.status || 'idle'
+  }
 
   // 执行工作流
-  ipcMain.handle('agent:executeWorkflow', (_, workflow: any) => {
+  ipcMain.handle('agent:executeWorkflow', async (_event, workflow: any) => {
     try {
-      const { nodes, edges } = workflow
-      currentWorkflowEngine = new WorkflowEngine(nodes, edges)
-      return currentWorkflowEngine.execute(`workflow_${Date.now()}`)
+      const { engine, workflowId } = createWorkflowEngine(workflow)
+      currentWorkflowEngine = engine
+      const result = await currentWorkflowEngine.execute(workflowId)
+      currentExecutionId = result.id
+      return result
     } catch (error: any) {
       console.error('执行工作流失败:', error)
       return { success: false, error: error.message }
@@ -140,11 +174,7 @@ export function registerAgentHandlers() {
   // 暂停工作流
   ipcMain.handle('agent:pauseWorkflow', () => {
     try {
-      if (currentWorkflowEngine) {
-        currentWorkflowEngine.pause()
-        return { success: true, status: currentWorkflowEngine.getStatus() }
-      }
-      return { success: false, error: '没有正在执行的工作流' }
+      return { success: true, status: getWorkflowStatus(), message: 'Pause not supported by current workflow engine' }
     } catch (error: any) {
       console.error('暂停工作流失败:', error)
       return { success: false, error: error.message }
@@ -154,13 +184,23 @@ export function registerAgentHandlers() {
   // 恢复工作流
   ipcMain.handle('agent:resumeWorkflow', () => {
     try {
-      if (currentWorkflowEngine) {
-        currentWorkflowEngine.resume()
-        return { success: true, status: currentWorkflowEngine.getStatus() }
+      return { success: true, status: getWorkflowStatus(), message: 'Resume not supported by current workflow engine' }
+    } catch (error: any) {
+      console.error('恢复工作流失败:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  // 停止工作流
+  ipcMain.handle('agent:stopWorkflow', () => {
+    try {
+      if (currentWorkflowEngine && currentExecutionId) {
+        currentWorkflowEngine.cancel(currentExecutionId)
+        return { success: true, status: getWorkflowStatus() }
       }
       return { success: false, error: '没有正在执行的工作流' }
     } catch (error: any) {
-      console.error('恢复工作流失败:', error)
+      console.error('停止工作流失败:', error)
       return { success: false, error: error.message }
     }
   })
@@ -168,12 +208,124 @@ export function registerAgentHandlers() {
   // 获取工作流状态
   ipcMain.handle('agent:getWorkflowStatus', () => {
     try {
-      if (currentWorkflowEngine) {
-        return { success: true, status: currentWorkflowEngine.getStatus() }
-      }
-      return { success: false, error: '没有正在执行的工作流' }
+      return { success: true, status: getWorkflowStatus() }
     } catch (error: any) {
       console.error('获取工作流状态失败:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  // 执行工作流并保存执行历史
+  ipcMain.handle('agent:executeWorkflowWithHistory', async (_event, workflow: any) => {
+    try {
+      const { engine, workflowId, nodes, edges } = createWorkflowEngine(workflow)
+      currentWorkflowEngine = engine
+      
+      const startTime = Date.now()
+      const result = await currentWorkflowEngine.execute(workflowId)
+      currentExecutionId = result.id
+      const endTime = Date.now()
+      
+      // 保存执行历史
+      const executionHistory = {
+        id: `exec_${Date.now()}`,
+        workflowName: workflow.name || '未命名工作流',
+        nodes: nodes,
+        edges: edges,
+        status: result.status,
+        outputs: result.result ? [result.result] : [],
+        errors: result.error ? [result.error] : [],
+        startTime: startTime,
+        endTime: endTime,
+        duration: endTime - startTime,
+        executedAt: new Date().toISOString()
+      }
+      
+      const preferences = readPreferences()
+      preferences.executionHistory = preferences.executionHistory || []
+      preferences.executionHistory.unshift(executionHistory)
+      
+      // 只保留最近50条记录
+      if (preferences.executionHistory.length > 50) {
+        preferences.executionHistory = preferences.executionHistory.slice(0, 50)
+      }
+      
+      writePreferences(preferences)
+      
+      return { ...result, executionId: executionHistory.id }
+    } catch (error: any) {
+      console.error('执行工作流失败:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  // 获取执行历史列表
+  ipcMain.handle('agent:getExecutionHistory', () => {
+    try {
+      const preferences = readPreferences()
+      const history = (preferences.executionHistory || []).map((h: any) => ({
+        id: h.id,
+        workflowName: h.workflowName,
+        status: h.status,
+        executedAt: h.executedAt,
+        duration: h.duration,
+        nodeCount: h.nodes?.length || 0,
+        errorCount: h.errors?.length || 0
+      }))
+      return { success: true, history }
+    } catch (error: any) {
+      console.error('获取执行历史失败:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  // 获取执行历史详情
+  ipcMain.handle('agent:getExecutionHistoryDetail', (_, executionId: string) => {
+    try {
+      const preferences = readPreferences()
+      const execution = (preferences.executionHistory || []).find((h: any) => h.id === executionId)
+      if (execution) {
+        return { success: true, execution }
+      }
+      return { success: false, error: '未找到该执行记录' }
+    } catch (error: any) {
+      console.error('获取执行详情失败:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  // 清除执行历史
+  ipcMain.handle('agent:clearExecutionHistory', () => {
+    try {
+      const preferences = readPreferences()
+      preferences.executionHistory = []
+      writePreferences(preferences)
+      return { success: true }
+    } catch (error: any) {
+      console.error('清除执行历史失败:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  // 重新运行历史工作流
+  ipcMain.handle('agent:rerunWorkflow', (_, executionId: string) => {
+    try {
+      const preferences = readPreferences()
+      const execution = (preferences.executionHistory || []).find((h: any) => h.id === executionId)
+      if (!execution) {
+        return { success: false, error: '未找到该执行记录' }
+      }
+      
+      const { engine, workflowId } = createWorkflowEngine({
+        id: `rerun_${Date.now()}`,
+        name: execution.workflowName || 'rerun',
+        nodes: execution.nodes,
+        edges: execution.edges
+      })
+      currentWorkflowEngine = engine
+      return currentWorkflowEngine.execute(workflowId)
+    } catch (error: any) {
+      console.error('重新运行工作流失败:', error)
       return { success: false, error: error.message }
     }
   })
@@ -377,7 +529,7 @@ export function registerAgentHandlers() {
   })
 
   // 获取智能体配置
-  ipcMain.handle('agent:getAgentConfig', (_, agentId: string) => {
+  ipcMain.handle('agent:getAgentConfig', (_event, _agentId: string) => {
     try {
       // 这里可以返回指定智能体的配置
       return { success: true, config: {} }
@@ -388,7 +540,7 @@ export function registerAgentHandlers() {
   })
 
   // 设置智能体配置
-  ipcMain.handle('agent:setAgentConfig', (_, agentId: string, config: any) => {
+  ipcMain.handle('agent:setAgentConfig', (_event, _agentId: string, _config: any) => {
     try {
       // 这里可以保存指定智能体的配置
       return { success: true }

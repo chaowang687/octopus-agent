@@ -8,7 +8,14 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { app } from 'electron'
 import axios from 'axios'
-import sharp from 'sharp'
+
+// 动态导入 sharp 模块，处理加载失败的情况
+let sharp: any = null
+try {
+  sharp = require('sharp')
+} catch (error) {
+  console.warn('[ImageGenerator] sharp module not available, image processing features will be limited:', error.message)
+}
 
 // ============================================
 // 图像生成模型
@@ -144,25 +151,46 @@ export interface PromptEnhancementResult {
 // 增强图像生成引擎类
 // ============================================
 export class EnhancedImageGenerator extends EventEmitter {
-  private tempDir: string
+  private tempDir: string = ''
   private apiKeys: Record<string, string> = {}
   private promptCache: Map<string, PromptEnhancementResult> = new Map()
   private generationHistory: ImageGenerationResult[] = []
+  private isInitialized: boolean = false
 
   constructor() {
     super()
-    this.tempDir = path.join(app.getPath('temp'), 'image_generation')
-    this.ensureTempDir()
-    this.loadApiKeys()
+  }
+  
+  /**
+   * 初始化图像生成服务
+   */
+  initialize(): void {
+    if (!this.isInitialized && app) {
+      this.tempDir = path.join(app.getPath('temp'), 'image_generation')
+      this.ensureTempDir()
+      this.loadApiKeys()
+      this.isInitialized = true
+    }
+  }
+  
+  /**
+   * 检查是否已初始化
+   */
+  private checkInitialized(): void {
+    if (!this.isInitialized) {
+      throw new Error('EnhancedImageGenerator not initialized. Call initialize() first.')
+    }
   }
 
   private ensureTempDir(): void {
+    this.checkInitialized()
     if (!fs.existsSync(this.tempDir)) {
       fs.mkdirSync(this.tempDir, { recursive: true })
     }
   }
 
   private loadApiKeys(): void {
+    this.checkInitialized()
     const keysPath = path.join(app.getPath('userData'), 'apiKeys.json')
     try {
       if (fs.existsSync(keysPath)) {
@@ -273,7 +301,14 @@ export class EnhancedImageGenerator extends EventEmitter {
     }
 
     const stats = images.length > 0 ? fs.statSync(images[0]) : { size: 0 }
-    const metadata = await sharp(images[0]).metadata()
+    let metadata = { width: 0, height: 0, format: 'png' }
+    if (sharp && images.length > 0) {
+      try {
+        metadata = await sharp(images[0]).metadata()
+      } catch (error) {
+        console.warn('[ImageGenerator] Failed to get image metadata:', error.message)
+      }
+    }
 
     return {
       success: true,
@@ -342,7 +377,14 @@ export class EnhancedImageGenerator extends EventEmitter {
     }
 
     const stats = images.length > 0 ? fs.statSync(images[0]) : { size: 0 }
-    const metadata = await sharp(images[0]).metadata()
+    let metadata = { width: 0, height: 0, format: 'png' }
+    if (sharp && images.length > 0) {
+      try {
+        metadata = await sharp(images[0]).metadata()
+      } catch (error) {
+        console.warn('[ImageGenerator] Failed to get image metadata:', error.message)
+      }
+    }
 
     return {
       success: true,
@@ -401,7 +443,14 @@ export class EnhancedImageGenerator extends EventEmitter {
     }
 
     const stats = images.length > 0 ? fs.statSync(images[0]) : { size: 0 }
-    const metadata = await sharp(images[0]).metadata()
+    let metadata = { width: 0, height: 0, format: 'png' }
+    if (sharp && images.length > 0) {
+      try {
+        metadata = await sharp(images[0]).metadata()
+      } catch (error) {
+        console.warn('[ImageGenerator] Failed to get image metadata:', error.message)
+      }
+    }
 
     return {
       success: true,
@@ -455,7 +504,14 @@ export class EnhancedImageGenerator extends EventEmitter {
     const images = imagePath ? [imagePath] : []
 
     const stats = images.length > 0 ? fs.statSync(images[0]) : { size: 0 }
-    const metadata = await sharp(images[0]).metadata()
+    let metadata = { width: 0, height: 0, format: 'png' }
+    if (sharp && images.length > 0) {
+      try {
+        metadata = await sharp(images[0]).metadata()
+      } catch (error) {
+        console.warn('[ImageGenerator] Failed to get image metadata:', error.message)
+      }
+    }
 
     return {
       success: true,
@@ -724,7 +780,14 @@ export class EnhancedImageGenerator extends EventEmitter {
         throw new Error('OpenAI API key not configured')
       }
 
-      const metadata = await sharp(options.image).metadata()
+      let metadata = { width: 1024, height: 1024 }
+      if (sharp) {
+        try {
+          metadata = await sharp(options.image).metadata()
+        } catch (error) {
+          console.warn('[ImageGenerator] Failed to get image metadata:', error.message)
+        }
+      }
       const width = metadata.width || 1024
       const height = metadata.height || 1024
       const pixels = options.pixels || 512
@@ -894,6 +957,7 @@ export class EnhancedImageGenerator extends EventEmitter {
   // ============================================
 
   private async downloadImage(url: string, prefix: string): Promise<string | null> {
+    this.checkInitialized()
     try {
       const response = await axios.get(url, { responseType: 'arraybuffer', timeout: 30000 })
       const ext = this.getImageExtension(url)
@@ -907,6 +971,7 @@ export class EnhancedImageGenerator extends EventEmitter {
   }
 
   private async saveBase64Image(base64: string, prefix: string): Promise<string | null> {
+    this.checkInitialized()
     try {
       const buffer = Buffer.from(base64, 'base64')
       const outputPath = path.join(this.tempDir, `${prefix}_${Date.now()}.png`)
@@ -943,10 +1008,12 @@ export class EnhancedImageGenerator extends EventEmitter {
   }
 
   getTempDir(): string {
+    this.checkInitialized()
     return this.tempDir
   }
 
   cleanup(olderThanMs?: number): number {
+    this.checkInitialized()
     const threshold = olderThanMs || 24 * 60 * 60 * 1000
     const now = Date.now()
     let cleaned = 0

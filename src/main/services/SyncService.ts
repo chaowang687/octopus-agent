@@ -51,7 +51,7 @@ export class SyncService {
   private apiClient: AxiosInstance
 
   constructor(config?: Partial<SyncConfig>) {
-    this.syncDir = path.join(app.getPath('userData'), 'sync')
+    this.syncDir = ''
     this.config = {
       enabled: false,
       autoSync: false,
@@ -72,10 +72,18 @@ export class SyncService {
       },
       timeout: 30000
     })
+  }
 
-    this.initializeSyncDirectory()
-    this.loadSyncItems()
-    this.startAutoSync()
+  /**
+   * 初始化同步服务
+   */
+  initialize(): void {
+    if (!this.syncDir && app) {
+      this.syncDir = path.join(app.getPath('userData'), 'sync')
+      this.initializeSyncDirectory()
+      this.loadSyncItems()
+      this.startAutoSync()
+    }
   }
 
   private initializeSyncDirectory(): void {

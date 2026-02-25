@@ -300,6 +300,27 @@ contextBridge.exposeInMainWorld('electron', {
     getWorkflowSettings: () => ipcRenderer.invoke('agent:getWorkflowSettings'),
     updateWorkflowSettings: (settings: any) => ipcRenderer.invoke('agent:updateWorkflowSettings', settings),
     executeWorkflow: (workflow: any) => ipcRenderer.invoke('agent:executeWorkflow', workflow),
+    pauseWorkflow: () => ipcRenderer.invoke('agent:pauseWorkflow'),
+    resumeWorkflow: () => ipcRenderer.invoke('agent:resumeWorkflow'),
+    stopWorkflow: () => ipcRenderer.invoke('agent:stopWorkflow'),
+    getWorkflowStatus: () => ipcRenderer.invoke('agent:getWorkflowStatus'),
+    executeWorkflowWithHistory: (workflow: any) => ipcRenderer.invoke('agent:executeWorkflowWithHistory', workflow),
+    getExecutionHistory: () => ipcRenderer.invoke('agent:getExecutionHistory'),
+    getExecutionHistoryDetail: (executionId: string) => ipcRenderer.invoke('agent:getExecutionHistoryDetail', executionId),
+    clearExecutionHistory: () => ipcRenderer.invoke('agent:clearExecutionHistory'),
+    rerunWorkflow: (executionId: string) => ipcRenderer.invoke('agent:rerunWorkflow', executionId),
+    onNodeProgress: (callback: (status: {
+      nodeId: string
+      status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped'
+      progress: number
+      message?: string
+      startTime?: number
+      endTime?: number
+    }) => void) => {
+      const listener = (_: any, status: any) => callback(status)
+      ipcRenderer.on('workflow:nodeProgress', listener)
+      return () => ipcRenderer.removeListener('workflow:nodeProgress', listener)
+    },
     saveWorkflow: (workflow: any) => ipcRenderer.invoke('agent:saveWorkflow', workflow),
     saveWorkflowAsFile: (workflow: any) => ipcRenderer.invoke('agent:saveWorkflowAsFile', workflow),
     loadWorkflowFromFile: () => ipcRenderer.invoke('agent:loadWorkflowFromFile'),

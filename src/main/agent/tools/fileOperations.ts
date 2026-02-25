@@ -169,7 +169,7 @@ export class ProjectCreationTool extends Tool {
   })
 
   async _call(input: { projectName: string; projectType: string; files: Array<{ path: string; content: string }> }): Promise<string> {
-    const { projectName, projectType, files } = input
+    const { projectName, projectType: _projectType, files } = input
 
     try {
       // 获取工作区路径

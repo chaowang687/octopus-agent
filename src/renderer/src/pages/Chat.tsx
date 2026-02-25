@@ -2365,7 +2365,65 @@ Always clarify who is speaking (e.g., "作为项目经理，我认为...") or or
                     style={{ color: projectPath ? '#007AFF' : 'currentColor' }}
                   >
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2-3h9a2 2 0 0 1 2 2z"></path>
+                    </svg>
+                  </button>
+                  
+                  {/* Mini-Agent Controls */}
+                  <button 
+                    className="chat-tool-btn" 
+                    title="Mini-Agent Mode" 
+                    onClick={() => {
+                      // Toggle Mini-Agent mode
+                      const miniAgentEnabled = !localStorage.getItem('miniAgentEnabled');
+                      if (miniAgentEnabled) {
+                        localStorage.setItem('miniAgentEnabled', 'true');
+                      } else {
+                        localStorage.removeItem('miniAgentEnabled');
+                      }
+                      // Show a notification to the user
+                      alert(miniAgentEnabled ? 'Mini-Agent mode enabled!' : 'Mini-Agent mode disabled.');
+                    }}
+                    style={{ 
+                      color: localStorage.getItem('miniAgentEnabled') ? '#34C759' : 'currentColor',
+                      position: 'relative'
+                    }}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 8V4H8"></path>
+                      <rect width="16" height="12" x="4" y="8" rx="2"></rect>
+                      <path d="M2 14h2"></path>
+                      <path d="M20 14h2"></path>
+                      <path d="M15 13v2"></path>
+                      <path d="M9 13v2"></path>
+                    </svg>
+                    {localStorage.getItem('miniAgentEnabled') && (
+                      <span style={{
+                        position: 'absolute',
+                        top: '-2px',
+                        right: '-2px',
+                        width: '8px',
+                        height: '8px',
+                        backgroundColor: '#34C759',
+                        borderRadius: '50%',
+                        border: '1px solid white'
+                      }}></span>
+                    )}
+                  </button>
+                  
+                  {/* ReAct Visualization Toggle */}
+                  <button 
+                    className="chat-tool-btn" 
+                    title="Show ReAct Visualization" 
+                    onClick={() => setShowReasoningVisualizer(!showReasoningVisualizer)}
+                    style={{ 
+                      color: showReasoningVisualizer ? '#FF9500' : 'currentColor' 
+                    }}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"></path>
+                      <path d="M12 12v9"></path>
+                      <path d="m8 17 4 4 4-4"></path>
                     </svg>
                   </button>
                   {projectPath && (

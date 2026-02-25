@@ -163,8 +163,7 @@ export class SelfCorrectionEngine {
         currentStep: 1,
         success: false,
         finalAnswer: '',
-        totalDurationMs: 0,
-        createdAt: Date.now()
+        timestamp: Date.now()
       }
 
       const reflection = await enhancedReActEngine.performDeepReflection(

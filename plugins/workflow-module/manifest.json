@@ -1,0 +1,25 @@
+{
+  "id": "workflow-module",
+  "name": "Visual Workflow Designer",
+  "version": "1.0.0",
+  "description": "Provides visual workflow design and execution capabilities",
+  "author": "Trae Team",
+  "license": "MIT",
+  "main": "dist/WorkflowModule.js",
+  "dependencies": {},
+  "permissions": [
+    "execution_control"
+  ],
+  "category": "workflow",
+  "keywords": [
+    "workflow",
+    "designer",
+    "automation",
+    "visual"
+  ],
+  "homepage": "https://github.com/trae/workflow-module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/trae/workflow-module.git"
+  }
+}

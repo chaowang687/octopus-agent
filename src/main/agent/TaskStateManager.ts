@@ -1,269 +1,98 @@
 /**
- * 任务状态管理器
- * 提供任务暂停、继续、保存、恢复功能
+ * Task State Manager
+ * 实现任务状态管理和断点恢复
  */
 
-import * as fs from 'fs'
-import * as path from 'path'
-import { app } from 'electron'
-
-export type TaskStatus = 'pending' | 'running' | 'paused' | 'completed' | 'failed'
-
 export interface TaskState {
-  id: string
-  name: string
-  instruction: string
-  currentPhase: string
-  phaseIndex: number
-  status: TaskStatus
-  
-  // 各阶段结果
-  analysisResult?: string
-  designResult?: string
-  codeResult?: string
-  testResult?: string
-  reviewResult?: string
-  
-  // 项目信息
-  projectPath?: string
-  projectType?: string
-  projectName?: string
-  
-  // 创建和更新时间
-  createdAt: number
-  updatedAt: number
-  
-  // 智能体历史消息
-  agentMessages: Array<{
-    agentId: string
-    agentName: string
-    role: string
-    content: string
-    timestamp: number
-    phase: string
-  }>
+  taskId: string;
+  currentStepId: string;
+  variables: Record<string, any>;
+  executionLog: string[];
+  status: 'idle' | 'planning' | 'executing' | 'paused' | 'error' | 'completed';
+  error?: string;
 }
 
-// 导出一个函数，确保TaskStateManager被包含在构建中
-export function createTaskStateManager() {
-  return new TaskStateManager()
+export interface TaskCheckpoint {
+  taskId: string;
+  currentStepId: string;
+  variableSnapshot: Record<string, any>;
+  executionLog: string[];
+  timestamp: string;
 }
 
 export class TaskStateManager {
-  private stateDir: string
-  private currentTask: TaskState | null = null
-  
-  constructor(stateDir?: string) {
-    // 确保使用用户数据目录，避免权限问题
-    this.stateDir = stateDir || path.join(app.getPath('userData'), '.task-states')
-    this.ensureStateDir()
-  }
-  
-  private ensureStateDir(): void {
-    if (!fs.existsSync(this.stateDir)) {
-      fs.mkdirSync(this.stateDir, { recursive: true, mode: 0o755 })
+  private checkpoints: Map<string, TaskCheckpoint[]> = new Map();
+
+  /**
+   * 保存检查点
+   */
+  saveCheckpoint(taskId: string, state: TaskState): void {
+    const checkpoint: TaskCheckpoint = {
+      taskId,
+      currentStepId: state.currentStepId,
+      variableSnapshot: { ...state.variables },
+      executionLog: [...state.executionLog],
+      timestamp: new Date().toISOString()
+    };
+
+    if (!this.checkpoints.has(taskId)) {
+      this.checkpoints.set(taskId, []);
+    }
+
+    const taskCheckpoints = this.checkpoints.get(taskId)!;
+    taskCheckpoints.push(checkpoint);
+
+    // 只保留最近10个检查点
+    if (taskCheckpoints.length > 10) {
+      taskCheckpoints.shift();
     }
   }
-  
+
   /**
-   * 创建新任务
+   * 恢复检查点
    */
-  createTask(id: string, name: string, instruction: string): TaskState {
-    const task: TaskState = {
-      id,
-      name,
-      instruction,
-      currentPhase: 'init',
-      phaseIndex: 0,
-      status: 'pending',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      agentMessages: []
+  restoreCheckpoint(taskId: string): TaskState | null {
+    const taskCheckpoints = this.checkpoints.get(taskId);
+    if (!taskCheckpoints || taskCheckpoints.length === 0) {
+      return null;
     }
-    
-    this.currentTask = task
-    this.saveTask(task)
-    return task
+
+    const latestCheckpoint = taskCheckpoints[taskCheckpoints.length - 1];
+
+    return {
+      taskId: latestCheckpoint.taskId,
+      currentStepId: latestCheckpoint.currentStepId,
+      variables: latestCheckpoint.variableSnapshot,
+      executionLog: latestCheckpoint.executionLog,
+      status: 'paused'
+    };
   }
-  
+
   /**
-   * 保存任务状态
+   * 获取任务历史
    */
-  saveTask(task: TaskState): void {
-    task.updatedAt = Date.now()
-    const filePath = path.join(this.stateDir, `${task.id}.json`)
-    fs.writeFileSync(filePath, JSON.stringify(task, null, 2), 'utf-8')
-    this.currentTask = task
+  getTaskHistory(taskId: string): TaskCheckpoint[] {
+    return this.checkpoints.get(taskId) || [];
   }
-  
+
   /**
-   * 加载任务状态
+   * 清除任务检查点
    */
-  loadTask(id: string): TaskState | null {
-    const filePath = path.join(this.stateDir, `${id}.json`)
-    if (!fs.existsSync(filePath)) {
-      return null
-    }
-    
-    try {
-      const data = fs.readFileSync(filePath, 'utf-8')
-      const task = JSON.parse(data) as TaskState
-      this.currentTask = task
-      return task
-    } catch (error) {
-      console.error('[TaskStateManager] 加载任务失败:', error)
-      return null
-    }
+  clearCheckpoints(taskId: string): void {
+    this.checkpoints.delete(taskId);
   }
-  
+
   /**
-   * 获取当前任务
+   * 获取所有任务
    */
-  getCurrentTask(): TaskState | null {
-    return this.currentTask
+  getAllTasks(): string[] {
+    return Array.from(this.checkpoints.keys());
   }
-  
-  /**
-   * 更新任务阶段
-   */
-  updatePhase(phase: string, phaseIndex: number): void {
-    if (!this.currentTask) return
-    this.currentTask.currentPhase = phase
-    this.currentTask.phaseIndex = phaseIndex
-    this.saveTask(this.currentTask)
-  }
-  
-  /**
-   * 保存阶段结果
-   */
-  savePhaseResult(phase: string, result: string): void {
-    if (!this.currentTask) return
-    
-    switch (phase) {
-      case 'analysis':
-        this.currentTask.analysisResult = result
-        break
-      case 'design':
-        this.currentTask.designResult = result
-        break
-      case 'implementation':
-        this.currentTask.codeResult = result
-        break
-      case 'testing':
-        this.currentTask.testResult = result
-        break
-      case 'review':
-        this.currentTask.reviewResult = result
-        break
-    }
-    
-    this.saveTask(this.currentTask)
-  }
-  
-  /**
-   * 暂停任务
-   */
-  pauseTask(): boolean {
-    if (!this.currentTask) return false
-    this.currentTask.status = 'paused'
-    this.saveTask(this.currentTask)
-    return true
-  }
-  
-  /**
-   * 继续任务
-   */
-  resumeTask(): boolean {
-    if (!this.currentTask) return false
-    if (this.currentTask.status !== 'paused') return false
-    this.currentTask.status = 'running'
-    this.saveTask(this.currentTask)
-    return true
-  }
-  
-  /**
-   * 更新任务状态
-   */
-  updateStatus(status: TaskStatus): void {
-    if (!this.currentTask) return
-    this.currentTask.status = status
-    this.saveTask(this.currentTask)
-  }
-  
-  /**
-   * 添加智能体消息
-   */
-  addAgentMessage(message: {
-    agentId: string
-    agentName: string
-    role: string
-    content: string
-    phase: string
-  }): void {
-    if (!this.currentTask) return
-    
-    this.currentTask.agentMessages.push({
-      ...message,
-      timestamp: Date.now()
-    })
-    this.saveTask(this.currentTask)
-  }
-  
-  /**
-   * 获取所有保存的任务
-   */
-  getAllTasks(): TaskState[] {
-    try {
-      const files = fs.readdirSync(this.stateDir)
-      const tasks: TaskState[] = []
-      
-      for (const file of files) {
-        if (file.endsWith('.json')) {
-          const data = fs.readFileSync(path.join(this.stateDir, file), 'utf-8')
-          tasks.push(JSON.parse(data))
-        }
-      }
-      
-      return tasks.sort((a, b) => b.updatedAt - a.updatedAt)
-    } catch (error) {
-      console.error('[TaskStateManager] 获取任务列表失败:', error)
-      return []
-    }
-  }
-  
-  /**
-   * 删除任务
-   */
-  deleteTask(id: string): boolean {
-    const filePath = path.join(this.stateDir, `${id}.json`)
-    if (!fs.existsSync(filePath)) return false
-    
-    try {
-      fs.unlinkSync(filePath)
-      if (this.currentTask?.id === id) {
-        this.currentTask = null
-      }
-      return true
-    } catch (error) {
-      console.error('[TaskStateManager] 删除任务失败:', error)
-      return false
-    }
-  }
-  
-  /**
-   * 清除所有任务
-   */
-  clearAll(): void {
-    try {
-      const files = fs.readdirSync(this.stateDir)
-      for (const file of files) {
-        if (file.endsWith('.json')) {
-          fs.unlinkSync(path.join(this.stateDir, file))
-        }
-      }
-      this.currentTask = null
-    } catch (error) {
-      console.error('[TaskStateManager] 清除任务失败:', error)
-    }
-  }
+}
+
+/**
+ * 创建任务状态管理器实例
+ */
+export function createTaskStateManager(): TaskStateManager {
+  return new TaskStateManager();
 }

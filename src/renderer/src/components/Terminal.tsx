@@ -12,6 +12,14 @@ interface TerminalTab {
   cwd: string
 }
 
+interface CommandExecResult {
+  success: boolean
+  output?: string
+  error?: string
+  queuedMs?: number
+  truncated?: boolean
+}
+
 const Terminal: React.FC = () => {
   const [tabs, setTabs] = useState<TerminalTab[]>([
     {
@@ -89,7 +97,7 @@ const Terminal: React.FC = () => {
 
     try {
       // 执行命令
-      const result = await window.electron.system.executeCommand(command, [])
+      const result = await window.electron.system.executeCommand(command, []) as CommandExecResult
       
       // 更新命令输出
       setTabs(prev => prev.map(tab => {
@@ -97,7 +105,10 @@ const Terminal: React.FC = () => {
           const updatedCommands = [...tab.commands]
           const lastCommand = updatedCommands[updatedCommands.length - 1]
           if (lastCommand) {
-            lastCommand.output = result.stdout || result.stderr || 'Command executed'
+            const output = result.success ? (result.output || 'Command executed') : (result.error || 'Command failed')
+            const queueHint = typeof result.queuedMs === 'number' ? `[queue ${result.queuedMs}ms]\n` : ''
+            const truncatedHint = result.truncated ? '\n[output truncated]' : ''
+            lastCommand.output = `${queueHint}${output}${truncatedHint}`
           }
           return {
             ...tab,

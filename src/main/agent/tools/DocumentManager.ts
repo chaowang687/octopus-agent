@@ -19,11 +19,9 @@ export interface DocumentMetadata {
 }
 
 export class DocumentManager {
-  private projectPath: string
   private docsPath: string
 
   constructor(projectPath: string) {
-    this.projectPath = projectPath
     this.docsPath = path.join(projectPath, '.docs')
     this.ensureDocsDirectory()
   }

@@ -19,12 +19,25 @@ export class BackupService {
   private backupDir: string
 
   constructor() {
-    this.backupDir = path.join(app.getPath('userData'), 'backups')
-    this.initializeBackupDir()
+    this.backupDir = ''
+  }
+
+  /**
+   * 初始化备份服务
+   */
+  initialize(): void {
+    if (!this.backupDir && app) {
+      this.backupDir = path.join(app.getPath('userData'), 'backups')
+      this.initializeBackupDir()
+    }
   }
 
   private initializeBackupDir() {
     try {
+      if (!app) {
+        console.warn('[BackupService] app 未初始化，无法获取用户数据目录')
+        return
+      }
       const userDataPath = app.getPath('userData')
       console.log(`[BackupService] 用户数据目录: ${userDataPath}`)
       
@@ -56,13 +69,15 @@ export class BackupService {
       console.log(`[BackupService] 备份目录已准备: ${this.backupDir}`)
     } catch (error) {
       console.error('[BackupService] 初始化备份目录失败，使用临时目录:', error)
-      this.backupDir = path.join(app.getPath('temp'), 'octopus-agent-backups')
-      if (!fs.existsSync(this.backupDir)) {
-        try {
-          fs.mkdirSync(this.backupDir, { recursive: true, mode: 0o755 })
-          console.log(`[BackupService] 临时备份目录已创建: ${this.backupDir}`)
-        } catch (fallbackError) {
-          console.error('[BackupService] 无法创建临时备份目录:', fallbackError)
+      if (app) {
+        this.backupDir = path.join(app.getPath('temp'), 'octopus-agent-backups')
+        if (!fs.existsSync(this.backupDir)) {
+          try {
+            fs.mkdirSync(this.backupDir, { recursive: true, mode: 0o755 })
+            console.log(`[BackupService] 临时备份目录已创建: ${this.backupDir}`)
+          } catch (fallbackError) {
+            console.error('[BackupService] 无法创建临时备份目录:', fallbackError)
+          }
         }
       }
     }

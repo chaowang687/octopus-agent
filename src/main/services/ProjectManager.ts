@@ -1,6 +1,8 @@
 import { EventEmitter } from 'events'
+import { app } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
+import PATHS from '../config/paths'
 import { userService } from './UserService'
 
 export interface ProjectTask {
@@ -110,19 +112,42 @@ export class ProjectManager extends EventEmitter {
 
   constructor(dataDir?: string, useMemoryStorage: boolean = false) {
     super()
-    this.dataDir = dataDir || path.join(process.env.USERDATA || '', 'projects')
+    // 优先使用显式传入的目录，其次使用 Electron 的 userData 目录下的 projects 子目录，
+    // 最后回退到全局 PROJECT_ROOT，确保在打包环境中始终指向可写目录
+    const defaultDataDir =
+      dataDir ||
+      (app ? path.join(app.getPath('userData'), 'projects') : PATHS.PROJECT_ROOT)
+
+    this.dataDir = defaultDataDir
     this.useMemoryStorage = useMemoryStorage
     if (!useMemoryStorage) {
-      this.initializeDataDirectory()
-      this.loadProjects()
-      this.loadTasks()
-      this.loadReports()
+      try {
+        this.initializeDataDirectory()
+        this.loadProjects()
+        this.loadTasks()
+        this.loadReports()
+      } catch (error) {
+        console.error('初始化项目管理器失败:', error)
+        // 回退到内存存储
+        this.useMemoryStorage = true
+        console.warn('回退到内存存储模式')
+      }
     }
   }
 
   private initializeDataDirectory() {
-    if (!fs.existsSync(this.dataDir)) {
-      fs.mkdirSync(this.dataDir, { recursive: true })
+    try {
+      if (!fs.existsSync(this.dataDir)) {
+        fs.mkdirSync(this.dataDir, { recursive: true })
+      }
+    } catch (error) {
+      // 尝试使用临时目录作为回退
+      const tempDir = path.join(PATHS.TEMP, 'trae', 'projects')
+      console.warn(`无法创建项目目录 ${this.dataDir}，使用临时目录 ${tempDir}`, error)
+      this.dataDir = tempDir
+      if (!fs.existsSync(this.dataDir)) {
+        fs.mkdirSync(this.dataDir, { recursive: true })
+      }
     }
   }
 

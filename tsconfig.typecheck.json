@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  },
+  "include": [
+    "src/main/agent/ToolRegistry.ts",
+    "src/main/agent/ToolExecutionEngine.ts",
+    "src/main/ipc/handlers/systemHandler.ts",
+    "src/main/ipc/handlers/toolsHandler.ts",
+    "src/main/security/ElectronSecurity.ts",
+    "src/main/security/SecurityManager.ts",
+    "src/main/utils/AsyncCommandExecutor.ts",
+    "src/preload/index.ts",
+    "src/renderer/src/components/Terminal.tsx",
+    "src/renderer/src/pages/Console.tsx",
+    "src/renderer/src/types/**/*.d.ts"
+  ]
+}
