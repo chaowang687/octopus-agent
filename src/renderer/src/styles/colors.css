@@ -1,0 +1,83 @@
+/* 全局颜色规范 */
+
+:root {
+  /* 主色调 - 极低饱和深紫色调 */
+  --primary-color: #6e6278; /* 极低饱和中深紫 */
+  --primary-light: #8e8298; /* 极低饱和浅紫 */
+  --primary-dark: #4e4258; /* 极低饱和深紫 */
+  
+  /* 辅助色 */
+  --secondary-color: #6e6278; /* 极低饱和中深紫 */
+  --accent-color: #8e8298; /* 极低饱和浅紫 */
+  
+  /* 功能色 */
+  --success-color: #4e4258; /* 极低饱和深紫 */
+  --warning-color: #6e6278; /* 极低饱和中深紫 */
+  --error-color: #6e6278; /* 极低饱和中深紫 */
+  --info-color: #4e4258; /* 极低饱和深紫 */
+  
+  /* 中性色 */
+  --background-primary: #f8fafc; /* 浅背景 */
+  --background-secondary: #f1f5f9; /* 次要背景 */
+  --background-tertiary: #e2e8f0; /* 第三背景 */
+  
+  --surface-primary: #ffffff; /* 表面 */
+  --surface-secondary: #f8fafc; /* 次要表面 */
+  
+  --text-primary: #1e293b; /* 主文本 */
+  --text-secondary: #64748b; /* 次要文本 */
+  --text-tertiary: #94a3b8; /* 第三文本 */
+  --text-muted: #cbd5e1; /* -muted文本 */
+  
+  --border-primary: #e2e8f0; /* 主边框 */
+  --border-secondary: #cbd5e1; /* 次要边框 */
+  --border-tertiary: #e2e8f0; /* 第三边框 */
+  
+  /* 暗色模式 - 极低饱和深紫色调 */
+  --dark-background-primary: #18161b; /* 极低饱和深紫背景 */
+  --dark-background-secondary: #222028; /* 极低饱和次要深紫背景 */
+  --dark-background-tertiary: #2e2c36; /* 极低饱和第三深紫背景 */
+  
+  --dark-surface-primary: #222028; /* 极低饱和深色表面 */
+  --dark-surface-secondary: #2e2c36; /* 极低饱和次要深色表面 */
+  
+  --dark-text-primary: #f8fafc; /* 深色主文本 */
+  --dark-text-secondary: #cbd5e1; /* 深色次要文本 */
+  --dark-text-tertiary: #94a3b8; /* 深色第三文本 */
+  --dark-text-muted: #64748b; /* 深色-muted文本 */
+  
+  --dark-border-primary: #2e2c36; /* 极低饱和深色主边框 */
+  --dark-border-secondary: #3a3844; /* 极低饱和深色次要边框 */
+  --dark-border-tertiary: #2e2c36; /* 极低饱和深色第三边框 */
+  
+  /* 透明度 */
+  --opacity-5: 0.05;
+  --opacity-10: 0.1;
+  --opacity-20: 0.2;
+  --opacity-30: 0.3;
+  --opacity-40: 0.4;
+  --opacity-50: 0.5;
+  --opacity-60: 0.6;
+  --opacity-70: 0.7;
+  --opacity-80: 0.8;
+  --opacity-90: 0.9;
+  
+  /* 阴影 */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  
+  /* 圆角 */
+  --radius-sm: 0.125rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
+  --radius-full: 9999px;
+  
+  /* 过渡 */
+  --transition-fast: 150ms ease-in-out;
+  --transition-normal: 200ms ease-in-out;
+  --transition-slow: 300ms ease-in-out;
+}

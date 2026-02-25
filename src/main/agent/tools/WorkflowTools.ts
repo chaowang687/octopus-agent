@@ -438,6 +438,53 @@ ${inputText}
   }
 }
 
+// Prompt节点工具
+const promptNodeTool: ToolDefinition = {
+  name: 'prompt_node',
+  description: 'Prompt节点：处理文本输入，调用大模型生成输出',
+  parameters: [
+    { name: 'input', type: 'string', description: '输入文本', required: false },
+    { name: 'model', type: 'string', description: '使用的模型', required: false },
+    { name: 'systemPrompt', type: 'string', description: '系统提示词', required: false }
+  ],
+  handler: async (args: any) => {
+    const { 
+      input = '', 
+      model = 'qwen3',
+      systemPrompt = '你是一个专业的AI助手，擅长回答各种问题并提供帮助'
+    } = args
+    
+    try {
+      console.log(`[prompt_node] 调用模型: ${model}，输入长度: ${input.length}`)
+      
+      const response = await llmService.chat(model, [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: input }
+      ], {})
+      
+      if (response.success && response.content) {
+        console.log(`[prompt_node] 生成完成，输出长度: ${response.content.length}`)
+        return {
+          success: true,
+          output: response.content
+        }
+      } else {
+        console.error(`[prompt_node] 生成失败:`, response.error)
+        return {
+          success: false,
+          error: response.error || '生成失败'
+        }
+      }
+    } catch (error: any) {
+      console.error('[prompt_node] 处理失败:', error)
+      return {
+        success: false,
+        error: error.message
+      }
+    }
+  }
+}
+
 // 产品文档
 const productDocTool: ToolDefinition = {
   name: 'product_doc',
@@ -519,6 +566,7 @@ export const registerWorkflowTools = () => {
   toolRegistry.register(uiTesterTool)
   toolRegistry.register(functionalTesterTool)
   toolRegistry.register(boxNodeTool)
+  toolRegistry.register(promptNodeTool)
   toolRegistry.register(productDocTool)
   toolRegistry.register(designDocTool)
   toolRegistry.register(uiInterfaceTool)
@@ -536,6 +584,7 @@ export const workflowTools = [
   uiTesterTool,
   functionalTesterTool,
   boxNodeTool,
+  promptNodeTool,
   productDocTool,
   designDocTool,
   uiInterfaceTool,

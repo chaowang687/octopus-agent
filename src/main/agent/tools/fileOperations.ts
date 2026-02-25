@@ -26,12 +26,10 @@ export class FileWriteTool extends Tool {
 
       // 确保目录存在
       const dirPath = path.dirname(absolutePath)
-      if (!fs.existsSync(dirPath)) {
-        fs.mkdirSync(dirPath, { recursive: true, mode: 0o755 })
-      }
+      await fs.promises.mkdir(dirPath, { recursive: true, mode: 0o755 })
 
       // 写入文件
-      fs.writeFileSync(absolutePath, content, 'utf-8')
+      await fs.promises.writeFile(absolutePath, content, 'utf-8')
 
       console.log(`[FileWriteTool] 文件写入成功: ${absolutePath}`)
       return `文件写入成功: ${absolutePath}`
@@ -63,7 +61,7 @@ export class DirectoryCreateTool extends Tool {
         : path.resolve(process.cwd(), dirPath)
 
       // 创建目录
-      fs.mkdirSync(absolutePath, { recursive: true, mode: 0o755 })
+      await fs.promises.mkdir(absolutePath, { recursive: true, mode: 0o755 })
 
       console.log(`[DirectoryCreateTool] 目录创建成功: ${absolutePath}`)
       return `目录创建成功: ${absolutePath}`
@@ -95,7 +93,7 @@ export class FileReadTool extends Tool {
         : path.resolve(process.cwd(), filePath)
 
       // 读取文件
-      const content = fs.readFileSync(absolutePath, 'utf-8')
+      const content = await fs.promises.readFile(absolutePath, 'utf-8')
 
       console.log(`[FileReadTool] 文件读取成功: ${absolutePath}`)
       return content
@@ -127,19 +125,23 @@ export class DirectoryListTool extends Tool {
         : path.resolve(process.cwd(), dirPath)
 
       // 检查目录是否存在
-      if (!fs.existsSync(absolutePath)) {
+      try {
+        await fs.promises.access(absolutePath);
+      } catch {
         throw new Error(`目录不存在: ${absolutePath}`)
       }
 
       // 读取目录
-      const items = fs.readdirSync(absolutePath, { withFileTypes: true })
+      const items = await fs.promises.readdir(absolutePath, { withFileTypes: true })
 
       // 格式化输出
-      const result = items.map(item => {
+      const resultPromises = items.map(async (item) => {
         const itemPath = path.join(absolutePath, item.name)
-        const stats = fs.statSync(itemPath)
+        const stats = await fs.promises.stat(itemPath)
         return `${item.isDirectory() ? '[DIR]' : '[FILE]'} ${item.name} (${stats.size} bytes)`
-      }).join('\n')
+      });
+      
+      const result = (await Promise.all(resultPromises)).join('\n')
 
       console.log(`[DirectoryListTool] 目录列表: ${absolutePath}`)
       return result || '目录为空'
@@ -177,9 +179,7 @@ export class ProjectCreationTool extends Tool {
       console.log(`[ProjectCreationTool] 开始创建项目: ${projectPath}`)
 
       // 创建项目目录
-      if (!fs.existsSync(projectPath)) {
-        fs.mkdirSync(projectPath, { recursive: true, mode: 0o755 })
-      }
+      await fs.promises.mkdir(projectPath, { recursive: true, mode: 0o755 })
 
       // 创建文件
       const createdFiles: string[] = []
@@ -188,12 +188,10 @@ export class ProjectCreationTool extends Tool {
         const dirPath = path.dirname(filePath)
 
         // 确保目录存在
-        if (!fs.existsSync(dirPath)) {
-          fs.mkdirSync(dirPath, { recursive: true, mode: 0o755 })
-        }
+        await fs.promises.mkdir(dirPath, { recursive: true, mode: 0o755 })
 
         // 写入文件
-        fs.writeFileSync(filePath, file.content, 'utf-8')
+        await fs.promises.writeFile(filePath, file.content, 'utf-8')
         createdFiles.push(filePath)
       }
 

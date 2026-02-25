@@ -130,7 +130,7 @@ export function registerAgentHandlers() {
     try {
       const { nodes, edges } = workflow
       currentWorkflowEngine = new WorkflowEngine(nodes, edges)
-      return currentWorkflowEngine.execute()
+      return currentWorkflowEngine.execute(`workflow_${Date.now()}`)
     } catch (error: any) {
       console.error('执行工作流失败:', error)
       return { success: false, error: error.message }

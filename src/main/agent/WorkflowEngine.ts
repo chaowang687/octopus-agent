@@ -1,4 +1,6 @@
 import { toolRegistry } from './ToolRegistry'
+import { taskLogger } from './TaskLogger'
+import { LLMService } from '../services/LLMService'
 
 // 类型定义，避免直接依赖reactflow
 export interface Node {
@@ -48,41 +50,77 @@ export class WorkflowEngine {
   private errors: string[] = []
   private isPaused: boolean = false
   private pausePromise: { resolve: () => void } | null = null
+  private llmService: LLMService
 
   constructor(nodes: Node[], edges: Edge[]) {
     this.nodes = nodes
     this.edges = edges
+    this.llmService = new LLMService()
   }
 
   // 执行工作流
-  async execute(): Promise<WorkflowResult> {
+  async execute(taskId: string = `workflow_${Date.now()}`): Promise<WorkflowResult> {
     this.status = WorkflowStatus.RUNNING
     this.executionResults = {}
     this.errors = []
 
     try {
+      // 记录工作流开始 - 为避免push错误，暂时注释掉日志记录
+      // taskLogger.startTask({
+      //   taskId,
+      //   projectName: 'Workflow Execution',
+      //   instruction: 'Workflow execution initiated',
+      //   originalInstruction: 'Workflow execution initiated',
+      //   taskDir: './temp'
+      // })
+
+      console.log(`[WorkflowEngine] 开始执行工作流，共 ${this.nodes.length} 个节点，${this.edges.length} 条连线`)
+      
       // 按拓扑顺序执行节点
       const executionOrder = this.getExecutionOrder()
+      console.log(`[WorkflowEngine] 执行顺序: ${executionOrder.join(', ')}`)
 
-      for (const nodeId of executionOrder) {
+      for (const [index, nodeId] of executionOrder.entries()) {
         const node = this.nodes.find(n => n.id === nodeId)
-        if (!node) continue
-
+        if (!node) {
+          console.warn(`[WorkflowEngine] 警告: 未找到节点 ${nodeId}`)
+          continue
+        }
+        
+        console.log(`[WorkflowEngine] 正在执行节点 ${index + 1}/${executionOrder.length}: ${node.id} (${node.data.type})`)
         await this.executeNode(node)
       }
 
       this.status = WorkflowStatus.COMPLETED
+      
+      console.log(`[WorkflowEngine] 工作流执行完成，共处理 ${Object.keys(this.executionResults).length} 个节点`)
+      
+      // 记录工作流完成 - 为避免push错误，暂时注释掉日志记录
+      // taskLogger.endTask('completed')
+      
       return {
         status: this.status,
         outputs: this.executionResults
       }
     } catch (error) {
       this.status = WorkflowStatus.FAILED
-      this.errors.push((error as Error).message)
+      const errorMessage = (error as Error).message
+      const errorStack = (error as Error).stack
+      this.errors.push(errorMessage)
+      
+      console.error(`[WorkflowEngine] 工作流执行失败:`, error)
+      
+      // 记录工作流失败 - 为避免push错误，暂时注释掉日志记录
+      // taskLogger.endTask('failed')
+      
       return {
         status: this.status,
         outputs: this.executionResults,
-        errors: this.errors
+        errors: this.errors,
+        errorDetails: {
+          message: errorMessage,
+          stack: errorStack
+        }
       }
     }
   }
@@ -97,12 +135,19 @@ export class WorkflowEngine {
     const tool = toolRegistry.getTool(toolName)
 
     if (!tool) {
-      this.errors.push(`工具 ${toolName} 未注册`)
-      return
+      const errorMsg = `工具 ${toolName} 未注册`
+      this.errors.push(errorMsg)
+      this.status = WorkflowStatus.FAILED  // 设置状态为失败
+      console.error(errorMsg)
+      throw new Error(errorMsg)  // 抛出错误以中断工作流
     }
 
-    // 获取输入参数
-    const inputs = this.getNodeInputs(node.id)
+    // 记录节点开始执行，需要先启动一个迭代
+     const inputs = this.getNodeInputs(node.id)
+     
+     console.log(`[WorkflowEngine] 开始执行节点 ${node.id} (${nodeData.type})，工具: ${toolName}`)
+     console.log(`[WorkflowEngine] 节点输入参数:`, inputs)
+
     console.log(`执行节点 ${node.id} (${toolName})，输入参数:`, inputs)
 
     try {
@@ -119,16 +164,78 @@ export class WorkflowEngine {
           model: nodeData.model || 'qwen3',
           ...inputs
         }
+        console.log(`[WorkflowEngine] 框智能体节点参数构建完成:`, { title, model, inputFiles: toolArgs.inputFiles })
       }
 
+      // 特殊处理prompt节点，记录大模型调用
+      if (nodeData.type === 'prompt') {
+        // 构建prompt节点的参数
+        toolArgs = {
+          input: nodeData.input || '',
+          model: nodeData.model || 'qwen3',
+          systemPrompt: nodeData.systemPrompt || '',
+          ...inputs
+        }
+        console.log(`[WorkflowEngine] Prompt节点参数构建完成:`, { model: toolArgs.model, inputLength: toolArgs.input.length })
+      }
+ 
+      // 记录工具调用 - 安全地检查日志记录器状态 - 为避免push错误，暂时注释掉
+      console.log(`[WorkflowEngine] 调用工具: ${toolName}，参数:`, toolArgs)
+      // if (taskLogger.getCurrentLog()) {
+      //   taskLogger.logToolCall({
+      //     tool: toolName,
+      //     parameters: toolArgs
+      //   })
+      // }
+
       // 调用工具
+      const startTime = Date.now()
+      console.log(`[WorkflowEngine] 工具 ${toolName} 开始执行...`)
       const result = await tool.handler(toolArgs)
+      const endTime = Date.now()
+      const latency = endTime - startTime
+      console.log(`[WorkflowEngine] 工具 ${toolName} 执行完成，耗时: ${latency}ms`)
+      
       this.executionResults[node.id] = result
-      console.log(`节点 ${node.id} 执行成功，结果:`, result)
+      
+      // 记录节点执行成功 - 安全地检查日志记录器状态 - 为避免push错误，暂时注释掉
+      // if (taskLogger.getCurrentLog()) {
+      //   taskLogger.endAgent(node.id, 'completed', {
+      //     files: result ? [typeof result === 'string' ? result : JSON.stringify(result)] : []
+      //   })
+      //   
+      //   // 记录工具调用结果
+      //   taskLogger.logToolCall({
+      //     tool: toolName,
+      //     parameters: toolArgs,
+      //     result: result,
+      //     duration: latency
+      //   })
+      // }
+      
+      console.log(`[WorkflowEngine] 节点 ${node.id} 执行成功，结果:`, typeof result === 'string' && result.length > 100 ? result.substring(0, 100) + '...' : result)
     } catch (error) {
       const errorMsg = `节点 ${node.id} 执行失败: ${(error as Error).message}`
       this.errors.push(errorMsg)
-      console.error(errorMsg)
+      this.status = WorkflowStatus.FAILED  // 设置状态为失败
+      console.error(`[WorkflowEngine] 节点 ${node.id} 执行失败详情:`, error)
+      console.error(`[WorkflowEngine] 失败节点信息:`, { nodeId: node.id, nodeType: nodeData.type, toolName, inputs })
+      
+      // 记录节点执行失败 - 安全地检查日志记录器状态 - 为避免push错误，暂时注释掉
+      // if (taskLogger.getCurrentLog()) {
+      //   taskLogger.endAgent(node.id, 'failed', {
+      //     messages: [(error as Error).message]
+      //   })
+      //   
+      //   // 记录工具调用失败
+      //   taskLogger.logToolCall({
+      //     tool: toolName,
+      //     parameters: inputs,
+      //     error: (error as Error).message
+      //   })
+      // }
+      
+      throw error  // 抛出错误以中断工作流执行
     }
   }
 
@@ -207,6 +314,7 @@ export class WorkflowEngine {
       'uiTester': 'ui_tester',
       'functionalTester': 'functional_tester',
       'boxNode': 'box_node',
+      'prompt': 'prompt_node',
       'productDoc': 'product_doc',
       'designDoc': 'design_doc',
       'uiInterface': 'ui_interface',
@@ -227,8 +335,17 @@ export class WorkflowEngine {
       inDegree[node.id] = 0
     }
 
-    // 构建邻接表和入度
+    // 构建邻接表和入度，跳过无效的边
     for (const edge of this.edges) {
+      // 检查边的源节点和目标节点是否都存在
+      if (adjacencyList[edge.source] === undefined) {
+        console.warn(`[WorkflowEngine] 警告: 边的源节点 ${edge.source} 不存在，跳过此边`)
+        continue
+      }
+      if (inDegree[edge.target] === undefined) {
+        console.warn(`[WorkflowEngine] 警告: 边的目标节点 ${edge.target} 不存在，跳过此边`)
+        continue
+      }
       adjacencyList[edge.source].push(edge.target)
       inDegree[edge.target]++
     }

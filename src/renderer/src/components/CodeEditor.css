@@ -3,7 +3,7 @@
   flex-direction: column;
   height: 100%;
   width: 100%;
-  background: #0a0a0a;
+  background: var(--dark-background-primary);
 }
 
 .code-editor-toolbar {
@@ -11,30 +11,30 @@
   align-items: center;
   justify-content: space-between;
   padding: 6px 12px;
-  background: #0f0f0f;
-  border-bottom: 1px solid #1a1a1a;
-  font-size: 12px;
-  font-family: 'JetBrains Mono', 'SF Mono', Monaco, monospace;
+  background: var(--dark-background-secondary);
+  border-bottom: 1px solid var(--dark-border-primary);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-family-code);
 }
 
 .file-path {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #6b7280;
+  color: var(--dark-text-secondary);
   letter-spacing: 0.3px;
 }
 
 .modified-indicator {
-  color: #f59e0b;
-  font-weight: 700;
+  color: var(--warning-color);
+  font-weight: var(--font-weight-bold);
   font-size: 14px;
   line-height: 1;
   margin-left: 2px;
 }
 
 .language-badge {
-  color: #374151;
+  color: var(--dark-text-tertiary);
   text-transform: lowercase;
   letter-spacing: 0.5px;
 }
@@ -49,9 +49,9 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #374151;
-  font-size: 12px;
-  font-family: 'JetBrains Mono', 'SF Mono', Monaco, monospace;
+  color: var(--dark-text-tertiary);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-family-code);
   letter-spacing: 2px;
   text-transform: uppercase;
 }

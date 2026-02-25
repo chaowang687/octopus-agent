@@ -1,0 +1,125 @@
+.header {
+  height: 40px;
+  background: var(--dark-background-secondary);
+  border-bottom: 1px solid var(--dark-border-primary);
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  -webkit-app-region: drag;
+  font-family: var(--font-family-ui);
+}
+
+.header-tabs-container {
+  display: flex;
+  align-items: center;
+  flex: 1;
+}
+
+.header-tab {
+  padding: 0 24px; /* Increased from 16px to 24px for more width */
+  height: 40px;
+  background: transparent;
+  border: none;
+  color: var(--dark-text-secondary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+  position: relative;
+  min-width: 120px; /* Increased minimum width for better appearance */
+  flex: 0 0 auto; /* Allow flex sizing */
+  justify-content: center; /* Center content in wider tabs */
+  -webkit-app-region: no-drag;
+}
+
+.header-tab.active {
+  background: var(--dark-background-primary);
+  color: var(--dark-text-primary);
+  border: 1px solid var(--dark-border-primary);
+}
+
+.header-tab-first {
+  background: transparent;
+  color: var(--dark-text-secondary);
+  padding: 0 24px;
+  min-width: 120px;
+  justify-content: center;
+  -webkit-app-region: no-drag;
+}
+
+.header-tab:hover:not(.active) {
+  background: var(--dark-background-tertiary);
+  color: var(--dark-text-primary);
+}
+
+.header-tab-first:hover {
+  background: var(--dark-background-tertiary);
+  color: var(--dark-text-primary);
+}
+
+.header-tab-separator {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1px;
+  height: 20px;
+  background: var(--dark-border-secondary);
+}
+
+.header-tab.active .header-tab-separator,
+.header-tab:first-child .header-tab-separator {
+  background: var(--dark-border-primary);
+}
+
+.header-plus-button {
+  padding: 0 24px;
+  height: 40px;
+  background: transparent;
+  border: none;
+  color: var(--dark-text-secondary);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  min-width: 120px; /* Match other tabs */
+  -webkit-app-region: no-drag;
+}
+
+.header-plus-button:hover {
+  background: var(--dark-background-tertiary);
+}
+
+.header-collapse-button {
+  padding: 4px;
+  background: transparent;
+  border: none;
+  color: var(--dark-text-secondary);
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  -webkit-app-region: no-drag;
+}
+
+.header-collapse-button:hover {
+  color: var(--dark-text-primary);
+}
+
+.header-right-section {
+  padding: 0 16px;
+  -webkit-app-region: no-drag;
+}
+
+.header-other {
+  height: 40px;
+  background: var(--background-primary);
+  border-bottom: 1px solid var(--border-primary);
+  position: relative;
+  z-index: 10;
+  -webkit-app-region: drag;
+}

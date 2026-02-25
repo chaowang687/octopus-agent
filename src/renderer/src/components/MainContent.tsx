@@ -17,7 +17,11 @@ interface Tab {
   }
 }
 
-const MainContent: React.FC = () => {
+interface MainContentProps {
+  theme?: 'dark' | 'light'
+}
+
+const MainContent: React.FC<MainContentProps> = ({ theme = 'light' }) => {
   // 从localStorage加载保存的Tab状态
   const loadSavedTabs = (): Tab[] => {
     try {
@@ -79,6 +83,25 @@ const MainContent: React.FC = () => {
   const [crawling, setCrawling] = useState<string | null>(null)
 
   const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0]
+
+  // 根据主题获取颜色变量
+  const getColor = (key: string) => {
+    if (theme === 'dark') {
+      switch(key) {
+        case 'bg-primary': return 'var(--dark-background-primary)'
+        case 'bg-secondary': return 'var(--dark-background-secondary)'
+        case 'bg-tertiary': return 'var(--dark-background-tertiary)'
+        case 'border-color': return 'var(--dark-border-primary)'
+        case 'text-primary': return 'var(--dark-text-primary)'
+        case 'text-secondary': return 'var(--dark-text-secondary)'
+        case 'text-tertiary': return 'var(--dark-text-tertiary)'
+        case 'surface-primary': return 'var(--dark-surface-primary)'
+        default: return `var(--dark-${key})`
+      }
+    } else {
+      return `var(--${key})`
+    }
+  }
 
   useEffect(() => {
     const hour = new Date().getHours()
@@ -194,17 +217,17 @@ const MainContent: React.FC = () => {
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>${query} - AI Search</title>
             <style>
-              body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 40px 20px; line-height: 1.6; color: #333; background-color: #f9fafb; }
-              h1 { border-bottom: 1px solid #e5e7eb; padding-bottom: 20px; color: #111827; }
-              .ai-badge { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; padding: 4px 12px; border-radius: 9999px; font-size: 14px; font-weight: 500; vertical-align: middle; margin-left: 10px; display: inline-block; }
-              .result-card { background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); transition: transform 0.2s; border: 1px solid #f3f4f6; }
+              body { font-family: var(--font-family-ui); max-width: 800px; margin: 0 auto; padding: 40px 20px; line-height: 1.6; color: var(--text-primary); background-color: var(--background-primary); }
+              h1 { border-bottom: 1px solid var(--border-primary); padding-bottom: 20px; color: var(--text-primary); }
+              .ai-badge { background: linear-gradient(135deg, var(--primary-color), var(--secondary-color)); color: white; padding: 4px 12px; border-radius: 9999px; font-size: 14px; font-weight: 500; vertical-align: middle; margin-left: 10px; display: inline-block; }
+              .result-card { background: var(--surface-primary); border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); transition: transform 0.2s; border: 1px solid var(--border-primary); }
               .result-card:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); }
               .result-title { margin: 0 0 8px 0; font-size: 18px; line-height: 1.4; }
-              .result-title a { color: #2563eb; text-decoration: none; font-weight: 600; }
+              .result-title a { color: var(--primary-color); text-decoration: none; font-weight: 600; }
               .result-title a:hover { text-decoration: underline; }
-              .result-url { color: #059669; font-size: 13px; margin-bottom: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-              .result-snippet { color: #4b5563; font-size: 14px; }
-              .no-results { text-align: center; color: #6b7280; margin-top: 40px; }
+              .result-url { color: var(--success-color); font-size: 13px; margin-bottom: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+              .result-snippet { color: var(--text-secondary); font-size: 14px; }
+              .no-results { text-align: center; color: var(--text-tertiary); margin-top: 40px; }
             </style>
           </head>
           <body>
@@ -541,16 +564,17 @@ const MainContent: React.FC = () => {
   }, [activeTabId])
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#f0f0f0' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: getColor('bg-primary'), fontFamily: 'var(--font-family-ui)' }}>
       {/* Tab Bar */}
       <div style={{ 
         display: 'flex', 
         height: '40px', 
-        backgroundColor: '#dfe1e5', 
+        backgroundColor: getColor('bg-secondary'), 
         paddingTop: '8px', 
         paddingLeft: '8px',
         overflowX: 'auto',
-        gap: '4px'
+        gap: '4px',
+        borderBottom: `1px solid ${getColor('border-color')}`
       }}>
         {tabs.map(tab => (
           <div 
@@ -560,15 +584,15 @@ const MainContent: React.FC = () => {
               maxWidth: '200px',
               minWidth: '120px',
               height: '32px',
-              backgroundColor: activeTabId === tab.id ? '#ffffff' : 'transparent',
+              backgroundColor: activeTabId === tab.id ? getColor('surface-primary') : 'transparent',
               borderRadius: '8px 8px 0 0',
               padding: '0 10px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
               cursor: 'pointer',
-              fontSize: '12px',
-              color: activeTabId === tab.id ? '#333' : '#666',
+              fontSize: 'var(--font-size-base)',
+              color: activeTabId === tab.id ? getColor('text-primary') : getColor('text-secondary'),
               boxShadow: activeTabId === tab.id ? '0 -1px 4px rgba(0,0,0,0.1)' : 'none',
               transition: 'background-color 0.2s'
             }}
@@ -596,7 +620,8 @@ const MainContent: React.FC = () => {
                     justifyContent: 'center',
                     marginLeft: '8px',
                     fontSize: '10px',
-                    opacity: 0.6
+                    opacity: 0.6,
+                    color: getColor('text-secondary')
                 }}
                 className="close-btn"
             >✕</div>
@@ -612,7 +637,7 @@ const MainContent: React.FC = () => {
                 justifyContent: 'center',
                 cursor: 'pointer',
                 fontSize: '18px',
-                color: '#666'
+                color: getColor('text-secondary')
             }}
         >+</div>
       </div>
@@ -620,28 +645,28 @@ const MainContent: React.FC = () => {
       {/* Navigation Bar */}
       <div style={{ 
         height: '44px', 
-        backgroundColor: '#ffffff', 
+        backgroundColor: getColor('surface-primary'), 
         display: 'flex', 
         alignItems: 'center', 
         padding: '0 8px', 
         gap: '8px',
-        borderBottom: '1px solid #ddd'
+        borderBottom: `1px solid ${getColor('border-color')}`
       }}>
         <div style={{ display: 'flex', gap: '4px' }}>
-            <button onClick={handleBack} disabled={!activeTab.canGoBack} style={{ border: 'none', background: 'transparent', cursor: activeTab.canGoBack ? 'pointer' : 'default', opacity: activeTab.canGoBack ? 1 : 0.3, padding: '4px' }}>
+            <button onClick={handleBack} disabled={!activeTab.canGoBack} style={{ border: 'none', background: 'transparent', cursor: activeTab.canGoBack ? 'pointer' : 'default', opacity: activeTab.canGoBack ? 1 : 0.3, padding: '4px', color: getColor('text-primary') }}>
                 ◀
             </button>
-            <button onClick={handleForward} disabled={!activeTab.canGoForward} style={{ border: 'none', background: 'transparent', cursor: activeTab.canGoForward ? 'pointer' : 'default', opacity: activeTab.canGoForward ? 1 : 0.3, padding: '4px' }}>
+            <button onClick={handleForward} disabled={!activeTab.canGoForward} style={{ border: 'none', background: 'transparent', cursor: activeTab.canGoForward ? 'pointer' : 'default', opacity: activeTab.canGoForward ? 1 : 0.3, padding: '4px', color: getColor('text-primary') }}>
                 ▶
             </button>
-            <button onClick={handleReload} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px' }}>
+            <button onClick={handleReload} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px', color: getColor('text-primary') }}>
                 ↻
             </button>
         </div>
         
         <div style={{ 
             flex: 1, 
-            backgroundColor: '#f1f3f4', 
+            backgroundColor: getColor('bg-secondary'), 
             borderRadius: '20px', 
             height: '28px', 
             display: 'flex', 
@@ -663,8 +688,9 @@ const MainContent: React.FC = () => {
                     border: 'none',
                     background: 'transparent',
                     outline: 'none',
-                    fontSize: '14px',
-                    color: '#333'
+                    fontSize: 'var(--font-size-md)',
+                    color: getColor('text-primary'),
+                    fontFamily: 'var(--font-family-ui)'
                 }}
             />
             
@@ -677,10 +703,10 @@ const MainContent: React.FC = () => {
                   top: '36px',
                   left: '0',
                   right: '0',
-                  backgroundColor: 'white',
+                  backgroundColor: getColor('surface-primary'),
                   borderRadius: '12px',
                   boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
-                  border: '1px solid #e5e7eb',
+                  border: `1px solid ${getColor('border-color')}`,
                   zIndex: 100,
                   overflow: 'hidden'
                 }}
@@ -693,15 +719,15 @@ const MainContent: React.FC = () => {
                     display: 'flex',
                     alignItems: 'center',
                     gap: '10px',
-                    backgroundColor: selectedSuggestionIndex === 0 ? '#f3f4f6' : 'white',
-                    borderBottom: '1px solid #f3f4f6'
+                    backgroundColor: selectedSuggestionIndex === 0 ? getColor('bg-secondary') : getColor('surface-primary'),
+                    borderBottom: `1px solid ${getColor('border-color')}`
                   }}
                   onMouseEnter={() => setSelectedSuggestionIndex(0)}
                 >
                   <span style={{ fontSize: '16px' }}>🔍</span>
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    <span style={{ fontSize: '14px', color: '#111827' }}>Google Search</span>
-                    <span style={{ fontSize: '12px', color: '#6b7280' }}>{urlInput}</span>
+                    <span style={{ fontSize: 'var(--font-size-md)', color: getColor('text-primary') }}>Google Search</span>
+                    <span style={{ fontSize: 'var(--font-size-sm)', color: getColor('text-secondary') }}>{urlInput}</span>
                   </div>
                 </div>
                 
@@ -713,14 +739,14 @@ const MainContent: React.FC = () => {
                     display: 'flex',
                     alignItems: 'center',
                     gap: '10px',
-                    backgroundColor: selectedSuggestionIndex === 1 ? '#f3f4f6' : 'white'
+                    backgroundColor: selectedSuggestionIndex === 1 ? getColor('bg-secondary') : getColor('surface-primary')
                   }}
                   onMouseEnter={() => setSelectedSuggestionIndex(1)}
                 >
                   <span style={{ fontSize: '16px' }}>✨</span>
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    <span style={{ fontSize: '14px', color: '#111827' }}>AI Deep Search</span>
-                    <span style={{ fontSize: '12px', color: '#6b7280' }}>Smart analysis & summary</span>
+                    <span style={{ fontSize: 'var(--font-size-md)', color: getColor('text-primary') }}>AI Deep Search</span>
+                    <span style={{ fontSize: 'var(--font-size-sm)', color: getColor('text-secondary') }}>Smart analysis & summary</span>
                   </div>
                 </div>
               </div>
@@ -741,7 +767,7 @@ const MainContent: React.FC = () => {
                     width: '100%', 
                     height: '100%', 
                     display: activeTabId === tab.id ? 'block' : 'none',
-                    backgroundColor: '#fff',
+                    backgroundColor: 'var(--surface-primary)',
                     overflowY: isHome ? 'auto' : 'hidden'
                 }}
             >
@@ -754,7 +780,7 @@ const MainContent: React.FC = () => {
                         height: '100%', 
                         width: '100%',
                         padding: '20px',
-                        backgroundColor: 'var(--bg-primary)',
+                        backgroundColor: getColor('bg-primary'),
                         transition: 'all 0.3s ease'
                     }}>
                         <h1 style={{ 
@@ -762,9 +788,10 @@ const MainContent: React.FC = () => {
                             fontWeight: 600, 
                             marginBottom: homeState.searched ? '20px' : '40px',
                             marginTop: homeState.searched ? '20px' : '0',
-                            color: 'var(--text-primary)',
+                            color: getColor('text-primary'),
                             letterSpacing: '-0.5px',
-                            transition: 'all 0.3s ease'
+                            transition: 'all 0.3s ease',
+                            fontFamily: 'var(--font-family-ui)'
                         }}>
                             {homeState.searched ? 'AI 智能搜索' : `${greeting}，和我一起探索网络世界！`}
                         </h1>
@@ -772,11 +799,11 @@ const MainContent: React.FC = () => {
                         <div style={{ 
                             width: '100%', 
                             maxWidth: '680px', 
-                            backgroundColor: 'var(--bg-secondary)',
+                            backgroundColor: getColor('bg-secondary'),
                             borderRadius: '16px',
                             padding: '16px',
                             boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
-                            border: '1px solid var(--border-color)',
+                            border: `1px solid ${getColor('border-color')}`,
                             position: 'relative',
                             marginBottom: homeState.searched ? '20px' : '0',
                             transition: 'all 0.3s ease'
@@ -798,9 +825,9 @@ const MainContent: React.FC = () => {
                                         border: 'none',
                                         outline: 'none',
                                         backgroundColor: 'transparent',
-                                        fontSize: '16px',
-                                        color: 'var(--text-primary)',
-                                        fontFamily: 'inherit'
+                                        fontSize: 'var(--font-size-lg)',
+                                        color: getColor('text-primary'),
+                                        fontFamily: 'var(--font-family-ui)'
                                     }}
                                 />
                                 {searchLoading && <span className="loading-spinner">↻</span>}
@@ -810,7 +837,7 @@ const MainContent: React.FC = () => {
                                 justifyContent: 'flex-end', 
                                 marginTop: '12px',
                                 paddingTop: '12px',
-                                borderTop: '1px solid var(--border-color)'
+                                borderTop: `1px solid ${getColor('border-color')}`
                             }}>
                                 <button 
                                     onClick={handleHomeSearch}
@@ -819,12 +846,13 @@ const MainContent: React.FC = () => {
                                         padding: '8px 24px',
                                         borderRadius: '20px',
                                         backgroundColor: 'var(--accent-color)',
-                                        color: 'var(--accent-text)',
+                                        color: 'white',
                                         border: 'none',
                                         cursor: searchLoading ? 'not-allowed' : 'pointer',
-                                        fontSize: '14px',
+                                        fontSize: 'var(--font-size-base)',
                                         fontWeight: 500,
-                                        opacity: searchLoading ? 0.7 : 1
+                                        opacity: searchLoading ? 0.7 : 1,
+                                        fontFamily: 'var(--font-family-ui)'
                                     }}>
                                     {searchLoading ? '搜索中...' : '搜索'}
                                 </button>
@@ -844,16 +872,16 @@ const MainContent: React.FC = () => {
                                 transition: 'opacity 0.2s'
                             }}>
                                 {homeState.results.length === 0 && !searchLoading && (
-                                    <div style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '40px' }}>
+                                    <div style={{ textAlign: 'center', color: getColor('text-secondary'), padding: '40px', fontFamily: 'var(--font-family-ui)' }}>
                                         未找到相关结果
                                     </div>
                                 )}
                                 {homeState.results.map((result: any, idx: number) => (
                                     <div key={idx} style={{
-                                        backgroundColor: 'var(--bg-secondary)',
+                                        backgroundColor: getColor('bg-secondary'),
                                         borderRadius: '12px',
                                         padding: '16px',
-                                        border: '1px solid var(--border-color)',
+                                        border: `1px solid ${getColor('border-color')}`,
                                         display: 'flex',
                                         flexDirection: 'column',
                                         gap: '8px'
@@ -869,13 +897,14 @@ const MainContent: React.FC = () => {
                                                     updateTab(activeTabId, { url: result.url, title: result.title })
                                                 }}
                                                 style={{ 
-                                                    fontSize: '16px', 
+                                                    fontSize: 'var(--font-size-lg)', 
                                                     fontWeight: 600, 
                                                     color: 'var(--accent-color)',
                                                     textDecoration: 'none',
                                                     lineHeight: '1.4',
                                                     flex: 1,
-                                                    marginRight: '10px'
+                                                    marginRight: '10px',
+                                                    fontFamily: 'var(--font-family-ui)'
                                                 }}
                                             >
                                                 {result.title}
@@ -885,22 +914,23 @@ const MainContent: React.FC = () => {
                                                 disabled={crawling === result.url}
                                                 style={{
                                                     padding: '4px 12px',
-                                                    fontSize: '12px',
+                                                    fontSize: 'var(--font-size-sm)',
                                                     borderRadius: '12px',
-                                                    border: '1px solid var(--border-color)',
-                                                    backgroundColor: 'var(--bg-tertiary)',
-                                                    color: 'var(--text-primary)',
+                                                    border: `1px solid ${getColor('border-color')}`,
+                                                    backgroundColor: getColor('bg-tertiary'),
+                                                    color: getColor('text-primary'),
                                                     cursor: 'pointer',
-                                                    whiteSpace: 'nowrap'
+                                                    whiteSpace: 'nowrap',
+                                                    fontFamily: 'var(--font-family-ui)'
                                                 }}
                                             >
                                                 {crawling === result.url ? '爬取中...' : '爬取内容'}
                                             </button>
                                         </div>
-                                        <div style={{ fontSize: '12px', color: '#2ecc71', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        <div style={{ fontSize: 'var(--font-size-sm)', color: 'var(--success-color)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'var(--font-family-ui)' }}>
                                             {result.url}
                                         </div>
-                                        <div style={{ fontSize: '14px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
+                                        <div style={{ fontSize: 'var(--font-size-md)', color: getColor('text-secondary'), lineHeight: '1.5', fontFamily: 'var(--font-family-ui)' }}>
                                             {result.snippet}
                                         </div>
                                     </div>
@@ -924,16 +954,17 @@ const MainContent: React.FC = () => {
                                 ].map((item, idx) => (
                                     <div key={idx} style={{
                                         padding: '8px 16px',
-                                        backgroundColor: 'var(--bg-secondary)',
-                                        border: '1px solid var(--border-color)',
+                                        backgroundColor: getColor('bg-secondary'),
+                                        border: `1px solid ${getColor('border-color')}`,
                                         borderRadius: '20px',
-                                        fontSize: '13px',
-                                        color: 'var(--text-secondary)',
+                                        fontSize: 'var(--font-size-sm)',
+                                        color: getColor('text-secondary'),
                                         cursor: 'pointer',
                                         display: 'flex',
                                         alignItems: 'center',
                                         gap: '6px',
-                                        transition: 'all 0.2s ease'
+                                        transition: 'all 0.2s ease',
+                                        fontFamily: 'var(--font-family-ui)'
                                     }}
                                     onClick={() => {
                                         const newValue = item.label + " "

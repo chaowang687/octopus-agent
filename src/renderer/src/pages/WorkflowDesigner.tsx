@@ -13,6 +13,7 @@ import ReactFlow, {
   ReactFlowInstance,
   Handle,
   Position,
+  useNodeId,
   MarkerType,
   NodeMouseHandler,
   ConnectionMode,
@@ -148,6 +149,17 @@ const CustomNode = ({ data, selected, onOutputDocClick, onAutoConnect, connected
   const isPromptNode = data.type === 'prompt'
 
   if (isPromptNode) {
+    // 处理prompt节点的输出文档点击
+    const handlePromptOutputClick = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      // 生成markdown格式的输出，包含输入内容和可能的处理结果
+      const processedContent = data.processedContent || data.input || '';
+      const markdownContent = `# ${data.label}\n\n${processedContent}`;
+      if (onOutputDocClick) {
+        onOutputDocClick('prompt_output', `${data.label} 输出`, markdownContent);
+      }
+    };
+
     return (
       <div style={{
         position: 'relative',
@@ -160,7 +172,7 @@ const CustomNode = ({ data, selected, onOutputDocClick, onAutoConnect, connected
         boxShadow: selected ? '0 0 0 3px #60a5fa, 0 4px 12px rgba(0,0,0,0.2)' : '0 3px 10px rgba(0,0,0,0.18)',
         cursor: 'move',
         userSelect: 'none',
-        minWidth: '160px',
+        minWidth: '180px',
         textAlign: 'center',
         transition: 'box-shadow 0.2s ease, transform 0.1s ease',
         transform: selected ? 'scale(1.02)' : 'scale(1)',
@@ -180,15 +192,23 @@ const CustomNode = ({ data, selected, onOutputDocClick, onAutoConnect, connected
             boxShadow: '0 2px 8px rgba(37, 99, 235, 0.4)',
           }} 
         />
-        <div style={{ 
-          pointerEvents: 'none',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '8px'
-        }}>
-          💬 {data.label}
+        <div 
+          style={{ 
+            pointerEvents: 'none',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px'
+          }}
+          onClick={handlePromptOutputClick}  // 添加点击事件以输出markdown内容
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            💬 {data.label}
+            {connectedOutputs && connectedOutputs.length > 0 && (
+              <span style={{ fontSize: '12px', opacity: 0.8 }}> ({connectedOutputs.length}) </span>
+            )}
+          </div>
           {data.input && (
             <div style={{
               marginTop: '8px',
@@ -209,7 +229,30 @@ const CustomNode = ({ data, selected, onOutputDocClick, onAutoConnect, connected
                 overflow: 'hidden',
                 textOverflow: 'ellipsis'
               }}>
-                {data.input.length > 20 ? data.input.substring(0, 20) + '...' : data.input}
+                输入: {data.input.length > 20 ? data.input.substring(0, 20) + '...' : data.input}
+              </div>
+            </div>
+          )}
+          {data.processedContent && (
+            <div style={{
+              fontSize: '11px',
+              opacity: 0.9,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '4px',
+              width: '100%'
+            }}>
+              <div style={{
+                padding: '4px 8px',
+                backgroundColor: 'rgba(255,255,255,0.3)',
+                borderRadius: '4px',
+                fontSize: '10px',
+                textAlign: 'left',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis'
+              }}>
+                输出: {data.processedContent.length > 20 ? data.processedContent.substring(0, 20) + '...' : data.processedContent}
               </div>
             </div>
           )}
@@ -711,14 +754,15 @@ const WorkflowDesignerInner = () => {
 
   // 节点类型映射
   const nodeTypes = useMemo(() => ({
-    marketResearch: CustomNode,
-    productManager: CustomNode,
-    uiDesigner: CustomNode,
-    architect: CustomNode,
-    frontendEngineer: CustomNode,
-    backendEngineer: CustomNode,
-    uiTester: CustomNode,
-    functionalTester: CustomNode,
+    marketResearch: (props: any) => <CustomNode {...props} onOutputDocClick={handleOutputDocClick} onAutoConnect={handleAutoConnect} />,
+    productManager: (props: any) => <CustomNode {...props} onOutputDocClick={handleOutputDocClick} onAutoConnect={handleAutoConnect} />,
+    uiDesigner: (props: any) => <CustomNode {...props} onOutputDocClick={handleOutputDocClick} onAutoConnect={handleAutoConnect} />,
+    architect: (props: any) => <CustomNode {...props} onOutputDocClick={handleOutputDocClick} onAutoConnect={handleAutoConnect} />,
+    frontendEngineer: (props: any) => <CustomNode {...props} onOutputDocClick={handleOutputDocClick} onAutoConnect={handleAutoConnect} />,
+    backendEngineer: (props: any) => <CustomNode {...props} onOutputDocClick={handleOutputDocClick} onAutoConnect={handleAutoConnect} />,
+    uiTester: (props: any) => <CustomNode {...props} onOutputDocClick={handleOutputDocClick} onAutoConnect={handleAutoConnect} />,
+    functionalTester: (props: any) => <CustomNode {...props} onOutputDocClick={handleOutputDocClick} onAutoConnect={handleAutoConnect} />,
+    prompt: (props: any) => <CustomNode {...props} onOutputDocClick={handleOutputDocClick} onAutoConnect={handleAutoConnect} />,
     boxNode: (props: any) => {
       const boxNodeId = props.id
       const connectedOutputs = edges
@@ -775,6 +819,10 @@ const WorkflowDesignerInner = () => {
           if (result.workflow.savedAt) {
             setLastSavedAt(new Date(result.workflow.savedAt).toLocaleTimeString())
           }
+          // 延迟调用fitView，确保节点渲染完成
+          setTimeout(() => {
+            reactFlowInstance?.fitView()
+          }, 200)
         }
       } catch (error) {
         console.error('加载工作流失败:', error)
@@ -784,7 +832,7 @@ const WorkflowDesignerInner = () => {
     }
 
     loadSavedWorkflow()
-  }, [setNodes, setEdges])
+  }, [setNodes, setEdges, reactFlowInstance])
 
   // 处理连线
   const onConnect = useCallback(
@@ -1058,47 +1106,73 @@ const WorkflowDesignerInner = () => {
       console.log('工作流执行结果:', result)
       setExecutionResult(result)
 
-      if (result.outputs) {
-        setNodes((nds) =>
-          nds.map((node) => {
-            const nodeOutput = result.outputs[node.id]
-            if (nodeOutput) {
-              // 处理框智能体的特殊输出
-              if (node.data.type === 'boxNode' && nodeOutput.success) {
+      // 检查工作流执行状态
+      if (result.status === 'completed') {
+        if (result.outputs) {
+          setNodes((nds) =>
+            nds.map((node) => {
+              const nodeOutput = result.outputs[node.id]
+              if (nodeOutput) {
+                // 处理框智能体的特殊输出
+                if (node.data.type === 'boxNode' && nodeOutput.success) {
+                  return {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      output: nodeOutput,
+                      uiDoc: nodeOutput.uiDoc,
+                      architectDoc: nodeOutput.architectDoc,
+                      frontendDoc: nodeOutput.frontendDoc,
+                      backendDoc: nodeOutput.backendDoc,
+                      qaDoc: nodeOutput.qaDoc,
+                      status: 'completed',
+                      progress: 100,
+                    },
+                  }
+                }
+                
+                // 普通节点处理
                 return {
                   ...node,
                   data: {
                     ...node.data,
                     output: nodeOutput,
-                    uiDoc: nodeOutput.uiDoc,
-                    architectDoc: nodeOutput.architectDoc,
-                    frontendDoc: nodeOutput.frontendDoc,
-                    backendDoc: nodeOutput.backendDoc,
-                    qaDoc: nodeOutput.qaDoc,
                     status: 'completed',
                     progress: 100,
                   },
                 }
               }
-              
-              // 普通节点处理
-              return {
-                ...node,
-                data: {
-                  ...node.data,
-                  output: nodeOutput,
-                  status: 'completed',
-                  progress: 100,
-                },
-              }
-            }
-            return node
-          })
-        )
-      }
+              return node
+            })
+          )
+        }
 
-      addLog('success', '工作流执行完成！')
-      alert('工作流执行完成！')
+        addLog('success', `工作流执行完成！处理了 ${Object.keys(result.outputs || {}).length} 个节点`)
+        alert(`工作流执行完成！共处理 ${Object.keys(result.outputs || {}).length} 个节点`)
+      } else if (result.status === 'failed') {
+        // 工作流执行失败
+        setNodes((nds) =>
+          nds.map((node) => ({
+            ...node,
+            data: {
+              ...node.data,
+              status: 'failed',
+              progress: 0,
+            },
+          }))
+        )
+        
+        const errorMessage = result.errors?.length ? result.errors.join(', ') : '未知错误'
+        const errorDetails = result.errorDetails ? `\n错误详情: ${result.errorDetails.message}\n堆栈: ${result.errorDetails.stack}` : ''
+        addLog('error', `工作流执行失败: ${errorMessage}${errorDetails}`)
+        
+        // 弹出详细错误信息
+        alert(`工作流执行失败:\n${errorMessage}${errorDetails}`)
+      } else {
+        // 其他状态
+        addLog('warning', `工作流执行结束，状态: ${result.status}`)
+        alert(`工作流执行结束，状态: ${result.status}`)
+      }
     } catch (error) {
       console.error('工作流执行失败:', error)
       addLog('error', `工作流执行失败: ${error}`)
@@ -1186,6 +1260,10 @@ const WorkflowDesignerInner = () => {
         if (result.workflow.savedAt) {
           setLastSavedAt(new Date(result.workflow.savedAt).toLocaleTimeString())
         }
+        // 延迟调用fitView，确保节点渲染完成
+        setTimeout(() => {
+          reactFlowInstance?.fitView()
+        }, 200)
         alert(`工作流已从以下文件加载:\n${result.filePath}`)
       } else if (!result.canceled) {
         if (result.error) {
@@ -1225,6 +1303,10 @@ const WorkflowDesignerInner = () => {
         if (result.workflow.savedAt) {
           setLastSavedAt(new Date(result.workflow.savedAt).toLocaleTimeString())
         }
+        // 延迟调用fitView，确保节点渲染完成
+        setTimeout(() => {
+          reactFlowInstance?.fitView()
+        }, 200)
         alert('工作流已快速加载')
       } else {
         if (result.error) {
@@ -1344,10 +1426,6 @@ const WorkflowDesignerInner = () => {
             onNodeContextMenu={onNodeContextMenu}
             onPaneClick={onPaneClick}
             nodeTypes={nodeTypes}
-            fitView
-            fitViewOptions={{
-              padding: 200
-            }}
             defaultViewport={{
               x: 0,
               y: 0,
@@ -1359,6 +1437,17 @@ const WorkflowDesignerInner = () => {
             reconnectRadius={40}
             connectionMode={ConnectionMode.Loose}
             snapToGrid={false}
+            panOnDrag={true}
+            zoomOnScroll={true}
+            zoomOnPinch={true}
+            panOnScroll={false}
+            preventScrolling={true}
+            selectNodesOnDrag={false}
+            elevateNodesOnSelect={false}
+            fitViewOnInit={false}
+            onlyRenderVisibleElements={true}
+            maxZoom={2}
+            minZoom={0.1}
             defaultEdgeOptions={{
               type: 'smoothstep',
               animated: true,
@@ -1396,7 +1485,7 @@ const WorkflowDesignerInner = () => {
                 fontSize: '14px'
               }}
             >
-              {isExecuting ? '执行中...' : '▶ 运行工作流'}
+              {isExecuting ? '执行中...' : '运行'}
             </button>
             <button 
               onClick={handlePauseWorkflow}
@@ -1411,7 +1500,7 @@ const WorkflowDesignerInner = () => {
                 fontSize: '14px'
               }}
             >
-              ⏸️ 暂停
+              暂停
             </button>
             <button 
               onClick={handleResumeWorkflow}
@@ -1426,7 +1515,21 @@ const WorkflowDesignerInner = () => {
                 fontSize: '14px'
               }}
             >
-              ▶️ 恢复
+              恢复
+            </button>
+            <button 
+              onClick={handleLoadWorkflow}
+              style={{ 
+                padding: '8px 16px',
+                backgroundColor: '#f59e0b',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '14px'
+              }}
+            >
+              打开
             </button>
             <button 
               onClick={handleSaveWorkflow}
@@ -1441,50 +1544,7 @@ const WorkflowDesignerInner = () => {
                 fontSize: '14px'
               }}
             >
-              {isSaving ? '保存中...' : '💾 保存为文件'}
-            </button>
-            <button 
-              onClick={handleLoadWorkflow}
-              style={{ 
-                padding: '8px 16px',
-                backgroundColor: '#f59e0b',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '14px'
-              }}
-            >
-              📂 打开文件
-            </button>
-            <button 
-              onClick={handleQuickSaveWorkflow}
-              disabled={isSaving}
-              style={{ 
-                padding: '8px 16px',
-                backgroundColor: isSaving ? '#6ee7b7' : '#6366f1',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: isSaving ? 'not-allowed' : 'pointer',
-                fontSize: '14px'
-              }}
-            >
-              {isSaving ? '保存中...' : '⚡ 快速保存'}
-            </button>
-            <button 
-              onClick={handleQuickLoadWorkflow}
-              style={{ 
-                padding: '8px 16px',
-                backgroundColor: '#8b5cf6',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '14px'
-              }}
-            >
-              ⚡ 快速加载
+              {isSaving ? '保存中...' : '保存'}
             </button>
             <button 
               onClick={handleClearWorkflow}
@@ -1498,7 +1558,7 @@ const WorkflowDesignerInner = () => {
                 fontSize: '14px'
               }}
             >
-              🗑️ 清空
+              清空
             </button>
           </div>
           

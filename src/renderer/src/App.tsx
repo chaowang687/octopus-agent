@@ -98,6 +98,7 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [activeToolTab, setActiveToolTab] = useState<'editor' | 'terminal' | 'changes' | 'browser'>('editor')
+  const [editorTheme, setEditorTheme] = useState<'vs-dark' | 'vs-light'>('vs-dark')
 
   useEffect(() => {
     const initApp = async () => {
@@ -184,7 +185,14 @@ function App() {
                 <div className="app">
                   <Sidebar />
                   <div className="main-wrapper">
-                    <Header currentUser={currentUser} onLogout={handleLogout} activeToolTab={activeToolTab} setActiveToolTab={setActiveToolTab} />
+                    <Header 
+                      currentUser={currentUser} 
+                      onLogout={handleLogout} 
+                      activeToolTab={activeToolTab} 
+                      setActiveToolTab={setActiveToolTab} 
+                      editorTheme={editorTheme}
+                      setEditorTheme={setEditorTheme}
+                    />
                     <div className="page-content">
                       <Routes>
                         <Route path="/" element={<IDELayout activeToolTab={activeToolTab} setActiveToolTab={setActiveToolTab} />} />

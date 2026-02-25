@@ -1,0 +1,159 @@
+/* 全局图标规范 */
+
+:root {
+  /* 图标样式 */
+  --icon-size-xs: 12px;
+  --icon-size-sm: 14px;
+  --icon-size-md: 16px;
+  --icon-size-lg: 18px;
+  --icon-size-xl: 20px;
+  --icon-size-2xl: 24px;
+  
+  /* 图标颜色 */
+  --icon-color-primary: var(--text-primary);
+  --icon-color-secondary: var(--text-secondary);
+  --icon-color-tertiary: var(--text-tertiary);
+  --icon-color-muted: var(--text-muted);
+  --icon-color-accent: var(--primary-color);
+  --icon-color-success: var(--success-color);
+  --icon-color-warning: var(--warning-color);
+  --icon-color-error: var(--error-color);
+  --icon-color-info: var(--info-color);
+  
+  /* 深色模式图标颜色 */
+  --icon-dark-color-primary: var(--dark-text-primary);
+  --icon-dark-color-secondary: var(--dark-text-secondary);
+  --icon-dark-color-tertiary: var(--dark-text-tertiary);
+  --icon-dark-color-muted: var(--dark-text-muted);
+  
+  /* 图标过渡 */
+  --icon-transition: fill 0.2s ease, stroke 0.2s ease, opacity 0.2s ease;
+}
+
+/* 通用图标样式 */
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: var(--icon-transition);
+}
+
+.icon-xs {
+  width: var(--icon-size-xs);
+  height: var(--icon-size-xs);
+}
+
+.icon-sm {
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+}
+
+.icon-md {
+  width: var(--icon-size-md);
+  height: var(--icon-size-md);
+}
+
+.icon-lg {
+  width: var(--icon-size-lg);
+  height: var(--icon-size-lg);
+}
+
+.icon-xl {
+  width: var(--icon-size-xl);
+  height: var(--icon-size-xl);
+}
+
+.icon-2xl {
+  width: var(--icon-size-2xl);
+  height: var(--icon-size-2xl);
+}
+
+/* 图标颜色类 */
+.icon-primary {
+  fill: var(--icon-color-primary);
+  stroke: var(--icon-color-primary);
+}
+
+.icon-secondary {
+  fill: var(--icon-color-secondary);
+  stroke: var(--icon-color-secondary);
+}
+
+.icon-tertiary {
+  fill: var(--icon-color-tertiary);
+  stroke: var(--icon-color-tertiary);
+}
+
+.icon-muted {
+  fill: var(--icon-color-muted);
+  stroke: var(--icon-color-muted);
+}
+
+.icon-accent {
+  fill: var(--icon-color-accent);
+  stroke: var(--icon-color-accent);
+}
+
+.icon-success {
+  fill: var(--icon-color-success);
+  stroke: var(--icon-color-success);
+}
+
+.icon-warning {
+  fill: var(--icon-color-warning);
+  stroke: var(--icon-color-warning);
+}
+
+.icon-error {
+  fill: var(--icon-color-error);
+  stroke: var(--icon-color-error);
+}
+
+.icon-info {
+  fill: var(--icon-color-info);
+  stroke: var(--icon-color-info);
+}
+
+/* 线性图标样式 */
+.icon-linear {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* 图标悬停效果 */
+.icon-hover:hover {
+  opacity: 0.8;
+  transform: translateY(-1px);
+}
+
+/* 禁用状态 */
+.icon-disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 响应式图标 */
+@media (max-width: 768px) {
+  .icon-responsive {
+    width: var(--icon-size-sm);
+    height: var(--icon-size-sm);
+  }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+  .icon-responsive {
+    width: var(--icon-size-md);
+    height: var(--icon-size-md);
+  }
+}
+
+@media (min-width: 1025px) {
+  .icon-responsive {
+    width: var(--icon-size-lg);
+    height: var(--icon-size-lg);
+  }
+}
