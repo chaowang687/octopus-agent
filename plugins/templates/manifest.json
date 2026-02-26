@@ -1,0 +1,15 @@
+{
+  "id": "plugin-template",
+  "name": "Plugin Template",
+  "version": "1.0.0",
+  "description": "A template for creating plugins",
+  "author": "Your Name",
+  "license": "MIT",
+  "main": "index.js",
+  "category": "feature",
+  "keywords": ["plugin", "template"],
+  "dependencies": {},
+  "permissions": [],
+  "homepage": "",
+  "repository": ""
+}

@@ -1,0 +1,13 @@
+{
+  "id": "service-llm",
+  "name": "LLM Service",
+  "version": "1.0.0",
+  "description": "Large Language Model service for AI capabilities",
+  "author": "Octopus Agent",
+  "license": "MIT",
+  "main": "index.js",
+  "category": "service",
+  "keywords": ["llm", "ai", "language-model", "openai", "claude"],
+  "dependencies": {},
+  "permissions": ["network:access"]
+}

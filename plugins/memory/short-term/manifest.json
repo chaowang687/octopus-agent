@@ -1,0 +1,13 @@
+{
+  "id": "memory-short",
+  "name": "Short-Term Memory",
+  "version": "1.0.0",
+  "description": "Short-term memory storage for current session context",
+  "author": "Octopus Agent",
+  "license": "MIT",
+  "main": "index.js",
+  "category": "memory",
+  "keywords": ["memory", "short-term", "session", "context"],
+  "dependencies": {},
+  "permissions": ["memory:read", "memory:write"]
+}

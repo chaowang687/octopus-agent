@@ -1,0 +1,13 @@
+{
+  "id": "tool-command",
+  "name": "Command Tools",
+  "version": "1.0.0",
+  "description": "Execute shell commands and scripts",
+  "author": "Octopus Agent",
+  "license": "MIT",
+  "main": "index.js",
+  "category": "tool",
+  "keywords": ["command", "shell", "execute", "terminal"],
+  "dependencies": {},
+  "permissions": ["command:execute"]
+}

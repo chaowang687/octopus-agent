@@ -35,16 +35,6 @@ export function registerPluginSystemHandlers(): void {
     return await pluginSystem.unloadModule(moduleId);
   });
 
-  // 启用插件
-  ipcMain.handle('plugin:enable', async (_event: IpcMainInvokeEvent, pluginId: string): Promise<boolean> => {
-    return await pluginSystem.enablePlugin(pluginId);
-  });
-
-  // 禁用插件
-  ipcMain.handle('plugin:disable', async (_event: IpcMainInvokeEvent, pluginId: string): Promise<boolean> => {
-    return await pluginSystem.disablePlugin(pluginId);
-  });
-
   // 执行模块函数
   ipcMain.handle(
     'plugin:execute-function', 
@@ -55,27 +45,6 @@ export function registerPluginSystemHandlers(): void {
       ...args: any[]
     ): Promise<any> => {
       return await pluginSystem.executeModuleFunction(moduleId, functionName, ...args);
-    }
-  );
-
-  // 安装插件
-  ipcMain.handle(
-    'plugin:install', 
-    async (
-      _event: IpcMainInvokeEvent, 
-      pluginId: string, 
-      source: string, 
-      version?: string
-    ): Promise<boolean> => {
-      return await pluginSystem.installPlugin(pluginId, source, version);
-    }
-  );
-
-  // 卸载插件
-  ipcMain.handle(
-    'plugin:uninstall', 
-    async (_event: IpcMainInvokeEvent, pluginId: string): Promise<boolean> => {
-      return await pluginSystem.uninstallPlugin(pluginId);
     }
   );
 

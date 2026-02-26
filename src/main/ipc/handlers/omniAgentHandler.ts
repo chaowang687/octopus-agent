@@ -5,6 +5,7 @@
 
 import { ipcMain } from 'electron'
 import { omniAgent, OmniAgentOptions, OmniAgentResult, OmniAgentType, PermissionLevel, ProjectContext } from '../../agent/OmniAgent'
+import { conversationManager, SessionOptions, ConversationResponse } from '../../agent/ConversationManager'
 
 // ============================================
 // 全能智能体管家 IPC 处理器
@@ -13,14 +14,73 @@ import { omniAgent, OmniAgentOptions, OmniAgentResult, OmniAgentType, Permission
 export function registerOmniAgentHandlers() {
   console.log('[OmniAgent IPC] 注册全能智能体管家处理器...')
 
-  // 执行任务
-  ipcMain.handle('omni:executeTask', async (_event, instruction: string, options?: OmniAgentOptions) => {
+  // 执行任务（使用对话管理器）
+  ipcMain.handle('omni:executeTask', async (_event, instruction: string, options?: OmniAgentOptions & { sessionId?: string }) => {
     try {
       console.log('[OmniAgent IPC] 收到任务执行请求:', instruction.slice(0, 100))
+      
+      const sessionId = options?.sessionId || 'default'
+      const response = await conversationManager.processMessage(sessionId, instruction)
+      
+      return { success: true, result: response }
+    } catch (error: any) {
+      console.error('[OmniAgent IPC] 任务执行失败:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  // 执行任务（使用原始 OmniAgent）
+  ipcMain.handle('omni:executeTaskDirect', async (_event, instruction: string, options?: OmniAgentOptions) => {
+    try {
+      console.log('[OmniAgent IPC] 收到直接任务执行请求:', instruction.slice(0, 100))
       const result = await omniAgent.executeTask(instruction, options)
       return { success: true, result }
     } catch (error: any) {
-      console.error('[OmniAgent IPC] 任务执行失败:', error)
+      console.error('[OmniAgent IPC] 直接任务执行失败:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  // 创建会话
+  ipcMain.handle('omni:createSession', async (_event, userId: string, options?: SessionOptions) => {
+    try {
+      const session = await conversationManager.createSession(userId, options)
+      return { success: true, session }
+    } catch (error: any) {
+      console.error('[OmniAgent IPC] 创建会话失败:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  // 获取对话历史
+  ipcMain.handle('omni:getConversationHistory', async (_event, sessionId: string, limit?: number) => {
+    try {
+      const history = conversationManager.getHistory(sessionId, limit)
+      return { success: true, history }
+    } catch (error: any) {
+      console.error('[OmniAgent IPC] 获取对话历史失败:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  // 清除对话历史
+  ipcMain.handle('omni:clearConversationHistory', async (_event, sessionId: string) => {
+    try {
+      await conversationManager.clearHistory(sessionId)
+      return { success: true }
+    } catch (error: any) {
+      console.error('[OmniAgent IPC] 清除对话历史失败:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  // 删除会话
+  ipcMain.handle('omni:deleteSession', async (_event, sessionId: string) => {
+    try {
+      await conversationManager.deleteSession(sessionId)
+      return { success: true }
+    } catch (error: any) {
+      console.error('[OmniAgent IPC] 删除会话失败:', error)
       return { success: false, error: error.message }
     }
   })

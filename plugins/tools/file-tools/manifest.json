@@ -1,0 +1,13 @@
+{
+  "id": "tool-file",
+  "name": "File Tools",
+  "version": "1.0.0",
+  "description": "File system operations: read, write, delete, copy, move files and directories",
+  "author": "Octopus Agent",
+  "license": "MIT",
+  "main": "index.js",
+  "category": "tool",
+  "keywords": ["file", "filesystem", "read", "write"],
+  "dependencies": {},
+  "permissions": ["filesystem:read", "filesystem:write"]
+}

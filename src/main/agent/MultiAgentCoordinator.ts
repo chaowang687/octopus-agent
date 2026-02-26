@@ -3,7 +3,6 @@ import { llmService, LLMMessage } from '../services/LLMService'
 import { WorkspaceManager } from '../services/WorkspaceManager'
 import { VerificationEngine, type TaskVerificationContext } from './VerificationEngine'
 import { smartButlerAgent } from './SmartButlerAgent'
-import { SmartButlerExpert } from './SmartButlerExpert'
 import { getProjectTemplate } from './templates/projectTemplates'
 import { collaborationManager, CollaborationPhase } from '../ipc/handlers/collaborationHandler'
 import { TaskStateManager } from './TaskStateManager'
@@ -2028,9 +2027,6 @@ ${actualFilesContent ? `\n\n## 实际项目文件内容:\n${actualFilesContent}`
 
   // 执行单个智能体任务
   private async executeAgentTask(agent: Agent, instruction: string, context: any): Promise<string> {
-    const expert = new SmartButlerExpert()
-    const expertiseLevel = expert.getExpertiseLevel(agent.type)
-    
     const messages: LLMMessage[] = [
       {
         role: 'system',
@@ -2038,9 +2034,9 @@ ${actualFilesContent ? `\n\n## 实际项目文件内容:\n${actualFilesContent}`
 
 ## 你的专业水平
 - 专业领域：${agent.type}
-- 经验等级：${expertiseLevel.level}
-- 处理经验：${expertiseLevel.experiences}次
-- 成功率：${(expertiseLevel.successRate * 100).toFixed(1)}%
+- 经验等级：专家
+- 处理经验：丰富
+- 成功率：95%
 
 ## 你的职责是：
 
@@ -2116,38 +2112,12 @@ ${this.getExpertKnowledge(agent.type)}
           }
         }
         
-        // 学习经验
-        expert.learnFromExperience({
-          experienceId: `exp_${Date.now()}`,
-          projectId: context.workspacePath || 'unknown',
-          problem: instruction,
-          solution: response.content,
-          outcome: 'success',
-          lessonsLearned: [],
-          applicableContexts: [agent.type],
-          confidence: 0.8,
-          timestamp: Date.now()
-        })
-        
         return response.content
       } else {
         throw new Error(response.error || '执行失败')
       }
     } catch (error: any) {
       console.error(`智能体 ${agent.name} 执行失败:`, error)
-      
-      // 学习失败经验
-      expert.learnFromExperience({
-        experienceId: `exp_${Date.now()}`,
-        projectId: context.workspacePath || 'unknown',
-        problem: instruction,
-        solution: '',
-        outcome: 'failure',
-        lessonsLearned: [error.message],
-        applicableContexts: [agent.type],
-        confidence: 0.5,
-        timestamp: Date.now()
-      })
       
       // 注册问题到智能管家
       await smartButlerAgent.registerProblem(

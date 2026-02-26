@@ -5,6 +5,10 @@
 
 import { app } from 'electron';
 import * as path from 'path';
+import { ToolPluginManager } from './ToolPluginManager';
+import { ServicePluginManager } from './ServicePluginManager';
+import { MemoryPluginManager } from './MemoryPluginManager';
+import { ToolPluginAdapter, ServicePluginAdapter, MemoryPluginAdapter } from './adapters';
 
 class PluginSystemClass {
   private pluginManager: any = null;
@@ -15,6 +19,10 @@ class PluginSystemClass {
   private pluginDir: string = '';
   private initialized: boolean = false;
 
+  private toolPluginManager: ToolPluginManager | null = null;
+  private servicePluginManager: ServicePluginManager | null = null;
+  private memoryPluginManager: MemoryPluginManager | null = null;
+
   constructor() {
   }
 
@@ -22,7 +30,7 @@ class PluginSystemClass {
     if (this.initialized) return;
     
     const { PluginManager } = await import('./PluginManager');
-    const { PackageManager } = await import('./PackageManager');
+    const { PackageManager: PkgManager } = await import('./PackageManager');
     const { ModuleDispatcher } = await import('./ModuleDispatcher');
     const { WorkbenchKernel } = await import('./WorkbenchKernel');
     const { MiniAgentOrchestrator } = await import('./MiniAgentOrchestrator');
@@ -33,13 +41,20 @@ class PluginSystemClass {
     
     this.pluginManager = new PluginManager();
     this.pluginManager.setPluginDir(this.pluginDir);
-    this.packageManager = new PackageManager(this.pluginDir);
+    this.packageManager = new PkgManager(this.pluginDir);
     this.moduleDispatcher = new ModuleDispatcher(this.pluginManager);
     
     this.workbenchKernel = new WorkbenchKernel();
     this.orchestrator = new MiniAgentOrchestrator(this.workbenchKernel);
     
-    console.log('Initializing plugin system...');
+    this.toolPluginManager = new ToolPluginManager();
+    this.servicePluginManager = new ServicePluginManager();
+    this.memoryPluginManager = new MemoryPluginManager();
+    
+    console.log('[PluginSystem] Initializing plugin system...');
+    console.log('[PluginSystem] Tool Plugin Manager ready');
+    console.log('[PluginSystem] Service Plugin Manager ready');
+    console.log('[PluginSystem] Memory Plugin Manager ready');
     
     this.initialized = true;
   }
@@ -63,6 +78,27 @@ class PluginSystemClass {
       throw new Error('Plugin system not initialized');
     }
     return this.moduleDispatcher;
+  }
+
+  getToolPluginManager(): ToolPluginManager {
+    if (!this.toolPluginManager) {
+      throw new Error('Plugin system not initialized');
+    }
+    return this.toolPluginManager;
+  }
+
+  getServicePluginManager(): ServicePluginManager {
+    if (!this.servicePluginManager) {
+      throw new Error('Plugin system not initialized');
+    }
+    return this.servicePluginManager;
+  }
+
+  getMemoryPluginManager(): MemoryPluginManager {
+    if (!this.memoryPluginManager) {
+      throw new Error('Plugin system not initialized');
+    }
+    return this.memoryPluginManager;
   }
 
   async installPlugin(pluginId: string, source: string, version?: string): Promise<boolean> {
@@ -160,6 +196,15 @@ export function getPluginSystem(): PluginSystemClass {
 }
 
 export { PluginSystemClass as PluginSystem };
+
+export { ToolPluginManager } from './ToolPluginManager';
+export { ServicePluginManager } from './ServicePluginManager';
+export { MemoryPluginManager } from './MemoryPluginManager';
+
+export { ToolPluginAdapter } from './adapters/ToolPluginAdapter';
+export { ServicePluginAdapter } from './adapters/ServicePluginAdapter';
+export { MemoryPluginAdapter } from './adapters/MemoryPluginAdapter';
+export { PluginInstaller, pluginInstaller } from './PluginInstaller';
 
 export default {
   getPluginSystem,
